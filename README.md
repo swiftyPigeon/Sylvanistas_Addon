@@ -5,8 +5,15 @@ Census and roster, the map, **layer detection and layer hop**, guild chats, the 
 Sanctum, Screams, polls and more. Main command: **`/syl`**.
 
 ## Install
-Copy the `Sylvanistas` folder into `World of Warcraft/_classic_beta_/Interface/AddOns/` and
-restart the game. It runs on Horde characters in a guild whose name starts with the word "Sylvanistas" (exact capitals);
+Get it from [CurseForge](https://www.curseforge.com/wow/addons/sylvanistas-guild), or download
+**Sylvanistas_CF.zip** from [Releases](https://github.com/swiftyPigeon/Sylvanistas_Addon/releases/latest)
+and unzip it into `World of Warcraft/_classic_beta_/Interface/AddOns/`, so you get an
+`AddOns/Sylvanistas/` folder. Then restart the game.
+
+**Don't use Code → Download ZIP** on GitHub: its folder is named `Sylvanistas_Addon-main` and the
+game won't load it.
+
+It runs on Horde characters in a guild whose name starts with the word "Sylvanistas" (exact capitals);
 anywhere else it stays idle.
 
 ## Settings (`Core.lua`, top)

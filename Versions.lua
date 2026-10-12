@@ -352,7 +352,7 @@ end
 function Versions.AskWhisper(name, version)
 	local UI = ns.UI
 	if not (UI and UI.WhisperText) then return nil end
-	local link = UI.LINKS and UI.LINKS.curseforge or "https://www.curseforge.com/wow/addons/CHANGEME-sylvanistas"
+	local link = UI.LINKS and UI.LINKS.curseforge or "https://www.curseforge.com/wow/addons/sylvanistas-guild"
 	return UI.WhisperText(ns.TellName(Full(name)), L.VERSION_ASK_WHISPER:format(tostring(version or "?"), Versions.Latest(), link))
 end
 
@@ -484,7 +484,7 @@ StaticPopupDialogs["SYLVANISTAS_UPDATE_ASKED"] = {
 ---------------------------------------------------------------------------
 
 function Versions.InviteText()
-	local link = ns.UI and ns.UI.LINKS and ns.UI.LINKS.curseforge or "https://www.curseforge.com/wow/addons/CHANGEME-sylvanistas"
+	local link = ns.UI and ns.UI.LINKS and ns.UI.LINKS.curseforge or "https://www.curseforge.com/wow/addons/sylvanistas-guild"
 	return L.VERSION_INVITE_TEXT:format(link)
 end
 
