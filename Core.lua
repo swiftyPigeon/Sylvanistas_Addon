@@ -7,7 +7,7 @@ local L = ns.L
 -- filled in. Names are exact, as the game writes them (Forever: "Firstname Surname").
 ---------------------------------------------------------------------------
 ns.FACTION_ONLY = "Horde"                      -- the addon runs for this faction alone (ns.IsMember)
-ns.GUILD_NAME = "Sylvanistas"                  -- the main guild's exact name (any case)
+ns.GUILD_NAME = "Sylvanistas"                  -- the main guild's exact name (case counts: not SYLVANISTAS)
 ns.GM_CHARACTER = "Testiana Paladina"          -- the guild master (the Dark Lady): her character's exact name
 ns.GM_REALM = "ClassicBetaPvE"                 -- her realm group (e.g. "ClassicBetaPvE"); nil: learned from her first message, see /syl status
 ns.GM_DISPLAY = "Dark Lady"                   -- what the addon calls her on the lines and the crown
@@ -809,7 +809,7 @@ ns.TREASURER = ns.TREASURER_CHARACTER
 ns.TREASURER_REALM = ns.REALM_GROUP
 ns.COIN = "|TInterface\\MoneyFrame\\UI-GoldIcon:0|t "
 function ns.IsTreasurer(name, guild)
-	return type(name) == "string" and type(guild) == "string" and ns.ShortName(name) == ns.TREASURER and guild:lower() == ns.GUILD_NAME:lower()
+	return type(name) == "string" and type(guild) == "string" and ns.ShortName(name) == ns.TREASURER and guild == ns.GUILD_NAME
 		and OfGroup(name, ns.TREASURER_REALM)
 end
 -- The Treasurer's characters that keep a book of the treasury (1.0, Treasury.lua): the Treasurer
@@ -841,12 +841,13 @@ end
 ns.CROWN_ICON = "Interface\\GroupFrame\\UI-Group-LeaderIcon"
 
 -- The King's guild on each side: the guild master of this exact name is the King, its officers
--- are of the Crown. Horde only: <Sylvanistas> (ns.GUILD_NAME, at the top of this file).
-ns.KING_GUILD = { Horde = ns.GUILD_NAME:lower() }
+-- are of the Crown. Horde only: <Sylvanistas> (ns.GUILD_NAME, at the top of this file), spelled
+-- exactly, capitals too (1.2.1): <SYLVANISTAS> is not it.
+ns.KING_GUILD = { Horde = ns.GUILD_NAME }
 function ns.IsKingGuild(guild)
 	if type(guild) ~= "string" then return false end
 	local want = ns.KING_GUILD[ns.faction or "Alliance"]
-	return want ~= nil and guild:lower() == want
+	return want ~= nil and guild == want
 end
 
 -- The King himself, by his character's name, like the Treasurer: sender names are set by the
@@ -1073,7 +1074,7 @@ end
 ns.APPROVED_MAX = 20
 -- ...and the ones the addon ships with (1.1, the author's too): a guild whose first member nobody
 -- can hand the signed text counts as soon as its members update, with nothing to paste. Each
--- faction's, any case; the signed list adds to them, and only a new release takes one off.
+-- faction's, spelled exactly (capitals too, 1.2.1); the signed list adds to them, and only a new release takes one off.
 ns.APPROVED_BUILTIN = { Horde = {} } -- other guilds of Sylvanistas whose names don't say it, e.g. { "Some Guild" }
 local function ApprovedName(s)
 	s = tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -1138,14 +1139,14 @@ function ns.IsApprovedGuild(guild)
 	local m = approvedMemo
 	if not m or m.t ~= t or m.at ~= at or m.faction ~= ns.faction or m.me ~= ns.me or m.group ~= ns.group then
 		local set, any = {}, false
-		for _, name in ipairs(ns.ApprovedGuilds()) do set[ns.Fold(name)], any = true, true end
+		for _, name in ipairs(ns.ApprovedGuilds()) do set[name], any = true, true end -- spelled exactly (1.2.1)
 		m = { t = t, at = at, faction = ns.faction, me = ns.me, group = ns.group, set = set, any = any, seen = {}, seenCount = 0 }
 		approvedMemo = m
 	end
 	if not m.any then return false end
 	local known = m.seen[guild]
 	if known == nil then
-		known = m.set[ns.Fold(guild)] == true
+		known = m.set[guild] == true
 		if m.seenCount >= 2000 then m.seen, m.seenCount = {}, 0 end
 		m.seen[guild], m.seenCount = known, m.seenCount + 1
 	end
@@ -1180,8 +1181,7 @@ end
 function ns.KingGuildName()
 	local mine = GetGuildInfo and GetGuildInfo("player")
 	if ns.IsKingGuild(mine) then return mine end
-	local want = ns.KING_GUILD[ns.faction or "Alliance"] or ""
-	return want:sub(1, 1):upper() .. want:sub(2)
+	return ns.KING_GUILD[ns.faction or "Alliance"] or ""
 end
 
 -- The King's own screen (0.9.9, the author's, for the Dark Lady's stream): the King's client, or the
@@ -1282,99 +1282,23 @@ function ns.IsCrown()
 	return ns.IsFederation(guild) and ns.IsCrownRank(guild, rankIndex)
 end
 
--- Fixed on purpose: only guilds with "Sylvanistas" in their name belong to the realm, however
--- they spelled it (Silvanistas, Sylvanystas...). Each word of the name is read the way it sounds
--- (v as u, i as y, z as s, 0 as o, a doubled letter once); then one slip anywhere in a word counts
--- (a letter changed, missing or added, or two swapped), and two at the start of a word that
--- starts with an S. Words are never joined, and a name against the guild ("Anti Sylvanistas")
--- is left out (Against, below).
+-- Fixed on purpose (1.2.1): a guild belongs to the realm only when its name starts with the word
+-- "Sylvanistas" (ns.GUILD_NAME), spelled exactly, capitals too: "Sylvanistas", "Sylvanistas Reborn".
+-- No other spelling counts (SYLVANISTAS, sylvanistas, Silvanistas, Sylvanista, Sylvanistasx), and neither does the word later in the name
+-- ("Sons of Sylvanistas"); a guild like those joins through the approved list (ns.APPROVED_BUILTIN
+-- or the signed one). A name against the guild ("Sylvanistas Haters") is left out (Against, below).
 -- The main guild itself (the King's, the Treasurer's) is still the exact name, see IsCrownRank.
--- Written as they sound (Sounds, below: v as u, i as y), or no name would ever match them.
-local REALM_WORDS = { "syluanystas" } -- as it sounds: Sylvanistas, Sylvanystas, Silvanistas
-local OTHER = {} -- words that look like it but are not it
 
--- How many slips from a to b (a letter changed, missing or added, or two neighbours
--- swapped), counted up to limit + 1.
-local function Slips(a, b, limit)
-	local la, lb = #a, #b
-	if la - lb > limit or lb - la > limit then return limit + 1 end
-	local prev2, prev, row = nil, {}, nil
-	for j = 0, lb do prev[j] = j end
-	for i = 1, la do
-		row = { [0] = i }
-		local best = i
-		local ca = a:byte(i)
-		for j = 1, lb do
-			local cost = (ca == b:byte(j)) and 0 or 1
-			local v = math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + cost)
-			if prev2 and i > 1 and j > 1 and ca == b:byte(j - 1) and a:byte(i - 1) == b:byte(j) then
-				v = math.min(v, prev2[j - 2] + 1)
-			end
-			row[j] = v
-			if v < best then best = v end
-		end
-		if best > limit then return limit + 1 end
-		prev2, prev = prev, row
-	end
-	return prev[lb]
-end
-ns.Slips = Slips -- tests
-
--- A word as it sounds: v as u, i as y, z as s, a doubled letter once.
-local function Sounds(word)
-	word = word:gsub("v", "u"):gsub("i", "y"):gsub("z", "s")
-	local out, last = {}, nil
-	for c in word:gmatch(".") do
-		if c ~= last then out[#out + 1] = c end
-		last = c
-	end
-	return table.concat(out)
-end
-ns.Sounds = function(guild) return Sounds(guild:lower():gsub("0", "o"):gsub("[^%a]", "")) end -- tests
-
-local function SylvanistasWord(word)
-	for _, other in ipairs(OTHER) do
-		if word:find(other) then return false end
-	end
-	for _, target in ipairs(REALM_WORDS) do
-		if word:find(target, 1, true) then return true end
-		-- One slip anywhere in the word.
-		for len = #target - 1, #target + 1 do
-			for i = 1, #word - len + 1 do
-				if Slips(word:sub(i, i + len - 1), target, 1) <= 1 then return true end
-			end
-		end
-		-- Two at its start, if it starts with an S.
-		if word:sub(1, 1) == "s" then
-			for len = #target - 2, #target + 2 do
-				if len >= 5 and len <= #word and Slips(word:sub(1, len), target, 2) <= 2 then return true end
-			end
-		end
-	end
-	return false
-end
-
--- A guild against Sylvanistas is none of it: "ANTI SYLVANISTAS", "Against Sylvanistas", "Down with
--- Sylvanistas", "AntiSylvanistas", "Sylvanistas Haters". The word before (or the one before "with", "to",
--- "the", "of"), glued in front, or the word after.
-local AGAINST = { anti = true, against = true, no = true, ["not"] = true, never = true, down = true,
-	death = true, kill = true, hate = true, hates = true, haters = true, destroy = true,
-	ruin = true, ruins = true, ruined = true, ruining = true, raze = true, burn = true, crush = true,
-	doom = true, wreck = true } -- "Ruin Sylvanistas", "Ruins of Sylvanistas", "Burn Sylvanistas" (1.0.1)
-local LINKS = { with = true, to = true, the = true, of = true }
+-- A guild against Sylvanistas is none of it: "Sylvanistas Haters", "Sylvanistas Sucks", "Sylvanistas
+-- in Ruins", "Sylvanistas in the Ruins" (1.1). The word after, or the one after one or two
+-- linking words.
 local AGAINST_AFTER = { haters = true, hater = true, sucks = true, ruined = true, burns = true, falls = true }
--- ...or after one or two linking words: "Sylvanistas in Ruins", "Sylvanistas in the Ruins" (1.1).
 local LINKS_AFTER = { ["in"] = true, of = true, on = true, to = true, the = true }
 local RUIN_AFTER = { ruin = true, ruins = true, ruined = true, ashes = true }
 
-local function Against(words, i)
-	if words[i]:find("^anti") then return true end -- glued: AntiSylvanistas
-	local before, before2 = words[i - 1], words[i - 2]
-	if before and AGAINST[before] then return true end
-	if before and LINKS[before] and before2 and AGAINST[before2] then return true end
-	local after = words[i + 1]
-	if after ~= nil and AGAINST_AFTER[after] then return true end
-	for j = i + 1, i + 2 do
+local function Against(words)
+	if words[2] ~= nil and AGAINST_AFTER[words[2]] then return true end
+	for j = 2, 3 do
 		if not (words[j] and LINKS_AFTER[words[j]]) then break end
 		local w = words[j + 1]
 		if w and (RUIN_AFTER[w] or AGAINST_AFTER[w]) then return true end
@@ -1385,11 +1309,8 @@ end
 local federation, federationSize = {}, 0 -- [name] = true|false, asked often: kept
 local function Federation(guild)
 	local words = {}
-	for word in guild:lower():gsub("0", "o"):gsub("1", "l"):gmatch("%a+") do words[#words + 1] = word end
-	for i, word in ipairs(words) do
-		if (word:find("sylvanistas", 1, true) or SylvanistasWord(Sounds(word))) and not Against(words, i) then return true end
-	end
-	return false
+	for word in guild:gmatch("%S+") do words[#words + 1] = word:lower() end
+	return guild:match("^%S+") == ns.GUILD_NAME and not Against(words)
 end
 
 -- The name rule alone (cached): what IsFederation says without the King's guild or the signed list.

@@ -153,7 +153,7 @@ ns.Locale({ "esES", "esMX" }, {
 	RECRUIT_NOBODY_LEFT = "Ya preguntaste a todos los encontrados. Busca de nuevo para ver miembros nuevos.",
 	RECRUIT_REPLIED = "%s respondió a tu petición: mira tus susurros.",
 	MEMBERS_ONLY = "Solo para miembros de Sylvanistas",
-	MEMBERS_ONLY_HINT = "El censo, el reino y los gritos se abren cuando estás en una hermandad con Sylvanistas en el nombre.",
+	MEMBERS_ONLY_HINT = "El censo, el reino y los gritos se abren cuando estás en una hermandad cuyo nombre empieza por Sylvanistas.",
 
 	-- The Sylvanistas chats, the channel, and the two privacy questions.
 	CHAN_ALL = "Sylvanistas",
