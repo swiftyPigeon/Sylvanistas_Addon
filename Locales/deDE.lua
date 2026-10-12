@@ -153,7 +153,7 @@ ns.Locale("deDE", {
 	RECRUIT_NOBODY_LEFT = "Du hast schon alle Gefundenen gefragt. Such erneut nach neuen Mitgliedern.",
 	RECRUIT_REPLIED = "%s hat auf deine Anfrage geantwortet: schau in dein Flüstern.",
 	MEMBERS_ONLY = "Nur für Sylvanistas-Mitglieder",
-	MEMBERS_ONLY_HINT = "Zensus, Reich und Schreie öffnen sich, sobald du in einer Gilde mit Sylvanistas im Namen bist.",
+	MEMBERS_ONLY_HINT = "Zensus, Reich und Schreie öffnen sich, sobald du in einer Gilde bist, deren Name mit Sylvanistas beginnt.",
 
 	-- The Sylvanistas chats, the channel, and the two privacy questions.
 	CHAN_ALL = "Sylvanistas",

@@ -6,7 +6,7 @@ Sanctum, Screams, polls and more. Main command: **`/syl`**.
 
 ## Install
 Copy the `Sylvanistas` folder into `World of Warcraft/_classic_beta_/Interface/AddOns/` and
-restart the game. It runs on Horde characters in a guild whose name contains "Sylvanistas";
+restart the game. It runs on Horde characters in a guild whose name starts with the word "Sylvanistas" (exact capitals);
 anywhere else it stays idle.
 
 ## Settings (`Core.lua`, top)

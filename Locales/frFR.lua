@@ -153,7 +153,7 @@ ns.Locale("frFR", {
 	RECRUIT_NOBODY_LEFT = "Vous avez déjà demandé à tous ceux trouvés. Relancez la recherche pour de nouveaux membres.",
 	RECRUIT_REPLIED = "%s a répondu à votre demande : regardez vos chuchotements.",
 	MEMBERS_ONLY = "Réservé aux membres de Sylvanistas",
-	MEMBERS_ONLY_HINT = "Le recensement, le royaume et les cris s'ouvrent une fois dans une guilde avec Sylvanistas dans son nom.",
+	MEMBERS_ONLY_HINT = "Le recensement, le royaume et les cris s'ouvrent une fois dans une guilde dont le nom commence par Sylvanistas.",
 
 	-- The Sylvanistas chats, the channel, and the two privacy questions.
 	CHAN_ALL = "Sylvanistas",
