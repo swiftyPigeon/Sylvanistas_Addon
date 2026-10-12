@@ -2096,7 +2096,7 @@ end
 -- Where the addon lives: its CurseForge page (bugs and questions as comments there).
 -- (Sylvanistas: no public code repository; bugs and questions go to the CurseForge page.)
 UI.LINKS = {
-	curseforge = "https://www.curseforge.com/wow/addons/CHANGEME-sylvanistas",
+	curseforge = "https://www.curseforge.com/wow/addons/sylvanistas-guild",
 }
 
 -- The help button's page: the version, the tabs in a line each, then the lines /syl help prints

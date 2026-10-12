@@ -32,7 +32,7 @@ Start with **Part 1** whatever your rank, then read your own part.
 5. **Check it works:** `/syl status`. You should see your guild, the channel, and your layer
    once you have looked at an NPC.
 6. **Check your version:** the first line of `/syl status` (or the AddOns list on the character
-   screen) should say **1.2.0** or newer. Party invites need 1.2.0 on **every** player involved.
+   screen) should say **1.2.1** or newer. Party invites need 1.2.0 or newer on **every** player involved.
 
 > **The beta forgets addon settings at login.** If the privacy page comes back, answer it again.
 > `/syl backup` copies your settings as text; `/syl restore` pastes them back.
@@ -216,8 +216,8 @@ Riztosin Psalmpalm has the **Workshop** tab:
 - **Bug reports:** members can send theirs to you in game while you're online.
 
 **Releasing an update:** change the version in `Core.lua` (`ns.VERSION`) and in `Sylvanistas.toc`
-together, using plain rising numbers. The current version is **1.2.0** (party invites); the next
-would be e.g. `1.2.1` for fixes or `1.3.0` for new features. After a release, the **Workshop**
+together, using plain rising numbers. The current version is **1.2.1** (stricter guild names); the next
+would be e.g. `1.2.2` for fixes or `1.3.0` for new features. After a release, the **Workshop**
 roll call shows who has updated, and **right-click → Ask to update** nudges anyone behind.
 
 ---
