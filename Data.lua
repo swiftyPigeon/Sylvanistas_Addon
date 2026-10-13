@@ -16,6 +16,27 @@ local MAX_VOUCH = 8            -- votes kept per guild (the newest)
 
 -- The key a guild is stored under, whatever the case a report spells it in: a realm has one
 -- guild of a name, so "SYLVANISTAS X" and "Sylvanistas X" are the same one (or one is forged).
+-- 1.2.20 (from Olympus 1.2.1, the stutter players reported): every census report heard, about one a
+-- second and up to nine in a burst, ran every DATA_CHANGED listener at once, inside the game's
+-- addon-message event. A report heard from someone else (taken or outvoted), and our own roster's
+-- report, now mark the census changed, and DATA_CHANGED follows within NOTIFY_GAP, once for the
+-- burst (one timer waits at a time). What the player does himself (a /who, /syl reset, a realm
+-- linked) still fires it at once.
+Data.NOTIFY_GAP = 1
+local notifyQueued, notifyDirty = false, false
+local function Notify()
+	notifyQueued = false
+	if not notifyDirty then return end
+	notifyDirty = false
+	ns.Fire("DATA_CHANGED")
+end
+function Data.ChangedSoon()
+	notifyDirty = true
+	if notifyQueued then return end
+	notifyQueued = true
+	ns.After(Data.NOTIFY_GAP, "census changed", Notify)
+end
+
 function Data.GuildKey(name)
 	if type(name) ~= "string" then return nil end
 	local guilds = ns.rdb and ns.rdb.guilds
@@ -139,7 +160,7 @@ function Data.SetLocal(r)
 	r.heardOn = ns.realm -- see Data.Receive
 	r.mine = true
 	ns.rdb.guilds[r.guild] = r
-	ns.Fire("DATA_CHANGED")
+	Data.ChangedSoon() -- (1.2.20: within NOTIFY_GAP, once for a burst)
 end
 
 -- Sender names are set by the server and cannot be forged, so we tie every sender to the
@@ -367,7 +388,7 @@ function Data.Receive(r, sender)
 		previous.vouch = votes
 		if not previous.outvoted then ns.Log("conflict on %s: %s's report is not what the other senders say", r.guild, who) end
 		previous.outvoted = true
-		ns.Fire("DATA_CHANGED")
+		Data.ChangedSoon() -- (1.2.20)
 		return false
 	end
 	-- Shown in the census: the senders are split on this guild (no picture leads).
@@ -378,7 +399,7 @@ function Data.Receive(r, sender)
 		ns.Log("conflict on %s: the senders are split on it", r.guild)
 	end
 	ns.rdb.guilds[r.guild] = r
-	ns.Fire("DATA_CHANGED")
+	Data.ChangedSoon() -- (1.2.20: within NOTIFY_GAP, once for a burst)
 	return true
 end
 
@@ -552,21 +573,22 @@ end)
 
 function Data.DiscordText()
 	local s = Data.Summary()
-	local F = ns.FormatNumber
+	-- (1.2.20) Names, leaders and zones come from other players' reports: each through Codec.Discord.
+	local F, D = ns.FormatNumber, ns.Codec.Discord
 	local out = {}
 	out[#out + 1] = L.DISCORD_HEADER:format(F(s.total), F(s.online), #s.guilds)
 	local where = {}
 	for i = 1, math.min(8, #s.zoneList) do
 		local z = s.zoneList[i]
-		where[#where + 1] = ns.Zones.NameForKey(z.key) .. " " .. F(z.count)
+		where[#where + 1] = D(ns.Zones.NameForKey(z.key)) .. " " .. F(z.count)
 	end
 	if #where > 0 then out[#out + 1] = L.DISCORD_WHERE .. table.concat(where, " · ") end
 	out[#out + 1] = "```"
 	out[#out + 1] = ("%-22s %7s %7s  %s"):format("Guild", "Members", "Online", "Leader")
 	for _, e in ipairs(s.guilds) do
 		local g = e.g
-		local leader = g.leader and (g.leader .. (g.leaderOnline and " (on)" or "")) or "?"
-		out[#out + 1] = ("%-22s %7s %7s  %s%s"):format(e.name, F(g.total), F(g.online), leader, e.fresh and "" or "  [stale]")
+		local leader = g.leader and (D(g.leader, true) .. (g.leaderOnline and " (on)" or "")) or "?"
+		out[#out + 1] = ("%-22s %7s %7s  %s%s"):format(D(e.name, true), F(g.total), F(g.online), leader, e.fresh and "" or "  [stale]")
 	end
 	out[#out + 1] = "```"
 	out[#out + 1] = ("_Sylvanistas addon v%s_"):format(ns.VERSION)

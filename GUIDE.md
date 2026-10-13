@@ -28,13 +28,15 @@ Start with **Part 1** whatever your rank, then read your own part.
    - **Layer help** (lets others ask you for an invite to your layer)
    - **Chats**, if you want the guild chats
    - **Party invites** (and **Auto-join parties**), if you'd like guildmates to pull you into parties
-4. **Open the window:** type `/syl` or click the minimap button.
+4. **Open the window:** type `/syl`, click the minimap button, or press **Shift-J** (Shift + your guild
+   key; pick your own in the game's Key Bindings, under AddOns).
 5. **Check it works:** `/syl status`. You should see your guild, the channel, and your layer
    once you have looked at an NPC.
 6. **Check your version:** the first line of `/syl status` (or the AddOns list on the character
-   screen) should say **1.2.2** or newer. Party invites need 1.2.0 or newer on **every** player involved.
+   screen) should say **1.2.21** or newer. Party invites need 1.2.0 or newer on **every** player involved.
    From 1.2.2, when two or more guildmates run a newer version than you, one line in chat says so:
    *"Sylvanistas is on version X (you are on Y). Please update on CurseForge."*
+   After each update a short **"What's new"** letter shows once; `/syl letters` shows them all.
 
 > **The beta forgets addon settings at login.** If the privacy page comes back, answer it again.
 > `/syl backup` copies your settings as text; `/syl restore` pastes them back.
@@ -49,7 +51,8 @@ Start with **Part 1** whatever your rank, then read your own part.
 - **What happens:** a member on that layer gets your request and invites you, the game moves you
   to their layer, and the addon takes you out of the group.
 - **Help others:** keep **layer help** on (`/syl layerhelp on`). `/syl layerauto on` invites
-  without asking each time.
+  without asking each time: your guildmates, the Dark Lady, her Valkyr and her Dark Rangers.
+  Players of other guilds still get a window to click.
 - Your layer is read from nearby NPCs: **target or mouse over an NPC** if the addon doesn't know it yet.
 
 ### Parties
@@ -104,6 +107,7 @@ Once a login, one friendly line reminds you, to you alone.
 |---|---|
 | `/sy <text>` | every Sylvanistas member with the addon |
 | `/sy` alone | opens the **Chat** tab |
+| Click **[Sylvanistas]** before a line | opens the chat box to write there, like [Party] |
 | `/syl mute sylvanistas` | hides that channel from your chat window |
 
 These chats are **not private**: never type passwords or secrets there.
@@ -177,6 +181,7 @@ Until it's sealed, anyone who joins the hidden channel by name can read the cens
 | Invite every solo guildmate in the zone who takes party invites | **Board** → **Gather the zone**, or `/syl party zone`. Past five, you're asked to turn the group into a raid. |
 | Talk to officers and Dark Lords | `/syd <text>` (Dreadguard channel) |
 | See who's been away | `/syl inactive 7` (or 14, 30). Removing someone takes a confirm, one per click. |
+| Call a quiet muster to your zone (20 minutes, no alert or map pin): your guild | **The Realm** → **Officer musters**, or `/syl musters` |
 | Call the guild together in regalia | **Assemble the Loyal** (Forsaken Regalia tab): a Scream with a map pin, tabards on; your Fellow Forsaken then counts who came in regalia (guild masters, and the Dark Lady's officers) |
 | Check a player's gear | target them in range, `/syl gear` |
 | Write loot notes and points | **Realm** tab, loot notes (`/syl loot`) |
@@ -222,6 +227,8 @@ calls her **Dark Lady** and puts her **crown** on the map.
 | **Agenda / the week** | dated events with signups (raid night, etc.) |
 | **Banshee Scream** | a free-text announcement shown to every member |
 | **Gather the zone** (**Board**, or `/syl party zone`) | invites every guildmate solo in your zone who takes party invites; past five, you're asked to turn the group into a raid |
+| **Call with a note** (**Sanctum**, while holding Conclave) | calls someone with a short line that stays in their log |
+| **Officer musters** (`/syl musters`) | a quiet 20-minute call to your zone for every Sylvanistas guild (her Valkyr and Dark Rangers too) |
 | **Thank the Loyal** (Forsaken Regalia) | names your Loyalists in guild chat, with thanks for wearing the colors |
 | **Banshee Inspection** (strict mode only) | members who opted in check tabards around them for 2 minutes |
 | **Absolution** (strict mode only) | clears a name from your untabarded list for a week |
@@ -252,10 +259,12 @@ Riztosin Psalmpalm has the **Workshop** tab:
 - **Bug reports:** members can send theirs to you in game while you're online.
 
 **Releasing an update:** change the version in `Core.lua` (`ns.VERSION`) and in `Sylvanistas.toc`
-together, using plain rising numbers. The current version is **1.2.2**; the next would be e.g.
-`1.2.3` for fixes or `1.3.0` for new features. After a release, the **Workshop** roll call shows who
+together, using plain rising numbers. The current version is **1.2.21**; the next must be higher,
+e.g. `1.2.22` for fixes or `1.3.0` for new features (not `1.2.3`: the add-on compares each number,
+so 1.2.3 counts as older than 1.2.20). Each release also gets a "What's new" letter (`Letters.lua`
+and its two strings in `Locales.lua`). After a release, the **Workshop** roll call shows who
 has updated: the **Ask to update** button nudges everyone behind, and clicking a player's line asks
-that player alone.
+that player alone. Only the keeper, the Dark Lady, her Valkyr and the moderators can ask.
 
 ---
 
@@ -287,4 +296,8 @@ that player alone.
 | `/syl key rotate` | Dreadguard, Dark Lady | new channel key |
 | `/syl pin <text>` | Dark Lady, Dark Rangers | pin a line for 2 hours |
 | `/syl bug` | all | copy a bug report |
+| `/syl letters` | all | what's new in each version |
+| `/syl brief` | all | your week, in five lines (the Board has the week's numbers) |
+| `/syl musters` | all | officer musters (officers call them) |
+| `/syl hotkey on/off` | all | the Shift-J shortcut |
 | `/syl help` | all | every command, in chat |

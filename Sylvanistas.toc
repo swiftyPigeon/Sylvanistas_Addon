@@ -2,7 +2,7 @@
 ## Title: |cffe6c35cSylvanistas|r
 ## Notes: Guild addon for the Horde guild Sylvanistas: census, map, layer hop, party gathering, guild chats and Screams.
 ## Author: SwiftyPigeon512
-## Version: 1.2.2
+## Version: 1.2.21
 ## SavedVariables: SylvanistasDB
 ## IconTexture: Interface\AddOns\Sylvanistas\media\logo64
 ## X-License: MIT
@@ -64,6 +64,10 @@ Views.lua
 Members.lua
 UI.lua
 Consent.lua
+Letters.lua
+MainKey.lua
+OfficerMuster.lua
+WeeklyBrief.lua
 GuildFrame.lua
 Borders.lua
 Nameplates.lua

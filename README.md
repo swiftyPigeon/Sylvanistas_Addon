@@ -6,7 +6,7 @@ Sanctum, Screams, polls and more. Main command: **`/syl`**.
 
 ## Install
 Get it from [CurseForge](https://www.curseforge.com/wow/addons/sylvanistas-guild), or download
-**Sylvanistas_CF_<version>.zip** (e.g. `Sylvanistas_CF_1.2.2.zip`) from
+**Sylvanistas_CF_<version>.zip** (e.g. `Sylvanistas_CF_1.2.21.zip`) from
 [Releases](https://github.com/swiftyPigeon/Sylvanistas_Addon/releases/latest) and unzip it into `World of Warcraft/_classic_beta_/Interface/AddOns/`, so you get an
 `AddOns/Sylvanistas/` folder. Then restart the game.
 
@@ -61,6 +61,9 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
 | `/syl key <secret>` | seal the guild channel (Dreadguard) |
 | `/syl key rotate` | new channel key nobody sees (the Dark Lady or a Dreadguard) |
 | `/syl backup`, `/syl restore` | save and restore settings as text |
+| `/syl letters` | what's new in each version |
+| `/syl brief`, `/syl musters` | your week in five lines; officer musters |
+| `/syl hotkey on/off` | Shift + guild key opens the window (or set a key in Key Bindings) |
 | `/syl bug` | copyable error report |
 
 ## Limits

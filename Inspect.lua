@@ -446,7 +446,7 @@ function Inspect.DiscordText()
 	local guilds = {}
 	for _, g in ipairs(s.guilds) do
 		if g.bad > 0 or g.marked then
-			guilds[#guilds + 1] = ("%s%s %d/%d"):format(g.marked and "[!] " or "", g.name, g.bad, g.total)
+			guilds[#guilds + 1] = ("%s%s %d/%d"):format(g.marked and "[!] " or "", ns.Codec.Discord(g.name), g.bad, g.total)
 		end
 	end
 	if #guilds > 0 then out[#out + 1] = "**Guilds:** " .. table.concat(guilds, " · ") end
@@ -456,7 +456,8 @@ function Inspect.DiscordText()
 		if p.status == "NONE" or p.status == "OTHER" or p.marked then
 			any = true
 			local label = p.status == "NONE" and "NO TABARD" or p.status == "OTHER" and "WRONG TABARD" or "MARKED"
-			out[#out + 1] = ("%-14s %-20s %-12s %s"):format(ns.ShortName(p.name), "<" .. (p.guild or "?") .. ">", label, p.note or "")
+			local D = ns.Codec.Discord -- (1.2.20: other players' words, never Discord's markup)
+			out[#out + 1] = ("%-14s %-20s %-12s %s"):format(D(ns.ShortName(p.name), true), "<" .. D(p.guild or "?", true) .. ">", label, D(p.note or "", true))
 		end
 	end
 	if not any then out[#out + 1] = L.DISCORD_INSPECT_CLEAN end
@@ -957,11 +958,11 @@ function Inspect.RegaliaText()
 	local r = Inspect.Regalia()
 	local out = { L.REGALIA_DISCORD:format(r.inRegalia) }
 	local zones = {}
-	for i = 1, math.min(8, #r.zones) do zones[#zones + 1] = ("%s %d"):format(r.zones[i].zone, r.zones[i].n) end
+	for i = 1, math.min(8, #r.zones) do zones[#zones + 1] = ("%s %d"):format(ns.Codec.Discord(r.zones[i].zone), r.zones[i].n) end
 	if #zones > 0 then out[#out + 1] = table.concat(zones, " · ") end
 	if #r.loyalists > 0 then
 		local names = {}
-		for i = 1, math.min(10, #r.loyalists) do names[#names + 1] = ns.ShortName(r.loyalists[i].name) end
+		for i = 1, math.min(10, #r.loyalists) do names[#names + 1] = ns.Codec.Discord(ns.ShortName(r.loyalists[i].name)) end
 		out[#out + 1] = L.LOYALISTS_LINE:format(table.concat(names, ", "))
 	end
 	return table.concat(out, "\n")

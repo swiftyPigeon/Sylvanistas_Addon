@@ -97,6 +97,7 @@ Map.ContainerOf = ContainerOf -- for tests
 
 local function RefreshNow()
 	refreshQueued = false
+	Map.dirty = false
 	if not Pins then return end
 	-- With the gamepad UI no zone circles (they are the pin library's, ns.WorldMapIcons); the
 	-- continent totals below are drawn by us, never through the library, and stay.
@@ -457,10 +458,39 @@ function Map.Refresh()
 	ns.SafeCall("map refresh", RefreshNow)
 end
 
+-- 1.2.20 (from Olympus 1.2.1: players' stutter, every census report taking the world map's pins off
+-- and putting them back with the map closed): the refreshes the census asks for wait for the map.
+-- Closed, it is only marked dirty (Map.dirty); opened, it is drawn then, once (Map.WorldMapShown,
+-- its OnShow). A refresh asked for by name (the map's menu, Map.SetEnabled, /syl map, a backup
+-- restored) is still drawn at once.
+Map.dirty = false
+function Map.WorldMapOpen()
+	local f = WorldMapFrame
+	return type(f) == "table" and type(f.IsShown) == "function" and f:IsShown() == true
+end
+function Map.CensusRefresh()
+	if not Map.WorldMapOpen() then
+		refreshQueued, Map.dirty = false, true
+		return
+	end
+	Map.Refresh()
+end
+
 local function QueueRefresh()
 	if refreshQueued then return end
+	if not Map.WorldMapOpen() then
+		Map.dirty = true
+		return
+	end
 	refreshQueued = true
-	ns.After(1, "map refresh", Map.Refresh)
+	ns.After(1, "map refresh", Map.CensusRefresh)
+end
+
+-- The world map opened: what the census changed while it was closed is drawn now, then the
+-- continent totals laid out, as before.
+function Map.WorldMapShown()
+	if Map.dirty then Map.Refresh() end
+	ns.SafeCall("map overlay", Map.LayoutOverlay)
 end
 
 -- "Sylvanistas" menu on the world map: everything map related lives here, like Questie's toggle.
@@ -542,7 +572,8 @@ local function HookWorldMap()
 	hooked = true
 	local function relayout() ns.SafeCall("map overlay", Map.LayoutOverlay) end
 	if WorldMapFrame.OnMapChanged then pcall(hooksecurefunc, WorldMapFrame, "OnMapChanged", relayout) end
-	WorldMapFrame:HookScript("OnShow", relayout)
+	-- (1.2.20: opening it also draws what the census changed while it was closed, Map.WorldMapShown.)
+	WorldMapFrame:HookScript("OnShow", function() ns.SafeCall("map shown", Map.WorldMapShown) end)
 	WorldMapFrame:HookScript("OnHide", relayout)
 	local sc = WorldMapFrame.ScrollContainer
 	if sc then

@@ -179,7 +179,8 @@ function Channels.FormatLine(tier, sender, guild, class, text, bare)
 	-- The Treasurer: the gold coin he carries in tooltips and the census (0.9.9), first.
 	if ns.IsTreasurer(sender, guild) then mark = (ns.COIN:gsub(" $", "")) .. mark end
 	name = mark .. name
-	return (bare and "" or "[" .. Label(tier) .. "] ") .. "|Hplayer:" .. (ns.TellName(sender) or "?") .. "|h[" .. name .. "]|h <"
+	-- (1.2.21: the channel's name is Channels.Tag's, a link where this client may write there.)
+	return (bare and "" or Channels.Tag(tier) .. " ") .. "|Hplayer:" .. (ns.TellName(sender) or "?") .. "|h[" .. name .. "]|h <"
 		.. tostring(guild or "?"):gsub("|", "||") .. ">: " .. Codec.SanitizeChat(text)
 end
 
@@ -1924,3 +1925,79 @@ SLASH_SYLVANISTASCAPTAINS2, SLASH_SYLVANISTASLORDS2, SLASH_SYLVANISTASLORDS3 = "
 SlashCmdList.SYLVANISTASALL = Slash("A", "slash /sy")
 SlashCmdList.SYLVANISTASCAPTAINS = Slash("C", "slash /syd")
 SlashCmdList.SYLVANISTASLORDS = Slash("L", "slash /sydl")
+
+---------------------------------------------------------------------------
+-- 1.2.21 (from Olympus 1.2.1): the channel's name before a line in the game's chat, [Sylvanistas],
+-- [Dreadguard] or [Dark Lords], is a link, as the game's own [Party] or [Guild] are: a left click
+-- opens the game's chat box with /sy, /syd or /sydl in it, ready for the line. Only where this
+-- client may write in that channel now (Channels.CanWrite); elsewhere the plain name, as before.
+-- At the click it is asked again, and a channel closed since says why instead. Forever's UI hands
+-- links of type "addon" to SetItemRef, which only marks them handled; the click is ours after that,
+-- from a post-hook (hooksecurefunc keeps SetItemRef the game's own): a left click on
+-- "addon:Sylvanistas:chan:<A|C|L>" and nothing else. With the gamepad UI no line gets the link
+-- and the hook does nothing.
+---------------------------------------------------------------------------
+
+local TAG_LINK = "addon:Sylvanistas:chan:"
+Channels.TAG_LINK = TAG_LINK
+local tagHooked = false
+
+-- Whether this client may write in tier now, in the order Channels.Send checks it. tell: say why not.
+function Channels.CanWrite(tier, tell)
+	local t = TIERS[tier]
+	if not t then return false end
+	local why
+	if not ns.IsMember() then
+		why = L.MEMBERS_ONLY
+	elseif not Channels.CanUse(tier) then
+		why = L[t.deny]:format(Label(tier))
+	elseif not Channels.ChatOn() then
+		why = ns.db and ns.db.addonChat == nil and L.CHAT_OFF_UNANSWERED or L.CHAT_OFF
+	else
+		local M = ns.Moderation
+		local off = M and M.SelfOff and M.SelfOff()
+		if not off then return true end
+		why = M.YouText(off)
+	end
+	if tell and why then ns.Print(why) end
+	return false
+end
+
+function Channels.TagLinked(tier)
+	return tagHooked and not ns.GamepadUI() and type(ChatFrame_OpenChat) == "function" and Channels.CanWrite(tier) or false
+end
+
+-- "[Sylvanistas]", "[Dreadguard]" or "[Dark Lords]" before a line: the link where TagLinked says so.
+function Channels.Tag(tier)
+	local name = "[" .. Label(tier) .. "]"
+	if not Channels.TagLinked(tier) then return name end
+	return "|H" .. TAG_LINK .. tier .. "|h" .. name .. "|h"
+end
+
+-- The chat window clicked, when it is one of the game's with its own box; else the game picks one.
+local function BoxFrame(frame)
+	if type(frame) == "table" and type(frame.editBox) == "table" then return frame end
+	return nil
+end
+
+-- A link clicked in the game's chat (after SetItemRef): ours alone, a left click without Shift.
+-- Returns true when it opened the chat box.
+function Channels.TagClick(link, text, button, frame)
+	if ns.GamepadUI() then return false end
+	if type(issecretvalue) == "function" and (issecretvalue(link) == true or issecretvalue(button) == true) then return false end
+	if type(link) ~= "string" or link:sub(1, #TAG_LINK) ~= TAG_LINK then return false end
+	local tier = link:sub(#TAG_LINK + 1)
+	if not TIERS[tier] or button ~= "LeftButton" or (IsShiftKeyDown and IsShiftKeyDown()) then return false end
+	if not Channels.CanWrite(tier, true) then return false end
+	if type(ChatFrame_OpenChat) ~= "function" then return false end
+	ChatFrame_OpenChat(TIERS[tier].slash .. " ", BoxFrame(frame))
+	return true
+end
+
+ns.On("LOGIN", function()
+	if tagHooked or type(hooksecurefunc) ~= "function" then return end
+	tagHooked = pcall(hooksecurefunc, "SetItemRef", function(link, text, button, frame)
+		if ns.GamepadUI() then return end
+		ns.SafeCall("chat tag link", Channels.TagClick, link, text, button, frame)
+	end) == true
+end)

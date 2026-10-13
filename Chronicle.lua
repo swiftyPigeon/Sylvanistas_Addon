@@ -50,6 +50,7 @@ Chronicle.TEXT_MAX = 160 -- bytes of what was done, and of a player's words
 local KINDS = {
 	decree = "ACTS_KIND_DECREE", gates = "ACTS_KIND_GATES", pardon = "ACTS_KIND_PARDON", switch = "ACTS_KIND_SWITCH",
 	netoff = "ACTS_KIND_NETOFF", guildnetoff = "ACTS_KIND_GUILDNETOFF", terms = "ACTS_KIND_TERMS",
+	court = "ACTS_KIND_COURT", muster = "ACTS_KIND_MUSTER", -- (1.2.21: the Dark Lady's audience notes; officer musters)
 }
 
 local function Clean(s, n)
@@ -81,11 +82,18 @@ function Chronicle.Add(kind, by, what, opts)
 		states[key] = value
 		if last == value then return false end
 	end
+	-- (1.2.21) id: a received act is written once while its row is kept, a /reload included;
+	-- to: its recipient, when the act was a private message.
+	local id = opts.id and Clean(opts.id) or nil
+	if id then
+		for _, e in ipairs(list) do if e.kind == kind and e.id == id then return false end end
+	end
 	local words = opts.words and Clean(opts.words) or nil
 	list[#list + 1] = {
 		t = ns.Now(), st = ServerNow(), kind = Clean(kind, 16),
 		by = Clean(by ~= nil and ns.FullName(tostring(by)) or "?", 64),
-		what = Clean(what), words = words ~= "" and words or nil,
+		what = Clean(what), words = words ~= "" and words or nil, id = id,
+		to = opts.to and Clean(ns.FullName(tostring(opts.to)), 64) or nil,
 	}
 	while #list > Chronicle.MAX do table.remove(list, 1) end
 	ns.Fire("ACTS_CHANGED")
@@ -129,10 +137,10 @@ local function TermsShown(e)
 	if e.kind ~= "terms" or type(e.words) ~= "string" or not F or F.missing or type(F.Shown) ~= "function" then return e.words end
 	return (e.words:gsub("([%+%-]?)([^%s%+%-]+)", function(sign, term) return sign .. F.Shown(term) end))
 end
-local function Words(e)
+local function Words(e, esc)
 	if not e.words then return nil end
 	if Veiled(e) then return ns.L.FILTER_WORDS_HIDDEN_SHORT end
-	return '"' .. TermsShown(e) .. '"'
+	return '"' .. (esc or tostring)(TermsShown(e)) .. '"'
 end
 
 -- The sender as this screen shows it: cut short on the King's while the council's names are
@@ -144,10 +152,12 @@ local function Who(e)
 end
 
 -- One entry as a line of text: when (this computer's clock), what, and who sent it.
-function Chronicle.Line(e)
+-- (esc, 1.2.20: the copy, Chronicle.Text: what the sender sent and his name through Codec.Discord.)
+function Chronicle.Line(e, esc)
+	esc = esc or tostring
 	local when = date and date("%m-%d %H:%M", tonumber(e.t) or 0) or tostring(e.t)
-	local words = Words(e)
-	return ("%s  %s: %s%s  (%s)"):format(when, KindLabel(e.kind), tostring(e.what or ""), words and (" " .. words) or "", Who(e))
+	local words = Words(e, esc)
+	return ("%s  %s: %s%s  (%s)"):format(when, KindLabel(e.kind), esc(e.what or ""), words and (" " .. words) or "", esc(Who(e)))
 end
 
 -- Does an entry hold the search (folded, ns.Holds)? Only what this screen shows of the sender
@@ -160,7 +170,7 @@ end
 function Chronicle.Text()
 	local out = { L.ACTS_TITLE, L.ACTS_NOTE, "" }
 	local list = Chronicle.Entries()
-	for i = #list, 1, -1 do out[#out + 1] = Chronicle.Line(list[i]) end
+	for i = #list, 1, -1 do out[#out + 1] = Chronicle.Line(list[i], ns.Codec.Discord) end
 	if #list == 0 then out[#out + 1] = L.ACTS_EMPTY end
 	return table.concat(out, "\n")
 end

@@ -9,6 +9,7 @@ local L = ns.L
 --   T1~Z~<id>~<guild>                            court closed
 --   T4~<id>~<guild>                              an audience asked (whisper to the King)
 --   T5~<id>                                      called (whisper from the King)
+--   T5~<id>~<server time>~<one line>             1.2.21 (from Olympus 1.2.1): her optional note, beside the call
 
 local Court = {}
 ns.Court = Court
@@ -17,6 +18,7 @@ Court.RESEND = 120      -- the King's client repeats it for late logins and zone
 Court.EXPIRE = 330      -- a court not repeated this long is over (he logged off)
 Court.MAX = 50          -- requests kept per court
 Court.CALL_GAP = 10     -- one call every 10 seconds per subject at most
+Court.NOTE_MAX = 160    -- bytes; the optional note is a private whisper, never a channel post
 Court.ASK_AGAIN = 180   -- not called this long (the court was full, the King busy): ask again
 Court.DISMISSED = 300   -- sent off: no new request from them this long
 Court.CALL_OPEN = 120   -- a call's popup stays this long (and waits no longer in an instance, 1.1)
@@ -39,6 +41,10 @@ function Court.Here()
 end
 
 local function Clean(s, n) return ns.Cut((tostring(s or ""):gsub("[~|%c]", " ")), n) end
+local function CleanNote(s)
+	return (Clean(s, Court.NOTE_MAX):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+local function ServerNow() return math.floor((GetServerTime and GetServerTime()) or ns.Now()) end
 
 ---------------------------------------------------------------------------
 -- The King
@@ -116,7 +122,7 @@ end
 ns.Comm.Handle("T4", function(...) Court.HandleRequest(...) end)
 
 -- A click on a request: that player is called; a second click, once called, sends them off.
-function Court.Call(name)
+function Court.Call(name, words)
 	local entry = holding and holding.by[name]
 	if not entry then return end
 	local now = ns.Now()
@@ -130,10 +136,52 @@ function Court.Call(name)
 		return ns.King.Changed()
 	end
 	entry.calledAt = now
-	if not holding.preview then ns.Comm.Whisper(name, ("T5~%d"):format(holding.id), "court call " .. name) end
+	if not holding.preview then
+		-- Older clients still get their exact call; the optional note has its own queue key.
+		ns.Comm.Whisper(name, ("T5~%d"):format(holding.id), "court call " .. name)
+		words = CleanNote(words)
+		if words ~= "" then
+			ns.Comm.Whisper(name, ("T5~%d~%d~%s"):format(holding.id, ServerNow(), words), "court note " .. name)
+		end
+	end
 	ns.Print(L.COURT_CALLING:format(ns.DisplayName(name)))
 	ns.King.Changed()
 end
+
+-- 1.2.21: the call with a short written note (the Throne Room's "Call with a note"): one line,
+-- whispered to that player alone, who keeps it in their log (/syl log) with her name on it.
+function Court.Prompt(name)
+	local e = holding and holding.by[name]
+	if not e or e.calledAt or (not holding.preview and not ns.King.IsKing()) then return end
+	return ns.ShowDialog("SYLVANISTAS_COURT_NOTE", ns.DisplayName(name), nil, { name = name, court = holding })
+end
+function Court.Confirm(data, words)
+	if type(data) ~= "table" or data.answered or data.court ~= holding then return end
+	if not holding or (not holding.preview and not ns.King.IsKing()) then return end
+	local e = holding.by[data.name]
+	if not e or e.calledAt then return end
+	data.answered = true
+	return Court.Call(data.name, words)
+end
+StaticPopupDialogs["SYLVANISTAS_COURT_NOTE"] = {
+	text = L.COURT_NOTE_PROMPT, button1 = L.COURT_NOTE_SEND, button2 = CANCEL or "Cancel",
+	hasEditBox = true, editBoxWidth = 260, maxLetters = Court.NOTE_MAX,
+	OnShow = function(self)
+		local eb = self.editBox or self.EditBox
+		if eb then eb:SetText(""); eb:SetFocus() end
+	end,
+	OnAccept = function(self, data)
+		local eb = self.editBox or self.EditBox
+		ns.SafeCall("court note", Court.Confirm, data or self.data, eb and eb:GetText())
+	end,
+	EditBoxOnEnterPressed = function(self)
+		local parent = self:GetParent()
+		ns.SafeCall("court note", Court.Confirm, parent.data, self:GetText())
+		parent:Hide()
+	end,
+	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+	timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
 
 ---------------------------------------------------------------------------
 -- Everyone else
@@ -206,9 +254,34 @@ StaticPopupDialogs["SYLVANISTAS_COURT_CALLED"] = {
 function Court.HandleCall(dist, sender, text)
 	if dist ~= "WHISPER" then return end
 	local c = Court.Current()
-	local id = tonumber(text:match("^T5~(%d+)$"))
+	-- (1.2.21) The call, or the note beside it: one line, dated by the server, kept in our log.
+	local id, at, words = text:match("^T5~(%d+)~(%d+)~([^~]*)$")
+	if id then
+		at = tonumber(at)
+		local now = ServerNow()
+		if not at or at > now + 60 or now - at > Court.CALL_OPEN or #words > Court.NOTE_MAX then return end
+		words = CleanNote(words)
+		if words == "" then return end
+	else
+		id = text:match("^T5~(%d+)$")
+	end
+	id = tonumber(id)
 	-- Only the court's King calls; asked in an earlier session (a /reload) counts too.
-	if not c or c.id ~= id or c.king ~= ns.FullName(sender) or c.calledAt then return end
+	if not c or c.id ~= id or c.king ~= ns.FullName(sender) then return end
+	if words and not c.noteAt then
+		c.noteAt = at
+		if ns.Chronicle and ns.Chronicle.Add then
+			local wrote = ns.Chronicle.Add("court", sender, L.COURT_NOTE_TO:format(ns.DisplayName(ns.me)), {
+				words = words, to = ns.me, id = table.concat({ sender, tostring(id), tostring(at), tostring(ns.me) }, ":"),
+			})
+			if wrote and ns.Chronicle.Line and ns.Chronicle.Entries then
+				local entries = ns.Chronicle.Entries()
+				ns.Print(ns.Chronicle.Line(entries[#entries]))
+			end
+		end
+		ns.Fire("COURT_CHANGED")
+	end
+	if words or c.calledAt then return end
 	c.calledAt = ns.Now()
 	c.askedAt = c.askedAt or c.calledAt
 	-- In an instance or on Busy (1.1): the chat line now, the raid warning and the popup once the
@@ -266,6 +339,10 @@ function Court.HomeLines()
 				tt:AddLine(e.calledAt and L.COURT_TIP_DONE or L.COURT_TIP_CALL, 1, 1, 1, true)
 			end,
 		})
+		-- (1.2.21) Call with a short note, kept in their log.
+		if not e.calledAt then
+			lines[#lines + 1] = Line(L.COURT_NOTE_CALL, INK, { indent = 2, onClick = function() Court.Prompt(e.name) end })
+		end
 	end
 	return lines
 end
