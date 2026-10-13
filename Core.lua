@@ -17,9 +17,13 @@ ns.TREASURER_CHARACTER = "CHANGEME_Treasurer"  -- the Treasurer (in the main gui
 ns.TREASURER_MAIL_CHARACTER = "CHANGEME_TreasurerMail" -- where dues and treasury mail go (any guild)
 ns.TREASURY_OFF = true                        -- true turns the Treasury, Dues and Bank tabs off
 ns.WALL_OF_SHAME = false                       -- true lets the Dark Lady show the untabarded list to every member (the "Wall of Shame")
+ns.REQUIRE_KEY = false                        -- true: a guild without the channel key (/syl key, from the Dark Lady) gets no network, only its own roster. Seal the channel first.
+ns.BLOCKED_GUILDS = {                          -- guilds cut off for good, whatever their name: exact names, e.g. ["Sylvanistas Whatever"] = true (never the Dark Lady's)
+}
+ns.TABARD_MODE = "casual"                      -- "casual": Forsaken Regalia (who wears it, never who doesn't); "strict": the tabard inspection as before 1.2.2
 
 ns.NAME = "Sylvanistas"
-ns.VERSION = "1.2.1"
+ns.VERSION = "1.2.2"
 ns.PREFIX = "SYLVANISTAS"        -- addon message prefix (max 16 chars)
 ns.CHANNEL = "SylvanistasNet"    -- hidden chat channel (Alliance: unused, the addon is Horde-only)
 ns.CHANNEL_HORDE = "SylvanistasNetH" -- the Horde's hidden chat channel, shared by every Sylvanistas guild
@@ -58,6 +62,21 @@ function ns.FormatNumber(n)
 	local out = digits:reverse():gsub("(%d%d%d)", "%1" .. L.THOUSANDS):reverse()
 	if out:sub(1, #L.THOUSANDS) == L.THOUSANDS then out = out:sub(#L.THOUSANDS + 1) end
 	return sign .. out
+end
+
+-- 1.2.2: a guild on ns.BLOCKED_GUILDS (top of this file), by its exact name; never the King's.
+function ns.IsBlockedGuild(guild)
+	return type(guild) == "string" and type(ns.BLOCKED_GUILDS) == "table" and ns.BLOCKED_GUILDS[guild] == true
+		and not ns.IsKingGuild(guild)
+end
+
+-- 1.2.2: Forsaken Regalia (ns.TABARD_MODE): casual counts who wears the tabard and never lists who
+-- doesn't; strict keeps the inspection, the untabarded list and its alerts.
+function ns.Casual() return ns.TABARD_MODE ~= "strict" end
+
+-- 1.2.2: "1 guild", not "1 guilds": the line for one, else the line for many, filled with the rest.
+function ns.Plural(n, one, many, ...)
+	return ((tonumber(n) == 1) and one or many):format(...)
 end
 
 function ns.Ago(t)
@@ -1329,6 +1348,8 @@ function ns.IsFederation(guild)
 	if type(guild) ~= "string" or guild == "" then return false end
 	-- The King's own guild is Sylvanistas whatever its name (the Horde's is <Guild>, 0.9.4).
 	if ns.IsKingGuild(guild) then return true end
+	-- 1.2.2: a guild the release blocks is none of it, never lapsing (unlike /syl netoff).
+	if ns.IsBlockedGuild(guild) then return false end
 	-- A guild the author's signed list approves (1.1), whatever its name.
 	if ns.IsApprovedGuild(guild) then return true end
 	local known = federation[guild]

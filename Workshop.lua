@@ -690,6 +690,27 @@ function Workshop.BehindLine()
 	}
 end
 
+-- 1.2.2: the same reminder without the author online, from our guildmates' hellos (Comm.lua,
+-- every 10 minutes at most): the newest version that PEERS_AHEAD or more of them run, when it
+-- is newer than ours. Two, so one player's hello can't make it up; once a session, like the
+-- author's line (whichever comes first says it).
+Workshop.PEERS_AHEAD = 2
+function Workshop.PeersAhead()
+	if Workshop.IsAuthor() or not (ns.Comm and ns.Comm.PeerVersions) then return nil end
+	local best
+	for v, n in pairs(ns.Comm.PeerVersions()) do
+		if n >= Workshop.PEERS_AHEAD and #v <= 12 and Workshop.Newer(v, ns.VERSION) and (not best or Workshop.Newer(v, best)) then best = v end
+	end
+	return best
+end
+function Workshop.CheckPeers()
+	if toldBehind then return end
+	local v = Workshop.PeersAhead()
+	if not v then return end
+	toldBehind = true
+	ns.Print(L.PEERS_AHEAD_CHAT:format(v, ns.VERSION))
+end
+
 function Workshop.ResetVersion() heardVersion, toldBehind = nil, false end -- (tests: a new session)
 
 -- The bug report as it travels: no newlines or pipes (they are put back as "\n" and "!").
@@ -1138,7 +1159,7 @@ local function InstallLines(lines)
 		if (a.g.users or 0) ~= (b.g.users or 0) then return (a.g.users or 0) > (b.g.users or 0) end
 		return a.name < b.name
 	end)
-	lines[#lines + 1] = { header = true, text = L.WORKSHOP_INSTALLS, right = Gold(L.WORKSHOP_USERS:format(users, #rows)) }
+	lines[#lines + 1] = { header = true, text = L.WORKSHOP_INSTALLS, right = Gold(L.WORKSHOP_USERS_IN:format(ns.Plural(users, L.N_USER, L.N_USERS, users), ns.Plural(#rows, L.N_GUILD, L.N_GUILDS, #rows))) }
 	lines[#lines + 1] = { text = L.WORKSHOP_VERSIONS .. ": " .. Versions(versions), gapAfter = #rows == 0 }
 	if #rows == 0 then lines[#lines].text = Grey(L.EMPTY) end
 	for i = 1, math.min(Workshop.MAX_SHOWN, #rows) do

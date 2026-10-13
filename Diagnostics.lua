@@ -312,6 +312,8 @@ function ns.StatusText()
 	local c = ns.Comm and ns.Comm.Stats()
 	if c then
 		add("channel '%s' = #%s  sealed=%s  |  peers in guild=%d  |  reporter=%s (me: %s)", tostring(c.channelName), tostring(c.channel), tostring(c.sealed), c.peers, tostring(c.reporter), tostring(c.isReporter))
+		-- 1.2.2: key required, and none here: no channel (ns.REQUIRE_KEY).
+		if ns.Comm.KeyLocked and ns.Comm.KeyLocked() then add("%s", L.KEY_LOCKED) end
 		add("sent=%d recv=%d reports=%d sendFails=%d badMsgs=%d queue=%d lastFail=%s", c.sent, c.recv, c.reports, c.fails, c.bad, c.queue, tostring(c.lastFail))
 		local types = {}
 		for k, v in pairs(c.byType or {}) do types[#types + 1] = k .. "=" .. v end

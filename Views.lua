@@ -91,6 +91,15 @@ Views.COLUMNS = {
 		{ key = "COL_WHEN", x = 0.87, w = 0.13, justify = "RIGHT" },
 	},
 }
+-- 1.2.2: Forsaken Regalia (casual) lists Fellow Forsaken: name, level, where, when.
+if ns.Casual() then
+	Views.COLUMNS.heraldry = {
+		{ key = "COL_NAME", x = 0.00, w = 0.40 },
+		{ key = "COL_LEVEL", x = 0.40, w = 0.14, justify = "RIGHT" },
+		{ key = "COL_WHERE", x = 0.56, w = 0.31 },
+		{ key = "COL_WHEN", x = 0.87, w = 0.13, justify = "RIGHT" },
+	}
+end
 
 ---------------------------------------------------------------------------
 -- Renderer
@@ -126,6 +135,12 @@ local function Row(content, i)
 	r.right:SetPoint("RIGHT", -2, 0)
 	r.right:SetJustifyH("RIGHT")
 	r.right:SetWordWrap(false)
+	-- 1.2.2: a line cut short that has a tooltip ends with this mark, and its tooltip starts with
+	-- the whole line (Views.Render).
+	r.info = r:CreateTexture(nil, "OVERLAY")
+	r.info:SetTexture("Interface\\Common\\help-i")
+	r.info:SetSize(16, 16)
+	r.info:Hide()
 	r.cols = {}
 	for c = 1, 4 do
 		local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -133,6 +148,43 @@ local function Row(content, i)
 		r.cols[c] = fs
 	end
 	r.index = i
+	-- 1.2.2: a table row's cells, each its own click (line.cells[c] = { onClick, tooltip }): the
+	-- Census's Members, Online and Lord open what they count. Lit under the mouse, over the row.
+	r.cells = {}
+	for c = 1, 4 do
+		local cell = CreateFrame("Button", nil, r)
+		local lit = cell:CreateTexture(nil, "HIGHLIGHT")
+		lit:SetAllPoints()
+		lit:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+		lit:SetBlendMode("ADD")
+		lit:SetAlpha(0.6)
+		cell:SetScript("OnClick", function(self)
+			local spec = r.line and r.line.cells and r.line.cells[c]
+			if spec and spec.onClick then
+				local scroll = content:GetParent()
+				local offset = scroll and scroll.GetVerticalScroll and scroll:GetVerticalScroll()
+				content.click = { index = r.index, top = r.top or 0, lines = content.lineCount or 0, t = GetTime(),
+					offset = type(offset) == "number" and offset or nil }
+				ns.SafeCall("view cell click", spec.onClick)
+			end
+			if ns.UI.Clicked then ns.UI.Clicked() end
+		end)
+		cell:SetScript("OnEnter", function(self)
+			local spec = r.line and r.line.cells and r.line.cells[c]
+			if not spec then return end
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			if spec.tooltip then ns.SafeCall("view cell tooltip", spec.tooltip, GameTooltip)
+			elseif r.line.tooltip then ns.SafeCall("view tooltip", r.line.tooltip, GameTooltip) end
+			if spec.hint then
+				GameTooltip:AddLine(" ")
+				GameTooltip:AddLine(spec.hint, 0.25, 1, 0.25, true)
+			end
+			GameTooltip:Show()
+		end)
+		cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		cell:Hide()
+		r.cells[c] = cell
+	end
 	r:SetScript("OnClick", function(self)
 		if not self.line then return end
 		-- HD: the person opened stays lit, like the roster's selected member.
@@ -150,9 +202,14 @@ local function Row(content, i)
 		if ns.UI.Clicked then ns.UI.Clicked() end
 	end)
 	r:SetScript("OnEnter", function(self)
-		if not (self.line and self.line.tooltip) then return end
+		if not (self.line and (self.line.tooltip or self.cut)) then return end
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		ns.SafeCall("view tooltip", self.line.tooltip, GameTooltip)
+		-- 1.2.2: the line was cut short: the whole of it first.
+		if self.cut then
+			GameTooltip:AddLine(self.left:GetText() or "", 1, 1, 1, true)
+			if self.line.tooltip then GameTooltip:AddLine(" ") end
+		end
+		if self.line.tooltip then ns.SafeCall("view tooltip", self.line.tooltip, GameTooltip) end
 		GameTooltip:Show()
 	end)
 	r:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -400,6 +457,8 @@ function Views.Render(content, lines, layout)
 			r.left:Hide()
 			r.right:Hide()
 			for c = 1, 4 do r.cols[c]:Hide() end
+			for c = 1, 4 do r.cells[c]:Hide() end
+			r.info:Hide(); r.cut = nil
 			if not (r.items and r.items[1]) then ItemButton(r, 1) end
 			local size = (r.itemSize or ITEM) + ITEM_GAP
 			local columns = line.columns or math.max(1, math.floor((width - 8) / size))
@@ -421,12 +480,25 @@ function Views.Render(content, lines, layout)
 		elseif line.cols then
 			r.left:Hide()
 			r.right:Hide()
+			r.info:Hide(); r.cut = nil
 			Views.LayoutColumns(r.cols, layout, width - 4, 4)
 			for c = 1, 4 do r.cols[c]:SetText(line.cols[c] or "") end
 			local a = line.dim and 0.45 or 1
 			for c = 1, 4 do r.cols[c]:SetAlpha(a) end
+			for c = 1, 4 do
+				local col, cell = layout and layout[c], r.cells[c]
+				if col and line.cells and line.cells[c] then
+					cell:ClearAllPoints()
+					cell:SetPoint("TOPLEFT", r, "TOPLEFT", 4 + col.x * (width - 4), 0)
+					cell:SetSize(col.w * (width - 4) - 2, height)
+					cell:Show()
+				else
+					cell:Hide()
+				end
+			end
 		else
 			for c = 1, 4 do r.cols[c]:Hide() end
+			for c = 1, 4 do r.cells[c]:Hide() end
 			r.left:Show()
 			r.right:Show()
 			-- line.font: a font object by name (the Throne's dark ink on parchment), if the client has it.
@@ -443,10 +515,30 @@ function Views.Render(content, lines, layout)
 			end
 			r.left:SetText(line.text or "")
 			r.right:SetText(line.right or "")
+			-- 1.2.2: nothing ends cut off unless its tooltip shows it whole. A plain line (no
+			-- tooltip, no click, no heading) wraps over as many rows as it needs; a line with a
+			-- tooltip stays one row, ends with the "i" mark, and its tooltip starts with it whole.
+			r.cut = nil
+			r.info:Hide()
+			r.left:SetWordWrap(false)
+			if not inputRow or inputRow ~= r then
+				local truncated = r.left.IsTruncated and r.left:IsTruncated()
+				if truncated and not line.tooltip and not line.onClick and not line.header then
+					r.left:SetWordWrap(true)
+					local h = r.left:GetStringHeight()
+					if type(h) == "number" and h > rowH then height = math.ceil(h) + 4 end
+				elseif truncated then
+					r.cut = true
+					r.info:ClearAllPoints()
+					r.info:SetPoint("RIGHT", r.right, "LEFT", (line.right and line.right ~= "") and -4 or 0, 0)
+					r.info:Show()
+					r.left:SetPoint("RIGHT", r.info, "LEFT", -2, 0)
+				end
+			end
 		end
 		if not line.items then for k = 1, #(r.items or {}) do r.items[k]:Hide() end end
 		r:SetHeight(height)
-		r:EnableMouse(line.onClick ~= nil or line.tooltip ~= nil)
+		r:EnableMouse(line.onClick ~= nil or line.tooltip ~= nil or r.cut == true)
 		if hd then
 			r.stripe:SetShown(line.cols ~= nil or line.onClick ~= nil)
 			if line.key and line.key == content.selectedKey then r:LockHighlight() else r:UnlockHighlight() end
@@ -774,19 +866,59 @@ end
 
 -- A reported guild's row: its name, members, online and Lord; a click opens it in the Realm,
 -- whose box it empties: a search left there could miss that guild and show nothing of it.
+-- 1.2.2: each cell its own click. Members: our guild's whole roster in the game's Guild window,
+-- another guild's report in the Realm; Online: the guild in the Realm, at who is online and where
+-- (another guild: a /who for it, a click so the game allows it); the Lord: their card.
+local function OpenInRealm(name, focus)
+	-- Opened in the Realm, and the Realm opens on it (UI.KeepPlace), whatever its box held.
+	Views.SetFilter("realm", "")
+	expanded[name] = true
+	ns.UI.SelectTab("realm", focus or Views.GuildId(name))
+end
+local function OpenGuildWindow()
+	local open = ToggleGuildFrame or (GuildFrame_Toggle) or ToggleCommunitiesFrame
+	if type(open) ~= "function" then return false end
+	return (pcall(open))
+end
 local function CensusRow(e)
 	local g = e.g
 	local leader = g.leader and ((g.leaderOnline and "|cff40ff40" or "|cff9d9d9d") .. Plain(g.leader) .. "|r") or Grey("?")
+	local own = e.name == GetGuildInfo("player")
+	local cells = {
+		[1] = { onClick = function() OpenInRealm(e.name) end, hint = L.CELL_GUILD_HINT },
+		[2] = {
+			onClick = function()
+				if own and OpenGuildWindow() then return end
+				OpenInRealm(e.name)
+			end,
+			hint = own and L.CELL_MEMBERS_OWN_HINT or L.CELL_MEMBERS_HINT,
+		},
+		[3] = {
+			onClick = function()
+				if not own and ns.Who and ns.Who.SearchGuild then ns.SafeCall("guild who", ns.Who.SearchGuild, e.name) end
+				OpenInRealm(e.name, Views.GuildId(e.name) .. ":online")
+			end,
+			hint = L.CELL_ONLINE_HINT,
+		},
+	}
+	if g.leader then
+		local lord = { name = g.leader, realm = g.realm, class = g.leaderClass, level = g.leaderLevel, zone = g.leaderZone,
+			guild = e.name, rank = LeaderTitle(e.name), online = g.leaderOnline, days = g.leaderDays }
+		cells[4] = {
+			onClick = function() ns.UI.ShowPerson(lord) end,
+			tooltip = function(tt)
+				tt:AddLine(Plain(g.leader), 1, 0.82, 0)
+				tt:AddLine(LeaderTitle(e.name) .. "  <" .. Plain(e.name) .. ">", 1, 1, 1)
+			end,
+			hint = L.CELL_LORD_HINT,
+		}
+	end
 	return {
 		cols = { Views.DisputeMark(g) .. Plain(e.name), ns.FormatNumber(g.total), Green(ns.FormatNumber(g.online)), leader },
 		dim = not e.fresh,
 		tooltip = GuildTooltip(e),
-		onClick = function()
-			-- Opened in the Realm, and the Realm opens on it (UI.KeepPlace), whatever its box held.
-			Views.SetFilter("realm", "")
-			expanded[e.name] = true
-			ns.UI.SelectTab("realm", Views.GuildId(e.name))
-		end,
+		cells = cells,
+		onClick = function() OpenInRealm(e.name) end,
 	}
 end
 
@@ -842,10 +974,12 @@ local function EveningLine()
 	local e = ns.Data.Evening()
 	if not e or e.samples == 0 then return nil end
 	return {
-		text = Grey(L.EVENING_LINE:format(ns.FormatNumber(e.peak or 0), date("%H:%M", e.peakAt or e.t), ns.FormatNumber(e.online or 0),
-			date("%H:%M", e.since or e.t))),
+		-- (1.2.2: short enough for the page; the tooltip says the rest.)
+		text = Grey(L.EVENING_SHORT:format(ns.FormatNumber(e.peak or 0), date("%H:%M", e.peakAt or e.t), ns.FormatNumber(e.online or 0))),
 		tooltip = function(tt)
 			tt:AddLine(L.EVENING_TITLE, 1, 0.82, 0)
+			tt:AddLine(L.EVENING_LINE:format(ns.FormatNumber(e.peak or 0), date("%H:%M", e.peakAt or e.t), ns.FormatNumber(e.online or 0),
+				date("%H:%M", e.since or e.t)), 1, 1, 1, true)
 			tt:AddLine(L.EVENING_TIP:format(date("%H:%M", e.since or e.t)), 1, 1, 1, true)
 			local zones = {}
 			for key, z in pairs(e.zones) do
@@ -1600,6 +1734,7 @@ local function RealmLines(s, q)
 		listed = only and only.members or members
 		if #listed > 0 or not only then
 			lines[#lines + 1] = {
+				id = Views.GuildId(e.name) .. ":online", -- (1.2.2: the Census's Online opens here)
 				indent = 1, text = Gold((fromWho and L.MEMBERS_SEEN or L.MEMBERS_ONLINE):format(#members)),
 				tooltip = function(tt)
 					tt:AddLine((fromWho and L.MEMBERS_SEEN or L.MEMBERS_ONLINE):format(#members), 1, 0.82, 0)
@@ -2017,7 +2152,9 @@ function Views.CloseGear() wipe(gearOpen) end -- (tests)
 
 -- `q`, the search (Views.Query): the untabarded and the inspected players whose name or guild
 -- holds it, each list under its header, a page as ever; "No match" for none. Nothing else.
+local RegaliaLines -- (1.2.2, below: the casual tab)
 local function HeraldryLines(q)
+	if ns.Casual() then return RegaliaLines(q) end
 	local s = ns.Inspect.Summary()
 	-- The King (and his Hands): the Royal Inspection, and what the patrols reported (King.lua).
 	local lines = {}
@@ -2126,7 +2263,160 @@ local function HeraldryLines(q)
 	return lines
 end
 
+-- 1.2.2: Forsaken Regalia, the casual Tabards tab (ns.TABARD_MODE): who wears it, who could use a
+-- hand, who is around. Never who doesn't wear it.
+local REGALIA = "|TInterface\\Icons\\INV_Shirt_GuildTabard_01:12:12|t"
+local function PersonOf(p)
+	local code = ns.Roster.ClassCode and ns.Roster.ClassCode(p.class)
+	return { name = ns.ShortName(p.name), realm = ns.RealmOf(p.name), class = code ~= "" and code or nil, level = p.level,
+		guild = p.guild, zone = p.zone }
+end
+local function RegaliaName(p)
+	local I = ns.Inspect
+	return (I.IsLoyalist(p.name) and I.LOYAL_MARK or "") .. ClassColored(ns.ShortName(p.name), p.class)
+end
+function RegaliaLines(q)
+	local I = ns.Inspect
+	local r = I.Regalia()
+	local lines = {}
+	local function Match(p) return not q or ns.Holds(q, ns.ShortName(p.name), p.guild, p.zone) end
+	if not q then
+		-- Tonight, and where.
+		lines[#lines + 1] = {
+			header = true, text = L.REGALIA_TONIGHT:format(r.inRegalia),
+			tooltip = function(tt)
+				tt:AddLine(L.REGALIA_TONIGHT:format(r.inRegalia), 1, 0.82, 0)
+				tt:AddLine(L.REGALIA_TONIGHT_TIP, 1, 1, 1, true)
+			end,
+		}
+		if #r.zones > 0 then
+			for i = 1, math.min(6, #r.zones) do
+				lines[#lines + 1] = { indent = 1, text = r.zones[i].zone, right = Green(ns.FormatNumber(r.zones[i].n)) }
+			end
+		else
+			Views.GreyRows(lines, L.REGALIA_NONE_YET, { indent = 1 })
+		end
+		for _, g in ipairs(r.guilds) do
+			if g.n > 0 and #r.guilds > 1 then
+				lines[#lines + 1] = { indent = 1, text = Green("<" .. Plain(g.name) .. ">"), right = Grey(L.REGALIA_GUILD_N:format(g.n)) }
+			end
+		end
+		local a = I.Assembly()
+		if a then
+			lines[#lines + 1] = { indent = 1, text = Gold(L.ASSEMBLY_LINE:format(date("%H:%M", a.at), a.n)) }
+		end
+		lines[#lines].gapAfter = true
+	end
+	-- Raising the Loyal.
+	local raising = {}
+	for _, e in ipairs(I.Raising()) do if Match(e.p) then raising[#raising + 1] = e end end
+	if not q or #raising > 0 then
+		lines[#lines + 1] = {
+			id = "regalia:raising", header = true, text = L.RAISING_TITLE, right = Grey(tostring(#raising)),
+			tooltip = function(tt)
+				tt:AddLine(L.RAISING_TITLE, 1, 0.82, 0)
+				tt:AddLine(L.RAISING_TIP, 1, 1, 1, true)
+			end,
+		}
+		for i = 1, math.min(Views.INSPECT_ROWS, #raising) do
+			local e = raising[i]
+			local p = e.p
+			local why = {}
+			if e.levels > 0 then why[#why + 1] = L.RAISING_LEVELS:format(e.levels) end
+			if e.gear > 0 then why[#why + 1] = L.RAISING_GEAR:format(p.ilvl) end
+			lines[#lines + 1] = {
+				key = p.name, indent = 1,
+				text = (e.regalia and (REGALIA .. " ") or "") .. RegaliaName(p) .. "  " .. Grey(L.LEVEL_N:format(p.level or 0)),
+				right = Grey(table.concat(why, " · ")),
+				onClick = function() ns.UI.ShowPerson(PersonOf(p)) end,
+				tooltip = function(tt)
+					tt:AddLine(ClassColored(p.name, p.class))
+					tt:AddLine("<" .. Plain(p.guild or "?") .. ">  " .. L.LEVEL_N:format(p.level or 0)
+						.. (p.ilvl and ("  ·  " .. L.ILVL_N:format(p.ilvl)) or ""), 0.25, 1, 0.25)
+					if e.regalia then tt:AddLine(L.REGALIA_TIP_LINE, 0.25, 1, 0.25) end
+					tt:AddLine(L.RAISING_ROW_TIP, 0.8, 0.8, 0.8, true)
+				end,
+			}
+		end
+		if #raising == 0 then Views.GreyRows(lines, I.IsPatrolling() and L.RAISING_NONE or L.RAISING_START, { indent = 1 }) end
+		lines[#lines].gapAfter = true
+	end
+	-- Loyalists.
+	local loyal = {}
+	for _, p in ipairs(r.loyalists) do if Match(p) then loyal[#loyal + 1] = p end end
+	if not q or #loyal > 0 then
+		lines[#lines + 1] = {
+			header = true, text = L.LOYALISTS, right = Grey(tostring(#loyal)),
+			tooltip = function(tt)
+				tt:AddLine(L.LOYALISTS, 1, 0.82, 0)
+				tt:AddLine(L.LOYALISTS_TIP:format(I.LOYAL_DAYS), 1, 1, 1, true)
+			end,
+		}
+		for i = 1, math.min(12, #loyal) do
+			local p = loyal[i]
+			lines[#lines + 1] = {
+				key = p.name, indent = 1, text = RegaliaName(p), right = Grey(L.LOYAL_DAYS_N:format(p.loyalDays or 0)),
+				onClick = function() ns.UI.ShowPerson(PersonOf(p)) end,
+			}
+		end
+		if #loyal > 12 then lines[#lines + 1] = { indent = 1, text = Grey(L.AND_MORE:format(#loyal - 12)) } end
+		if #loyal == 0 then Views.GreyRows(lines, L.LOYALISTS_EMPTY:format(I.LOYAL_DAYS), { indent = 1 }) end
+		-- The Dark Lady thanks them in guild chat (her click).
+		if not q and #loyal > 0 and ns.King and (ns.King.IsKing() or ns.King.Preview()) then
+			lines[#lines + 1] = {
+				indent = 1, text = Gold(L.LOYALISTS_THANK_BTN),
+				onClick = function() I.ThankLoyal() end,
+				tooltip = function(tt)
+					tt:AddLine(L.LOYALISTS_THANK_BTN, 1, 0.82, 0)
+					tt:AddLine(L.LOYALISTS_THANK_TIP, 1, 1, 1, true)
+				end,
+			}
+		end
+		lines[#lines].gapAfter = true
+	end
+	-- Fellow Forsaken.
+	local fellows = {}
+	for _, p in ipairs(I.Fellows()) do if Match(p) then fellows[#fellows + 1] = p end end
+	if q and #raising == 0 and #loyal == 0 and #fellows == 0 then return { NoMatch() } end
+	lines[#lines + 1] = {
+		id = "regalia:fellows", header = true, text = L.FELLOW_TITLE, right = Grey(tostring(#fellows)),
+		tooltip = function(tt)
+			tt:AddLine(L.FELLOW_TITLE, 1, 0.82, 0)
+			tt:AddLine(L.FELLOW_TIP, 1, 1, 1, true)
+		end,
+	}
+	for i = 1, math.min(Views.INSPECT_ROWS, #fellows) do
+		local p = fellows[i]
+		lines[#lines + 1] = {
+			key = p.name,
+			cols = {
+				(p.status == "GUILD" and (REGALIA .. " ") or "") .. RegaliaName(p),
+				Grey(tostring(p.level or "?")),
+				Grey(p.zone or ""),
+				Grey(ns.Ago(p.t)),
+			},
+			onClick = function() ns.UI.ShowPerson(PersonOf(p)) end,
+			tooltip = function(tt)
+				tt:AddLine(ClassColored(p.name, p.class))
+				tt:AddLine("<" .. Plain(p.guild or "?") .. ">  " .. L.LEVEL_N:format(p.level or 0), 0.25, 1, 0.25)
+				if p.status == "GUILD" then tt:AddLine(L.REGALIA_TIP_LINE, 0.25, 1, 0.25) end
+				if I.IsLoyalist(p.name) then tt:AddLine(I.LOYAL_MARK .. L.LOYALIST, 1, 0.82, 0) end
+			end,
+		}
+	end
+	if #fellows == 0 then Views.GreyRows(lines, I.IsPatrolling() and L.FELLOW_NONE or L.FELLOW_START) end
+	return lines
+end
+
+local function RegaliaDetail()
+	local I = ns.Inspect
+	local r = I.Regalia()
+	local text = I.IsPatrolling() and Green(L.FELLOW_ON) or Grey(L.REGALIA_HINT)
+	return L.REGALIA_COUNTS:format(r.seen, r.inRegalia, #r.loyalists), text
+end
+
 local function HeraldryDetail()
+	if ns.Casual() then return RegaliaDetail() end
 	local s = ns.Inspect.Summary()
 	local c = s.counts
 	local text = ns.Inspect.IsPatrolling() and Green(L.PATROL_ON) or Grey(L.PATROL_HINT)
@@ -2303,10 +2593,27 @@ local BUILD = {
 	end,
 }
 
+-- 1.2.2: locked without the key (ns.REQUIRE_KEY, Comm.KeyLocked): every tab says so on top,
+-- instead of an army that looks empty.
+local function LockedLine()
+	return {
+		text = Red(L.KEY_LOCKED), gapAfter = true,
+		tooltip = function(tt)
+			tt:AddLine(L.KEY_LOCKED_TITLE, 1, 0.82, 0)
+			tt:AddLine(L.KEY_LOCKED_TIP, 1, 1, 1, true)
+		end,
+	}
+end
+
 function Views.Build(tab)
 	local build = BUILD[tab]
 	if not build then return {}, nil, nil end
-	return build(ns.Data.Summary())
+	local lines, title, text = build(ns.Data.Summary())
+	if type(lines) == "table" and ns.IsMember() and ns.Comm.KeyLocked and ns.Comm.KeyLocked() then
+		local at = (lines[1] and lines[1].input) and 2 or 1
+		table.insert(lines, at, LockedLine())
+	end
+	return lines, title, text
 end
 
 -- Kept for the tests: the Realm tree lines.
