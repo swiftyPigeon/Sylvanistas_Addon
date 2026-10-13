@@ -45,6 +45,8 @@ local ICONS = {
 	HERALDRY = "Interface\\Icons\\INV_Shirt_GuildTabard_01",
 }
 local function Label(d)
+	-- 1.2.2: the tabard call is Assemble the Loyal in casual (ns.TABARD_MODE).
+	if d.kind == "HERALDRY" and ns.Casual() then return L.ASSEMBLE_CALL end
 	return L[LABEL[d.kind] or "MUSTER"]
 end
 Decree.Label = Label
@@ -171,6 +173,8 @@ function Decree.Send(kind, text)
 	-- 1.1 (#12): our own decree never comes back to us: in our log as we send it.
 	ns.Chronicle.Add("decree", ns.me, Label({ kind = kind }) .. " " .. ns.Zones.NameForKey("m" .. mapID), { words = text })
 	Show({ kind = kind, mapID = mapID, x = x, y = y, guild = guild, rank = rank, text = text or "", sender = ns.DisplayName(ns.me), t = now }, true)
+	-- 1.2.2: Assemble the Loyal (casual): our patrol counts who comes in regalia (Inspect.Assembly).
+	if kind == "HERALDRY" and ns.Casual() and ns.Inspect.StartAssembly then ns.Inspect.StartAssembly() end
 end
 
 -- Local-only preview so anyone can see what a decree looks like (nothing is sent).

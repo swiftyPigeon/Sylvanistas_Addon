@@ -9,6 +9,12 @@ local L = ns.L
 local Inspect = {}
 ns.Inspect = Inspect
 
+-- 1.2.2: casual (ns.TABARD_MODE), the tab is Forsaken Regalia (Views.lua, RegaliaLines).
+if ns.Casual() then
+	L.TAB_HERALDRY = L.REGALIA_TAB
+	L.HELP_TAB_HERALDRY = L.HELP_TAB_REGALIA
+end
+
 local TABARD_SLOT = INVSLOT_TABARD or 19
 Inspect.GUILD_TABARDS = { [5976] = true } -- "Guild Tabard"
 local RECHECK = 10 * 60   -- do not re-inspect the same player on patrol for 10 minutes
@@ -140,13 +146,21 @@ function Inspect.Record(name, guild, classFile, level, tabardID, anyGear)
 	p.status = Inspect.Classify(tabardID, anyGear)
 	if TooYoung(level) and (p.status == "NONE" or p.status == "OTHER") then p.status = "YOUNG" end
 	p.t = ns.Now()
+	-- 1.2.2 (Forsaken Regalia): where they were seen (within inspect range: our own zone), and each
+	-- day they were seen in the guild's tabard (Loyalists, Inspect.IsLoyalist).
+	p.zone = GetRealZoneText and GetRealZoneText() or p.zone
+	if p.status == "GUILD" then
+		local day = date("%Y-%m-%d")
+		if p.loyalDay ~= day then p.loyalDay, p.loyalDays = day, (tonumber(p.loyalDays) or 0) + 1 end
+	end
 	-- Seen with our own eyes now: no longer another officer's word (1.1).
 	local wasShared = p.shared
 	p.shared, p.by = nil, nil
 	s.players[name] = p
-	if QueueShare then QueueShare(p, previous, wasShared) end
+	-- (Casual: nobody's missing tabard is passed on, nor called out.)
+	if QueueShare and not ns.Casual() then QueueShare(p, previous, wasShared) end
 	ns.Log("inspect %s <%s>: %s (%s)", name, tostring(guild), p.status, tostring(tabardID))
-	if (p.status == "NONE" or p.status == "OTHER") and previous ~= p.status then
+	if not ns.Casual() and (p.status == "NONE" or p.status == "OTHER") and previous ~= p.status then
 		local label = p.status == "NONE" and L.TABARD_NONE or L.TABARD_OTHER
 		ns.Print(("|cffff4040%s|r <%s>: %s"):format(ns.ShortName(name), guild or "?", label))
 		ns.PlayAlert("soft", "patrol")
@@ -179,7 +193,8 @@ local function Enqueue(unit, force, gear)
 	if not force and not ns.IsFederation(guild) then return end
 	-- Sylvanistas guilds of the other faction are not ours to inspect (the Horde has its own too).
 	if not force and UnitFactionGroup and UnitFactionGroup(unit) ~= UnitFactionGroup("player") then return end
-	if not force and TooYoung(UnitLevel(unit)) then return end
+	-- (Casual: the young too, Raising the Loyal is for them.)
+	if not force and not ns.Casual() and TooYoung(UnitLevel(unit)) then return end
 	if not force then
 		local p = Store().players[Key(ns.UnitFullName(unit))]
 		if p and p.status ~= "UNKNOWN" and p.status ~= "UNCHECKED" and ns.Now() - (p.t or 0) < RECHECK then return end
@@ -272,6 +287,8 @@ local function OnInspectReady(guid)
 		local name = ns.UnitFullName(unit)
 		local p = Inspect.Record(name, GetGuildInfo(unit), classFile, UnitLevel(unit),
 			GetInventoryItemID(unit, TABARD_SLOT), anyGear)
+		-- 1.2.2 (Raising the Loyal): the average item level of what loaded, when enough did.
+		if p then p.ilvl = Inspect.ItemLevel(unit) or p.ilvl end
 		-- An officer's click (Inspect.InspectGear): the gear kept with the inspection.
 		if gear and p then
 			local items, n = ReadGear(unit)
@@ -297,7 +314,8 @@ function Inspect.SetPatrol(on)
 		return
 	end
 	patrol = on and true or false
-	ns.Print(patrol and L.PATROL_ON or L.PATROL_OFF)
+	if ns.Casual() then ns.Print(patrol and L.FELLOW_ON or L.FELLOW_OFF)
+	else ns.Print(patrol and L.PATROL_ON or L.PATROL_OFF) end
 	ns.Log("patrol = %s", tostring(patrol))
 	ns.Fire("INSPECT_CHANGED")
 end
@@ -420,6 +438,7 @@ function Inspect.Summary()
 end
 
 function Inspect.DiscordText()
+	if ns.Casual() then return Inspect.RegaliaText() end
 	local s = Inspect.Summary()
 	local c = s.counts
 	local out = {}
@@ -448,6 +467,12 @@ end
 function Inspect.TooltipLine(name)
 	local p = Source().players[Key(name)]
 	if not p then return nil end
+	-- Casual: only good news, and nothing at all for the rest.
+	if ns.Casual() then
+		if p.status ~= "GUILD" then return nil end
+		return "|cff40ff40" .. L.REGALIA_TIP_LINE .. "|r" .. (Inspect.IsLoyalist(p.name) and ("  " .. Inspect.LOYAL_MARK .. "|cffffd200" .. L.LOYALIST .. "|r") or "")
+			.. "  |cff9d9d9d" .. ns.Ago(p.t) .. "|r"
+	end
 	if p.status == "YOUNG" and not p.marked then return nil end -- the rule starts at MIN_LEVEL
 	local text
 	if p.status == "GUILD" then text = "|cff40ff40" .. L.TABARD_OK .. "|r"
@@ -796,6 +821,175 @@ function Inspect.ResetShame()
 end
 
 ---------------------------------------------------------------------------
+-- Forsaken Regalia (1.2.2, ns.TABARD_MODE "casual"): the same patrol, read the other way round.
+-- Who was seen in the guild's tabard (tonight, per zone, per guild), the Loyalists (seen in it on
+-- LOYAL_DAYS days or more), Raising the Loyal (guildmates nearby who could use a hand: lower level
+-- than us or under-geared, those in regalia first) and Fellow Forsaken (who is around now). What
+-- this client's own patrol saw, never sent; nobody is ever listed for not wearing it.
+---------------------------------------------------------------------------
+
+Inspect.LOYAL_DAYS = 3                -- days seen in regalia to count as a Loyalist
+Inspect.LOYAL_MARK = "|TInterface\\Icons\\INV_Shirt_GuildTabard_01:12:12|t "
+Inspect.TONIGHT = 12 * 3600           -- "tonight": seen in the last 12 hours
+Inspect.FELLOW_WINDOW = 15 * 60       -- Fellow Forsaken: seen in the last 15 minutes
+Inspect.RAISE_WINDOW = 30 * 60        -- Raising the Loyal: seen in the last 30 minutes
+Inspect.RAISE_MIN = 3                 -- levels (or item levels) behind before someone is listed
+Inspect.ASSEMBLY_KEEP = 60 * 60       -- an assembly's count runs as long as its call (Decree.lua)
+
+-- The average item level of what the inspection loaded (no shirt, no tabard), when at least
+-- six slots did; nil otherwise (an item the client hasn't seen yet is left out, never guessed).
+function Inspect.ItemLevel(unit)
+	local info = GetItemInfo or (C_Item and C_Item.GetItemInfo)
+	if type(info) ~= "function" then return nil end
+	local sum, n = 0, 0
+	for slot = 1, 18 do
+		if slot ~= 4 then
+			local link = GetInventoryItemLink and GetInventoryItemLink(unit, slot)
+			if link then
+				local ok, _, _, _, ilvl = pcall(info, link)
+				if ok and type(ilvl) == "number" and ilvl > 0 then sum, n = sum + ilvl, n + 1 end
+			end
+		end
+	end
+	if n < 6 then return nil end
+	return math.floor(sum / n + 0.5)
+end
+
+function Inspect.IsLoyalist(name)
+	local p = Source().players[Key(name)]
+	return type(p) == "table" and (tonumber(p.loyalDays) or 0) >= Inspect.LOYAL_DAYS
+end
+
+local function Ours(p) return type(p) == "table" and p.name and ns.IsFederation(p.guild) end
+
+-- Tonight's regalia: { inRegalia, seen, zones = { {zone, n} }, guilds = { {name, n, seen} }, loyalists = { p } }.
+function Inspect.Regalia()
+	local now, out = ns.Now(), { inRegalia = 0, seen = 0, zones = {}, guilds = {}, loyalists = {} }
+	local zones, guilds = {}, {}
+	for _, p in pairs(Source().players) do
+		if Ours(p) then
+			if now - (p.t or 0) <= Inspect.TONIGHT and p.status ~= "UNKNOWN" and p.status ~= "UNCHECKED" then
+				out.seen = out.seen + 1
+				local g = guilds[p.guild] or { name = p.guild, n = 0, seen = 0 }
+				guilds[p.guild] = g
+				g.seen = g.seen + 1
+				if p.status == "GUILD" then
+					out.inRegalia, g.n = out.inRegalia + 1, g.n + 1
+					if p.zone and p.zone ~= "" then zones[p.zone] = (zones[p.zone] or 0) + 1 end
+				end
+			end
+			if (tonumber(p.loyalDays) or 0) >= Inspect.LOYAL_DAYS then out.loyalists[#out.loyalists + 1] = p end
+		end
+	end
+	for zone, n in pairs(zones) do out.zones[#out.zones + 1] = { zone = zone, n = n } end
+	table.sort(out.zones, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.zone < b.zone end)
+	for _, g in pairs(guilds) do out.guilds[#out.guilds + 1] = g end
+	table.sort(out.guilds, function(a, b) if a.n ~= b.n then return a.n > b.n end return a.name < b.name end)
+	table.sort(out.loyalists, function(a, b)
+		if (a.loyalDays or 0) ~= (b.loyalDays or 0) then return (a.loyalDays or 0) > (b.loyalDays or 0) end
+		return a.name < b.name
+	end)
+	return out
+end
+
+-- How far behind a guildmate is: levels under ours, and item levels under their own level
+-- (less 5: quest gear runs a little under it). 0: not behind.
+function Inspect.Behind(p, myLevel)
+	local level = tonumber(p.level) or 0
+	if level <= 0 then return 0 end
+	local levels = math.max(0, (myLevel or 0) - level)
+	local gear = tonumber(p.ilvl) and math.max(0, (level - 5) - p.ilvl) or 0
+	return levels + gear, levels, gear
+end
+
+-- Raising the Loyal: guildmates seen nearby lately who could use a hand, those wearing the
+-- tabard first, then the furthest behind.
+function Inspect.Raising()
+	local now, me, out = ns.Now(), UnitLevel and UnitLevel("player") or 0, {}
+	for _, p in pairs(Source().players) do
+		if Ours(p) and now - (p.t or 0) <= Inspect.RAISE_WINDOW then
+			local behind, levels, gear = Inspect.Behind(p, me)
+			if behind >= Inspect.RAISE_MIN then
+				out[#out + 1] = { p = p, behind = behind, levels = levels, gear = gear, regalia = p.status == "GUILD" }
+			end
+		end
+	end
+	table.sort(out, function(a, b)
+		if a.regalia ~= b.regalia then return a.regalia end
+		if a.behind ~= b.behind then return a.behind > b.behind end
+		return (a.p.t or 0) > (b.p.t or 0)
+	end)
+	return out
+end
+
+-- Fellow Forsaken: guildmates the patrol saw in the last FELLOW_WINDOW, newest first.
+function Inspect.Fellows()
+	local now, out = ns.Now(), {}
+	for _, p in pairs(Source().players) do
+		if Ours(p) and now - (p.t or 0) <= Inspect.FELLOW_WINDOW then out[#out + 1] = p end
+	end
+	table.sort(out, function(a, b)
+		if (a.t or 0) ~= (b.t or 0) then return (a.t or 0) > (b.t or 0) end
+		return a.name < b.name
+	end)
+	return out
+end
+
+-- Assemble the Loyal: from our call (Decree.Send), our patrol counts who comes in regalia.
+local assembly -- { at }
+function Inspect.StartAssembly()
+	assembly = { at = ns.Now() }
+	if not patrol and ns.IsMember() then Inspect.SetPatrol(true) end
+	ns.Fire("INSPECT_CHANGED")
+end
+-- { at, n }: our assembly running (or nil), and how many came in regalia since its call.
+function Inspect.Assembly()
+	if not assembly or ns.Now() - assembly.at > Inspect.ASSEMBLY_KEEP then return nil end
+	local n = 0
+	for _, p in pairs(Source().players) do
+		if Ours(p) and p.status == "GUILD" and (p.t or 0) >= assembly.at then n = n + 1 end
+	end
+	return { at = assembly.at, n = n }
+end
+
+-- The Copy button's text in casual: good news only.
+function Inspect.RegaliaText()
+	local r = Inspect.Regalia()
+	local out = { L.REGALIA_DISCORD:format(r.inRegalia) }
+	local zones = {}
+	for i = 1, math.min(8, #r.zones) do zones[#zones + 1] = ("%s %d"):format(r.zones[i].zone, r.zones[i].n) end
+	if #zones > 0 then out[#out + 1] = table.concat(zones, " · ") end
+	if #r.loyalists > 0 then
+		local names = {}
+		for i = 1, math.min(10, #r.loyalists) do names[#names + 1] = ns.ShortName(r.loyalists[i].name) end
+		out[#out + 1] = L.LOYALISTS_LINE:format(table.concat(names, ", "))
+	end
+	return table.concat(out, "\n")
+end
+
+-- The Dark Lady's thanks: the Loyalists named in guild chat, from her click (casual).
+Inspect.THANKS_NAMES = 8
+function Inspect.ThankLoyal()
+	local r = Inspect.Regalia()
+	if #r.loyalists == 0 then return ns.Print(L.LOYALISTS_NONE) end
+	local names = {}
+	for i = 1, math.min(Inspect.THANKS_NAMES, #r.loyalists) do names[#names + 1] = ns.ShortName(r.loyalists[i].name) end
+	SendChatMessage(L.LOYALISTS_THANKS:format(table.concat(names, ", ")), "GUILD")
+end
+
+-- The private nudge: once a session, a few seconds after login, our own client looks at our own
+-- tabard slot. Not the guild's tabard: one friendly line, to us alone. Nothing is sent or kept.
+Inspect.NUDGE_AFTER = 20
+function Inspect.Nudge()
+	if not ns.Casual() or not ns.IsMember() then return false end
+	if UnitLevel and UnitLevel("player") < Inspect.MIN_LEVEL then return false end
+	local id = GetInventoryItemID("player", TABARD_SLOT)
+	if id and Inspect.GUILD_TABARDS[id] then return false end
+	ns.Print(L.REGALIA_NUDGE)
+	return true
+end
+
+---------------------------------------------------------------------------
 -- Wiring
 ---------------------------------------------------------------------------
 
@@ -814,6 +1008,7 @@ end
 ns.On("INIT", function() Inspect.Prune(); Inspect.PruneGear() end) -- (Prune makes the store too)
 
 ns.On("LOGIN", function()
+	ns.After(Inspect.NUDGE_AFTER, "regalia nudge", Inspect.Nudge)
 	ns.RegisterEvent("INSPECT_READY", OnInspectReady)
 	ns.Every(INTERVAL, "inspect pump", Pump)
 	-- 1.1: an officer's findings to his guild's officers, and the day's asked for once our roster is in.

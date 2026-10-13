@@ -26,6 +26,9 @@ anywhere else it stays idle.
 | `ns.TREASURER_CHARACTER`, `ns.TREASURER_MAIL_CHARACTER` | `CHANGEME_…` (no treasurer yet) |
 | `ns.TREASURY_OFF` | `true` (Treasury, Dues and Bank hidden) |
 | `ns.WALL_OF_SHAME` | `false` (the untabarded list stays private) |
+| `ns.TABARD_MODE` | `"casual"` (Forsaken Regalia: who wears the tabard, never who doesn't); `"strict"`: the tabard inspection |
+| `ns.REQUIRE_KEY` | `false`; `true`: guilds without the channel key get no network (seal the channel first) |
+| `ns.BLOCKED_GUILDS` | `{}`: guilds cut off for good, by exact name (never the main guild) |
 
 A `CHANGEME_` name can belong to no real character, so that role stays empty until it is set.
 
@@ -33,7 +36,7 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
 | Term | Who / what |
 |---|---|
 | **the Dark Lady** | the guild master |
-| **Ambassador** | her deputy (signed list) |
+| **Valkyr** | her deputy (signed list) |
 | **Dark Rangers** | helpers she names in game |
 | **Dreadguard** | officers (rank 0-1), and the moderators (signed list) |
 | **Dark Lords** | guild masters of Sylvanistas guilds |
@@ -54,6 +57,7 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
 | `/syl voice` | polls |
 | `/syl party on/off`, `/syl partyauto on/off` | take party invites when solo; join them without the popup |
 | `/syl party gather`, `scream`, `zone` | gather a party, Party Scream, gather the whole zone (officers) |
+| `/syl inspect` | the Forsaken Regalia tab |
 | `/syl key <secret>` | seal the guild channel (Dreadguard) |
 | `/syl key rotate` | new channel key nobody sees (the Dark Lady or a Dreadguard) |
 | `/syl backup`, `/syl restore` | save and restore settings as text |
@@ -64,7 +68,7 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
   Lady never sends invites herself. Layers are read from nearby NPCs.
 - **Seal the channel** with `/syl key` once several Dreadguards hold the same secret: until then
   anyone who joins `SylvanistasNetH` by name can read the census.
-- **Signed lists** (Ambassadors, moderator Dreadguards, approved guilds) and **Discord Link** need
+- **Signed lists** (Valkyrs, moderator Dreadguards, approved guilds) and **Discord Link** need
   keys and are off; every signature is refused until a public key is set in `Sign.lua`.
 - The Forever beta wipes addon data at login: settings and privacy answers come back each session.
 - Translations: German, French and Spanish cover part of the text (the rest shows in English);

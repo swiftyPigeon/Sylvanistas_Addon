@@ -181,6 +181,11 @@ local function Done(item, sent)
 	if done then ns.SafeCall("send done", done, sent) end
 end
 local function Enqueue(dist, msg, key, target, urgent, logged, done)
+	-- 1.2.2: no channel without the key (Comm.KeyLocked): nothing waits for one.
+	if dist == "CHANNEL" and Comm.KeyLocked and Comm.KeyLocked() then
+		if done then ns.SafeCall("send done", done, false) end
+		return
+	end
 	if key then
 		for _, item in ipairs(queue) do
 			if item[3] == key then
@@ -454,6 +459,14 @@ Comm.Hash36 = Hash36
 
 -- Each faction has its own channel (and sealed name), so the Horde and the Alliance never
 -- mix their census, chat or decrees, whether or not the game shares channel names between them.
+-- 1.2.2 (ns.REQUIRE_KEY): no key, no network. The guild keeps its own roster and its GUILD
+-- messages (that is how the key reaches it from a guildmate); the shared channel waits for the key.
+function Comm.KeyLocked()
+	if not ns.REQUIRE_KEY then return false end
+	local key = ns.rdb and ns.rdb.realmKey
+	return not (type(key) == "string" and key ~= "")
+end
+
 function Comm.ChannelSpec()
 	local horde = ns.faction == "Horde"
 	local key = ns.rdb and ns.rdb.realmKey
@@ -781,6 +794,14 @@ end
 
 function Comm.JoinChannel()
 	if not ns.IsMember() then return end
+	-- 1.2.2: locked without the key (ns.REQUIRE_KEY): off the public channel, and not on any.
+	if Comm.KeyLocked() then
+		if joinedName and GetChannelName(joinedName) > 0 then LeaveChannelByName(joinedName) end
+		if joinedName then ns.Log("channel %s left: no key (key required)", joinedName) end
+		joinedName, channelIndex, watch = nil, 0, nil
+		DropChat("moved")
+		return
+	end
 	local name, password = Comm.ChannelSpec()
 	if joinedName and joinedName ~= name then
 		-- Another channel (the realm key arrived or changed). The chat lines still waiting were
@@ -1392,6 +1413,8 @@ local function OnAddonMessage(prefix, text, dist, sender, target, zoneChannelID,
 		local sealed = text:match("^H1~[^~]*~[^~]*~([^~]*)")
 		peerSealed[sender] = (sealed == "s" or sealed == "p") and sealed or nil
 		peerZone[sender] = text:match("^H1~[^~]*~[^~]*~[^~]*~([^~]*)") == "z" or nil
+		-- 1.2.2: two or more guildmates ahead of us: one line, once a session (Workshop.CheckPeers).
+		if ns.Workshop and ns.Workshop.CheckPeers then ns.SafeCall("peer versions", ns.Workshop.CheckPeers) end
 		return
 	end
 	local handler = handlers[text:sub(1, 2)]

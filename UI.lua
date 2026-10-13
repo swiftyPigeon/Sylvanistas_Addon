@@ -107,9 +107,20 @@ local BUTTONS = {
 		{ "ROYAL_BTN", DecreeAction("ROYAL") },
 	},
 	heraldry = {
-		{ "PATROL_BTN", function() ns.Inspect.SetPatrol(not ns.Inspect.IsPatrolling()) end },
-		{ "MARK_TARGET", function() ns.Inspect.MarkTarget() end },
-		{ "COPY_BTN", function() UI.ShowCopy(L.INSPECT_TITLE, ns.Inspect.DiscordText()) end },
+		{ "PATROL_BTN", function() ns.Inspect.SetPatrol(not ns.Inspect.IsPatrolling()) end,
+			-- 1.2.2 (casual): the patrol finds Fellow Forsaken.
+			tooltip = function(tt)
+				local casual = ns.Casual()
+				tt:AddLine(casual and L.FELLOW_TITLE or L.PATROL_BTN, 1, 0.82, 0)
+				tt:AddLine(casual and L.FELLOW_BTN_TIP or L.PATROL_BTN_TIP, 1, 1, 1, true)
+			end },
+		{ "MARK_TARGET", function() ns.Inspect.MarkTarget() end, shown = function() return not ns.Casual() end },
+		-- 1.2.2 (casual): Raising the Loyal, the patrol on and the list in sight.
+		{ "RAISING_BTN", function()
+			if not ns.Inspect.IsPatrolling() then ns.Inspect.SetPatrol(true) end
+			UI.SelectTab("heraldry", "regalia:raising")
+		end, shown = function() return ns.Casual() end },
+		{ "COPY_BTN", function() UI.ShowCopy(ns.Casual() and L.TAB_HERALDRY or L.INSPECT_TITLE, ns.Inspect.DiscordText()) end },
 	},
 	-- The Throne: the agenda (the King and his Hands), the court (the King's).
 	-- The roll call lives in the Realm, the inspection in the Tabards (King.RollCallLines...).
@@ -213,7 +224,14 @@ local DETAIL_BUTTONS = {
 			label = function() return ns.Treasury.DevView() and L.DEV_TREASURER_VIEW_OFF or L.DEV_TREASURER_VIEW_ON end },
 	},
 	heraldry = {
-		{ "HERALDRY_BTN", DecreeAction("HERALDRY") },
+		{ "HERALDRY_BTN", DecreeAction("HERALDRY"),
+			-- 1.2.2 (casual): Assemble the Loyal.
+			label = function() return ns.Casual() and L.ASSEMBLE_BTN or L.HERALDRY_BTN end,
+			tooltip = function(tt)
+				local casual = ns.Casual()
+				tt:AddLine(casual and L.ASSEMBLE_BTN or L.HERALDRY_BTN, 1, 0.82, 0)
+				tt:AddLine(casual and L.ASSEMBLE_BTN_TIP or L.HERALDRY_BTN_TIP, 1, 1, 1, true)
+			end },
 		{ "CLEAR", function() ns.ShowDialog("SYLVANISTAS_CLEAR_INSPECT") end },
 	},
 	-- The King's switches: what the army sees of the treasury (each its own).
@@ -235,7 +253,8 @@ table.insert(DETAIL_BUTTONS.realm, { "COUNCIL_ICON_BTN", function() ns.Workshop.
 	shown = function() return ns.IsHighCouncillor(ns.me) end })
 -- 1.1 (request #28): an officer keeps the gear of the player he targets, in range (Inspect.lua).
 table.insert(DETAIL_BUTTONS.heraldry, 1, { "GEAR_BTN", function() ns.Inspect.InspectGear() end,
-	shown = function() return ns.IsMember() and ns.Roster.IsOfficer() end })
+	-- (1.2.2, casual: Raising the Loyal takes its place; /syl gear still keeps a target's gear.)
+	shown = function() return not ns.Casual() and ns.IsMember() and ns.Roster.IsOfficer() end })
 
 -- Buttons that come and go (def.shown): only the ones shown, in order.
 local function Shown(defs)
@@ -1295,7 +1314,11 @@ local function SetButtons(list, defs)
 		local def = defs and defs[i]
 		if def then
 			local label = def.label and def.label() or L[def[1]]
-			if def[1] == "PATROL_BTN" then label = ns.Inspect.IsPatrolling() and L.PATROL_STOP or L.PATROL_START end
+			if def[1] == "PATROL_BTN" then
+				local casual = ns.Casual()
+				if ns.Inspect.IsPatrolling() then label = casual and L.FELLOW_STOP or L.PATROL_STOP
+				else label = casual and L.FELLOW_BTN or L.PATROL_START end
+			end
 			b:SetText(label)
 			b:SetScript("OnClick", function()
 				ns.SafeCall("button " .. def[1], def[2])
@@ -1522,7 +1545,7 @@ function UI.Refresh()
 		local s = ns.Data.Summary()
 		local F = ns.FormatNumber
 		main.total:SetText(L.ARMY_TOTAL:format(F(s.total)))
-		main.sub:SetText(L.ARMY_SUB:format(F(s.online), #s.guilds, ns.Ago(s.newest)) .. "  ·  " .. UI.CensusName())
+		main.sub:SetText(ns.Plural(#s.guilds, L.ARMY_SUB_ONE, L.ARMY_SUB, F(s.online), #s.guilds, ns.Ago(s.newest)) .. "  ·  " .. UI.CensusName())
 		-- Right after login (1.1): the census is being rebuilt, and the header says so.
 		local heard = ns.Data.Rebuilding and ns.Data.Rebuilding()
 		if heard then main.sub:SetText(L.REBUILDING_SUB:format(heard) .. "  ·  " .. UI.CensusName()) end
@@ -2004,6 +2027,7 @@ function UI.StatusLine()
 	if not guild then return L.STATUS_NOGUILD end
 	if not ns.IsFederation(guild) then return L.STATUS_NOTFED:format(guild) end
 	local c = ns.Comm
+	if c.KeyLocked and c.KeyLocked() then return L.KEY_LOCKED end
 	local users = c.PeerCount() + 1
 	if c.isReporter or not c.reporterName then return L.STATUS_REPORTER:format(guild, users) end
 	return L.STATUS_PEER:format(guild, c.reporterName, users)
@@ -2315,9 +2339,13 @@ local function CreateMinimapButton()
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:AddLine(L.TITLE, 1, 0.82, 0)
 		GameTooltip:AddLine(L.ARMY_TOTAL:format(ns.FormatNumber(s.total)), 1, 1, 1)
-		GameTooltip:AddLine(L.ARMY_SUB:format(ns.FormatNumber(s.online), #s.guilds, ns.Ago(s.newest)), 0.8, 0.8, 0.8)
+		GameTooltip:AddLine(ns.Plural(#s.guilds, L.ARMY_SUB_ONE, L.ARMY_SUB, ns.FormatNumber(s.online), #s.guilds, ns.Ago(s.newest)), 0.8, 0.8, 0.8)
 		local heard = ns.Data.Rebuilding and ns.Data.Rebuilding()
 		if heard then GameTooltip:AddLine(L.REBUILDING_SUB:format(heard), 1, 0.82, 0) end
+		-- 1.2.2: our guildmates running the addon now (their hellos, the last 12 minutes), us too.
+		if ns.IsMember() and ns.Comm and ns.Comm.PeerCount then
+			GameTooltip:AddLine(ns.Plural(ns.Comm.PeerCount() + 1, L.MINIMAP_USERS_ONE, L.MINIMAP_USERS, ns.Comm.PeerCount() + 1), 0.25, 1, 0.25)
+		end
 		GameTooltip:AddLine(" ")
 		GameTooltip:AddLine(L.MINIMAP_LEFT, 0.6, 0.6, 0.6)
 		GameTooltip:AddLine(L.MINIMAP_SHIFT, 0.6, 0.6, 0.6)
