@@ -6,8 +6,8 @@ Sanctum, Screams, polls and more. Main command: **`/syl`**.
 
 ## Install
 Get it from [CurseForge](https://www.curseforge.com/wow/addons/sylvanistas-guild), or download
-**Sylvanistas_CF.zip** from [Releases](https://github.com/swiftyPigeon/Sylvanistas_Addon/releases/latest)
-and unzip it into `World of Warcraft/_classic_beta_/Interface/AddOns/`, so you get an
+**Sylvanistas_CF_<version>.zip** (e.g. `Sylvanistas_CF_1.2.2.zip`) from
+[Releases](https://github.com/swiftyPigeon/Sylvanistas_Addon/releases/latest) and unzip it into `World of Warcraft/_classic_beta_/Interface/AddOns/`, so you get an
 `AddOns/Sylvanistas/` folder. Then restart the game.
 
 **Don't use Code → Download ZIP** on GitHub: its folder is named `Sylvanistas_Addon-main` and the
