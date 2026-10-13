@@ -895,6 +895,7 @@ local function CreateMain(style)
 		b:SetScript("OnClick", function(self)
 			if self.sortKey then
 				ns.Views.SortBy(self.sortKey)
+				UI.MarkSorted()
 				UI.Refresh()
 			end
 			UI.Clicked()
@@ -1222,6 +1223,22 @@ end
 
 -- Positions that depend on the window width (buttons, columns, list width) and on
 -- membership (the Join screen has no column titles).
+-- 1.2.21: the column the list is sorted by stays lit, with its direction (the tab look of
+-- Olympus's census titles); clicking another sorts by it, again reverses it.
+function UI.MarkSorted()
+	if not (main and main.colHeader) then return end
+	local sort = ns.Views.sort
+	for _, b in ipairs(main.colHeader.buttons or {}) do
+		if b.labelKey then
+			local on = b.sortKey ~= nil and type(sort) == "table" and sort.key == b.sortKey
+			b:SetText(L[b.labelKey] .. (on and (sort.desc and " \226\150\188" or " \226\150\178") or ""))
+			if b.LockHighlight then
+				if on then b:LockHighlight() else b:UnlockHighlight() end
+			end
+		end
+	end
+end
+
 function UI.Layout()
 	if not main then return end
 	local g = GEOMETRY[main.style]
@@ -1261,14 +1278,15 @@ function UI.Layout()
 				-- The old headers' middle part is sized by Blizzard's code; the HD ones stretch.
 				if (main.style == "old" or b.whoTemplate) and WhoFrameColumn_SetWidth then pcall(WhoFrameColumn_SetWidth, b, width) else b:SetWidth(width) end
 				b:SetWidth(width)
+				b.sortKey, b.labelKey = col.sort, col.key
 				b:SetText(L[col.key])
-				b.sortKey = col.sort
 				b:Show()
 				x = x + width - 2
 			else
 				b:Hide()
 			end
 		end
+		UI.MarkSorted()
 	end
 end
 
@@ -2149,6 +2167,10 @@ function UI.ShowHelp()
 		L.HELP_FILTER,
 		L.HELP_LOG,
 		L.HELP_BACKUP,
+		L.HELP_LETTERS,
+		L.HELP_MAINKEY,
+		L.HELP_MUSTERS,
+		L.HELP_BRIEF,
 		"",
 		L.HELP_CHATS,
 		L.HELP_CHAN_ALL,
@@ -2298,6 +2320,7 @@ function UI.CopyFrame(key) return copyFrames[key or "copy"] end
 local minimapButton
 
 local function PositionMinimapButton()
+	if not (minimapButton and rawget(_G, "Minimap")) then return end -- (1.2.20: no minimap, nothing to place on)
 	local angle = math.rad(ns.db.minimapAngle or 200)
 	-- On the ring, like Blizzard's own minimap buttons (and LibDBIcon): 5 past the map's edge.
 	local radius = (Minimap:GetWidth() / 2) + 5

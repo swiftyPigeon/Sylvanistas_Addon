@@ -82,6 +82,17 @@ function GuildFrameHook.Candidates()
 	return out
 end
 
+-- 1.2.20 (from Olympus 1.2.1): one of the game's guild windows on screen now (the Communities window
+-- ClassicUI Forever keeps unseen, at alpha 0, aside): where the game's own Remove from Guild asks,
+-- so we ask in our own windows meanwhile, never in the game's popups (Core.lua's ns.ShowDialog).
+function GuildFrameHook.GameWindowShown()
+	for _, c in ipairs(GuildFrameHook.Candidates()) do
+		local f = c.frame
+		if f.IsVisible and f:IsVisible() and not (c.kind == "communities" and f.GetAlpha and f:GetAlpha() == 0) then return true end
+	end
+	return false
+end
+
 -- Forever's Mainline UI: its only Blizzard guild window is the new one. Classic Era and
 -- Anniversary keep their old Guild tab (hidden or not): their Communities window stays "old".
 function GuildFrameHook.IsHDClient()
@@ -163,7 +174,22 @@ local function Attach(frame, kind)
 	frame:HookScript("OnShow", function()
 		if kind == "communities" and frame.GetAlpha and frame:GetAlpha() == 0 then return end
 		lastShown = host
+		-- (1.2.20, from Olympus 1.2.1: a rank change or a removal can start from the roster's own
+		-- right-click menu, with no card opened: as the guild window opens, a question of ours still
+		-- up as a game popup moves into our own window too.)
+		if type(ns.MoveDialogsOffGame) == "function" then ns.SafeCall("guild window popups", ns.MoveDialogsOffGame) end
 	end)
+	-- 1.2.20: the member's card (GuildMemberDetailFrame: the Guild & Communities window's, the old
+	-- Guild tab's) holds the game's Remove from Guild, whose question the game refuses with one of
+	-- our popups among them. As the card opens, a question of ours still up as a game popup moves
+	-- into our own window (Core.lua's ns.MoveDialogsOffGame).
+	local card = kind == "communities" and frame.GuildMemberDetailFrame
+		or ((kind == "old" or kind == "guildui") and _G.GuildMemberDetailFrame) or nil
+	if type(card) == "table" and card.HookScript then
+		card:HookScript("OnShow", function()
+			if type(ns.MoveDialogsOffGame) == "function" then ns.SafeCall("guild member card popups", ns.MoveDialogsOffGame) end
+		end)
+	end
 	-- Closing the guild window closes our window if it is docked to that one (only then).
 	frame:HookScript("OnHide",function() ns.SafeCall("guild window hide", ns.UI.CloseIfDocked, host.dock) end)
 	if def.social then

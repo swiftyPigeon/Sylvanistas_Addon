@@ -23,7 +23,7 @@ ns.BLOCKED_GUILDS = {                          -- guilds cut off for good, whate
 ns.TABARD_MODE = "casual"                      -- "casual": Forsaken Regalia (who wears it, never who doesn't); "strict": the tabard inspection as before 1.2.2
 
 ns.NAME = "Sylvanistas"
-ns.VERSION = "1.2.2"
+ns.VERSION = "1.2.21"
 ns.PREFIX = "SYLVANISTAS"        -- addon message prefix (max 16 chars)
 ns.CHANNEL = "SylvanistasNet"    -- hidden chat channel (Alliance: unused, the addon is Horde-only)
 ns.CHANNEL_HORDE = "SylvanistasNetH" -- the Horde's hidden chat channel, shared by every Sylvanistas guild
@@ -1427,8 +1427,25 @@ end)
 function ns.After(seconds, where, fn)
 	C_Timer.After(seconds, function() ns.SafeCall(where, fn) end)
 end
+-- A ticker (1.2.20, from Olympus 1.2.1): it starts after a random part of its period, EVERY_SPREAD
+-- at most, so the dozens started at login do not all tick on one frame (a hitch once a minute).
+-- Its first tick comes one period after that start. The handle's Cancel stops it before its
+-- start, from inside a tick, or after.
+ns.EVERY_SPREAD = 60
 function ns.Every(seconds, where, fn)
-	return C_Timer.NewTicker(seconds, function() ns.SafeCall(where, fn) end)
+	local ticker, cancelled = nil, false
+	local handle = {}
+	function handle.Cancel()
+		cancelled = true
+		if ticker and ticker.Cancel then ticker:Cancel() end
+	end
+	function handle.IsCancelled() return cancelled end
+	local function Tick() if not cancelled then ns.SafeCall(where, fn) end end
+	local spread = math.max(0, math.min(tonumber(seconds) or 0, ns.EVERY_SPREAD)) * math.random()
+	C_Timer.After(spread, function()
+		if not cancelled then ticker = C_Timer.NewTicker(seconds, Tick) end
+	end)
+	return handle
 end
 
 ---------------------------------------------------------------------------
@@ -1572,15 +1589,46 @@ function ns.EscapeCloses(name)
 	if not gamepad then table.insert(UISpecialFrames, name) end
 end
 
+-- 1.2.20 (from Olympus 1.2.1, an officer: "get a fail from addon when kick ppl from guild"): while
+-- one of the game's guild windows is on screen, our own window too. There the game asks its Remove
+-- from Guild in an exclusive popup whose Yes is a call the game refuses from tainted code; showing
+-- it, the game goes through the popups on screen, and one opened from our code hands our taint to
+-- that question: the removal failed with "Interface action failed because of an AddOn". When the
+-- member's card (where Remove is) opens, ours still up as the game's move into our own windows
+-- (ns.MoveDialogsOffGame, GuildFrame.lua).
+local gamePopups = {} -- [which] = { a, b, data }: shown as the game's popup this session, as last shown
+local function GuildWindowShown()
+	local hook = ns.GuildFrameHook
+	if ns.Dialog.missing or type(hook) ~= "table" or type(hook.GameWindowShown) ~= "function" then return false end
+	local ok, shown = pcall(hook.GameWindowShown)
+	return ok and shown == true
+end
 function ns.ShowDialog(which, a, b, data)
-	ns.Log("dialog %s (%s)", tostring(which), ns.GamepadUI() and "sylvanistas window, gamepad UI" or "game popup")
-	if ns.GamepadUI() then
+	local pad = ns.GamepadUI()
+	local guild = not pad and GuildWindowShown()
+	ns.Log("dialog %s (%s)", tostring(which), pad and "sylvanistas window, gamepad UI" or guild and "sylvanistas window, a guild window open" or "game popup")
+	if pad or guild then
 		-- Updated without restarting the game (Dialog.lua not loaded yet): never the game's
 		-- popup there, the player is told to restart.
 		if ns.Dialog.missing then ns.Print(L.RESTART_NEEDED) return nil end
 		return ns.Dialog.Show(which, a, b, data)
 	end
+	if type(which) == "string" then gamePopups[which] = { a = a, b = b, data = data } end
 	return StaticPopup_Show(which, a, b, data)
+end
+-- 1.2.20: each question of ours still up as the game's popup closes there unanswered and is asked
+-- again in our own window, with what it was shown with. How many moved.
+function ns.MoveDialogsOffGame()
+	if ns.Dialog.missing or ns.GamepadUI() or type(StaticPopup_Visible) ~= "function" then return 0 end
+	local moved = 0
+	for which, shown in pairs(gamePopups) do
+		if type(shown) == "table" and StaticPopup_Visible(which) then
+			ns.HideDialog(which)
+			ns.Dialog.Show(which, shown.a, shown.b, shown.data)
+			moved = moved + 1
+		end
+	end
+	return moved
 end
 function ns.HideDialog(which, data)
 	if not ns.Dialog.missing then ns.Dialog.Hide(which, data) end
@@ -1717,6 +1765,10 @@ local function Help()
 	print(L.HELP_NEED)
 	print(L.HELP_DONATIONS)
 	print(L.HELP_BACKUP)
+	print(L.HELP_LETTERS)
+	print(L.HELP_MAINKEY)
+	print(L.HELP_MUSTERS)
+	print(L.HELP_BRIEF)
 	print(L.HELP_INSPECTION)
 	print(L.HELP_BORDERS)
 	print(L.HELP_NAMEPLATES)
@@ -1809,6 +1861,20 @@ SlashCmdList.SYLVANISTAS = function(input)
 			ns.Inspect.SetSharing(on)
 		elseif cmd == "map" then
 			ns.Map.SetEnabled(not ns.db.showMap)
+		elseif cmd == "hotkey" then
+			-- 1.2.21: Shift + the guild key opens the window (MainKey.lua).
+			ns.MainKey.Slash(rest)
+		elseif cmd == "musters" then
+			-- 1.2.21: the officer musters' page (OfficerMuster.lua).
+			ns.UI.SelectTab("realm")
+			ns.Views.ShowPage("officermuster")
+		elseif cmd == "week5" or cmd == "brief" then
+			-- 1.2.21: your week, in five lines (WeeklyBrief.lua).
+			ns.UI.SelectTab("realm")
+			ns.Views.ShowPage("personalbrief")
+		elseif cmd == "letters" or cmd == "whatsnew" then
+			-- 1.2.20: the "what's new" letters (Letters.lua): the list, or one version's.
+			ns.Letters.Slash(rest)
 		elseif cmd == "throne" or cmd == "trono" then
 			if ns.King.Visible and ns.King.Visible() then
 				ns.UI.SelectTab("throne")

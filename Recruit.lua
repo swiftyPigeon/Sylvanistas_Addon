@@ -542,8 +542,25 @@ local function CanInvite() return type(CanGuildInvite) == "function" and CanGuil
 Recruit.CanInvite = CanInvite
 
 -- An officer's yes: the game's own guild invite, from the click.
-function Recruit.Accept(req)
+-- 1.2.21 (from Olympus 1.2.1): a recruit the moderators took off the network (/syl netoff) is not
+-- invited on one click: the officer sees who, when and why first, and still chooses. It never
+-- declines the request, blocks anyone or takes a game invite back.
+local function Warned(req, confirmed)
+	local M = ns.Moderation
+	local word = M and M.Hidden and M.Hidden(req.name)
+	if not word then return false end
+	if type(confirmed) == "table" and confirmed.req == req and confirmed.at == word.at and confirmed.by == word.by
+		and confirmed.reason == word.reason then return false end
+	local reason = word.reason ~= "" and word.reason or "-"
+	ns.ShowDialog("SYLVANISTAS_RECRUIT_NETOFF", L.JOIN_NETOFF_PROMPT:format(ns.DisplayName(req.name) or req.name,
+		M.When and M.When(word) or "?", reason), nil,
+		{ req = req, at = word.at, by = word.by, reason = word.reason })
+	return true
+end
+
+function Recruit.Accept(req, confirmed)
 	if not CanInvite() or type(req) ~= "table" then return false end
+	if Warned(req, confirmed) then return "warning" end
 	local invite = (C_GuildInfo and C_GuildInfo.Invite) or GuildInvite
 	if type(invite) ~= "function" then return false end
 	invite(ns.TellName(req.name))
@@ -551,6 +568,18 @@ function Recruit.Accept(req)
 	Drop(req)
 	return true
 end
+
+StaticPopupDialogs["SYLVANISTAS_RECRUIT_NETOFF"] = {
+	text = "%s",
+	button1 = L.JOIN_NETOFF_INVITE,
+	button2 = L.JOIN_NETOFF_CANCEL,
+	OnAccept = function(_, data)
+		if type(data) ~= "table" or type(data.req) ~= "table" then return end
+		-- (A word that changed meanwhile asks again with its new reason.)
+		return Recruit.Accept(data.req, data) == "warning"
+	end,
+	timeout = 0, whileDead = true, hideOnEscape = true, preferredIndex = 3,
+}
 
 -- Where to send one we can't take: the gates' guild while the King's gates are open, else only
 -- ours (the Join screen shows who has room). Never a guild named for its free slots (the reviewer's

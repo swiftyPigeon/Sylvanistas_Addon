@@ -33,11 +33,16 @@ local PlayerMenu = {}
 ns.PlayerMenu = PlayerMenu
 
 -- The menus hooked ("MENU_UNIT_" .. each). RAID: the raid roster; FRIEND: a name in chat, the Who
--- list and the friends list; COMMUNITIES_*: Forever's guild and community rosters; GUILD: the old
--- Guild window's roster (Classic); CHAT_ROSTER: a chat channel's member list; RECENT_ALLY: Forever's
--- recent allies.
-PlayerMenu.WHICH = { "PLAYER", "PARTY", "RAID_PLAYER", "RAID", "FRIEND", "COMMUNITIES_GUILD_MEMBER",
-	"COMMUNITIES_WOW_MEMBER", "GUILD", "CHAT_ROSTER", "RECENT_ALLY" }
+-- list and the friends list; COMMUNITIES_WOW_MEMBER: Forever's community rosters; CHAT_ROSTER: a
+-- chat channel's member list; RECENT_ALLY: Forever's recent allies.
+-- 1.2.20 (from Olympus 1.2.1, an officer: an addon failure "when try kick ... when try change
+-- Rank"): never the game's guild roster menus, COMMUNITIES_GUILD_MEMBER (Forever's Guild &
+-- Communities roster) and GUILD (the old Guild window's). Those hold the game's own guild actions
+-- (promote, demote, rank, Remove from Guild), whose calls the game refuses from tainted code; a line
+-- of ours there is built by our code into that same menu. Our lines for a guildmate stay in every
+-- other menu (a name in chat, the target and party frames, the Who list) and on our window's rows.
+PlayerMenu.WHICH = { "PLAYER", "PARTY", "RAID_PLAYER", "RAID", "FRIEND", "COMMUNITIES_WOW_MEMBER", "CHAT_ROSTER", "RECENT_ALLY" }
+PlayerMenu.NEVER = { COMMUNITIES_GUILD_MEMBER = true, GUILD = true }
 
 local entries = {}   -- { key, order, build }, in order
 local hooked = false -- Menu.ModifyMenu called for every menu above
@@ -169,10 +174,12 @@ function PlayerMenu.Hook()
 	end
 	for _, which in ipairs(PlayerMenu.WHICH) do
 		local w = which
-		local ok, err = pcall(Menu.ModifyMenu, "MENU_UNIT_" .. w, function(_, root, ctx)
-			ns.SafeCall("player menu", PlayerMenu.Build, w, root, ctx)
-		end)
-		if not ok then ns.Log("player menu %s not hooked: %s", w, tostring(err)) end
+		if not PlayerMenu.NEVER[w] then
+			local ok, err = pcall(Menu.ModifyMenu, "MENU_UNIT_" .. w, function(_, root, ctx)
+				ns.SafeCall("player menu", PlayerMenu.Build, w, root, ctx)
+			end)
+			if not ok then ns.Log("player menu %s not hooked: %s", w, tostring(err)) end
+		end
 	end
 	hooked = true
 	return true

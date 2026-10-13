@@ -245,9 +245,14 @@ function Hop.HandleRequest(dist, sender, text)
 	-- On its own ("Always invite", or "For Sylvanistas!" on the King's layer): only while we are
 	-- alone or with hop guests; in a group of our own we get the window.
 	-- "For Sylvanistas!" invites on its own only for a King two reports confirm.
-	local auto = ns.db.layerAutoInvite or (KingChoice() == "auto" and OnKingLayer(true))
+	-- 1.2.20 (from Olympus 1.2.1): only for a player the addon can vouch for (Hop.Trusted); anyone
+	-- else gets the window, a click.
+	local wanted = ns.db.layerAutoInvite or (KingChoice() == "auto" and OnKingLayer(true))
+	local auto = wanted and Hop.Trusted(sender)
 	if auto and OnlyGuests() then return Invite(sender, id, true) end
-	pending = { from = sender, id = id, t = ns.Now() }
+	-- unvouched: the player chose not to be asked, and only Hop.Trusted brought this window up
+	-- (Answer: its no is no step towards the pause).
+	pending = { from = sender, id = id, t = ns.Now(), unvouched = (wanted and not auto) and true or nil }
 	-- In an instance or on Busy (1.1, ns.Alert): no sound and no window; they come once the player
 	-- is out, while the asker still waits (Hop.WAIT), else the request only lapses.
 	local ask = pending
@@ -269,11 +274,16 @@ local function Answer(data, invite, always)
 		Invite(data.from, data.id, always)
 	else
 		SayNo(data.from, data.id)
-		-- Not now (or no answer) twice in a row: a break from requests.
-		declines = declines + 1
-		if declines >= Hop.DECLINES then
-			declines = 0
-			pausedUntil = ns.Now() + Hop.PAUSE
+		-- Not now (or no answer) twice in a row: a break from requests. 1.2.20: never for a window
+		-- of "Always invite" or "For Sylvanistas!" that only trust brought up (unvouched): a helper
+		-- away from the keyboard would stop inviting his guildmates too, and one member of another
+		-- guild could keep him switched off with two requests every 5 minutes.
+		if not data.unvouched then
+			declines = declines + 1
+			if declines >= Hop.DECLINES then
+				declines = 0
+				pausedUntil = ns.Now() + Hop.PAUSE
+			end
 		end
 	end
 	Changed()
@@ -431,25 +441,19 @@ function Hop.SendAsk()
 	Changed()
 end
 
--- A helper the addon can vouch for: a guildmate (our roster), or a Lord or Captain the census
--- names. Their invite is accepted for the player; anyone else's is left to the game's invite
--- window (one click), so nobody pulls a player into their group just by answering an ask read
--- on the channel. (A layer announcement is the sender's own word: it proves nothing here.)
+-- A helper the addon can vouch for, and so may act for without a click: a guildmate (our
+-- roster), the Dark Lady's pinned character, her Valkyr and her Dark Rangers. Their invite is
+-- accepted for the player, and "Always invite" or "For Sylvanistas!" invites them; anyone else's
+-- invite is left to the game's invite window (one click), and anyone else's request to ours, so
+-- nobody pulls a player into a group just by answering an ask read on the channel. 1.2.20 (from
+-- Olympus 1.2.1): never a census rank: two cooperating characters can forge an "officer" in one
+-- guild's reports. An officer of another guild still hops, by a click. (A layer announcement is the
+-- sender's own word: it proves nothing here.)
 function Hop.Trusted(name)
 	name = ns.FullName(name)
 	if ns.Roster.RankOf(name) then return true end
-	local short = ns.ShortName(name)
-	for guild, g in pairs(ns.rdb.guilds or {}) do
-		-- (1.1: never a guild the moderators took off the network, Moderation.lua.)
-		if type(g) == "table" and not (ns.Data.NetOff and ns.Data.NetOff(guild)) then
-			local listed = g.leader and ns.ShortName(g.leader) == short
-			for _, o in ipairs(not listed and g.officers or {}) do
-				if o.name and ns.ShortName(o.name) == short then listed = true break end
-			end
-			if listed and ns.Data.KnownRank(name, guild) then return true end
-		end
-	end
-	return false
+	if ns.IsKingCharacter(name) then return true end
+	return (ns.King and (ns.King.IsStewardName(name) or ns.King.IsHandName(name))) and true or false
 end
 
 function Hop.HandleOffer(dist, sender, text)
@@ -490,7 +494,8 @@ function Hop.OnInvite(name)
 	-- With the gamepad UI, always: the addon leaves the game's popups alone there (Dialog.lua),
 	-- and the game's invite window is the one a controller answers.
 	local o = ask.offers[helper]
-	if not (o and o.trusted) or ns.GamepadUI() then
+	-- (1.2.20: asked again now, not only when the offer came: a role can lapse, a guildmate leave.)
+	if not (o and o.trusted and Hop.Trusted(helper)) or ns.GamepadUI() then
 		-- The player decides: the wait starts over from this invite, and the group they may
 		-- join counts as this helper's (OnRoster) even before the game names its members.
 		ask.helper, ask.invitedBy, ask.asked = helper, helper, ns.Now()

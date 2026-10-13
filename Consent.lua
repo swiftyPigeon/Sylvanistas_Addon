@@ -306,6 +306,14 @@ function Consent.Show()
 end
 
 function Consent.Frame() return frame end
+-- 1.2.20 (Letters.lua): a line still to ask this session, so the page comes first.
+function Consent.Waiting()
+	if not ns.IsMember() then return false end
+	for _, item in ipairs(Consent.Pending()) do
+		if not asked[item.key] then return true end
+	end
+	return false
+end
 function Consent.Hide() if frame then frame:Hide() end end
 
 -- Tests start from a clean state (and a fresh frame when the toolkit was rebuilt).

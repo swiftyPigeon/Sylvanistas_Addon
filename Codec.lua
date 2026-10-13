@@ -502,6 +502,24 @@ function Codec.NoMentions(s)
 	return (s:gsub("@", "@" .. ZWSP):gsub("<#", "<" .. ZWSP .. "#"))
 end
 
+-- 1.2.20 (from Olympus 1.2.1): a value from another player (a name, a guild's, a note) in a copy
+-- for Discord: shown there as written, never as Discord's markup, on one line. In a code block
+-- (code == true: the copies' tables), where no backslash escapes anything, a backtick becomes an
+-- apostrophe: three would end the block and let the rest out as markup. Elsewhere a backslash goes
+-- before each character that makes markup anywhere in a line (bold, italics, strikes, code, masked
+-- links, <@id>, <t:...>), and before a "#", ">" or "-" the value starts with (a heading, a quote, a
+-- list). A "|" goes in both (a spoiler's, the game's escape codes), a line break becomes a space,
+-- and nobody is pinged either way (NoMentions). The copies' own words (Locales) are not passed through it.
+function Codec.Discord(s, code)
+	s = tostring(s == nil and "" or s):gsub("%c", " "):gsub("|", "")
+	if code == true then
+		s = s:gsub("`", "'")
+	else
+		s = s:gsub("[\\`*_~%[%]<]", "\\%0"):gsub("^(%s*)([#>%-])", "%1\\%2")
+	end
+	return Codec.NoMentions(s)
+end
+
 -- Room for the text in one message: CHAT_MAX minus "M1~", the tier, 4 separators, a 4 digit id,
 -- the guild and the class.
 function Codec.ChatBudget(guild, class)

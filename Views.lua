@@ -73,6 +73,38 @@ local function Presence(online, days, dim)
 	return Grey(text)
 end
 
+-- 1.2.20 (from Olympus 1.2.1: a guild master "online for hours" while the census showed him away).
+-- A guild's report is its word when it was made; /who's is this quarter-hour's. Seen in that guild
+-- by /who now (its own search when its row was opened, or the round), a Dark Lord or officer of
+-- another guild is online whatever an old report said; otherwise a report older than Data.FRESH
+-- says what it said, grey (Presence's `dim`), never in red as if it were today's. Our own guild is
+-- our roster, the server's word. `e`: a guild of Data.Summary's list; returns online, days, dim.
+local roundIndex = {} -- the round's players as "<guild>\0<name folded>", made again when the round grows
+function Views.SeenNow(guild, name)
+	local W = ns.Who
+	if not W or type(guild) ~= "string" or type(name) ~= "string" or name == "" then return false end
+	local key = ns.Fold(ns.ShortName(name))
+	for _, p in ipairs(W.GuildSeen and W.GuildSeen(guild) or {}) do
+		if p.guild == guild and type(p.name) == "string" and ns.Fold(ns.ShortName(p.name)) == key then return true end
+	end
+	local sweep = W.sweep
+	local round = sweep and sweep.started and GetTime() - sweep.started <= (W.ROUND_TTL or 900) and sweep.list
+	if type(round) ~= "table" then return false end
+	if roundIndex.list ~= round or roundIndex.n ~= #round then
+		local set = {}
+		for _, p in ipairs(round) do
+			if type(p.guild) == "string" and type(p.name) == "string" then set[p.guild .. "\0" .. ns.Fold(ns.ShortName(p.name))] = true end
+		end
+		roundIndex = { list = round, n = #round, set = set }
+	end
+	return roundIndex.set[guild .. "\0" .. key] == true
+end
+function Views.PresenceNow(e, name, online, days)
+	if type(e) ~= "table" or e.name == GetGuildInfo("player") then return online, days, false end
+	if Views.SeenNow(e.name, name) then return true, 0, false end
+	return online, days, e.fresh == false
+end
+
 ---------------------------------------------------------------------------
 -- Column layouts, as fractions of the list width (so they follow the window size)
 ---------------------------------------------------------------------------
@@ -617,6 +649,23 @@ end
 local function NameHolds(q, name)
 	return type(name) == "string" and name ~= "" and SearchName(name):find(q, 1, true) ~= nil
 end
+-- 1.2.20 (from Olympus 1.2.1): the Census's search reads letters that look alike as one: l, I and
+-- 1, and 0 and O (a guild's name may mix them, "Sylvanistas XIlI", and the player types what he
+-- sees). A folded text (ns.Fold: I and O are i and o already) with l and 1 as i and 0 as o.
+local function Lookalike(s) return (s:gsub("[l1]", "i"):gsub("0", "o")) end
+Views.Lookalike = Lookalike -- (tests)
+-- Does `name` hold the Census's search `lq` (Lookalike of the query), as its row shows it?
+local function LookHolds(lq, name)
+	return type(name) == "string" and name ~= "" and Lookalike(SearchName(name)):find(lq, 1, true) ~= nil
+end
+-- Does one of the texts hold `lq`, as ns.Holds but with look-alike letters as one?
+local function CensusHolds(lq, ...)
+	for i = 1, select("#", ...) do
+		local s = select(i, ...)
+		if type(s) == "string" and s ~= "" and Lookalike(ns.Searchable(s)):find(lq, 1, true) then return true end
+	end
+	return false
+end
 
 function Views.Filter(tab) return filters[tab] or "" end
 
@@ -882,7 +931,9 @@ local function OpenGuildWindow()
 end
 local function CensusRow(e)
 	local g = e.g
-	local leader = g.leader and ((g.leaderOnline and "|cff40ff40" or "|cff9d9d9d") .. Plain(g.leader) .. "|r") or Grey("?")
+	-- (1.2.20: online when /who sees them now, whatever an old report said.)
+	local lordOn, lordDays = Views.PresenceNow(e, g.leader, g.leaderOnline, g.leaderDays)
+	local leader = g.leader and ((lordOn and "|cff40ff40" or "|cff9d9d9d") .. Plain(g.leader) .. "|r") or Grey("?")
 	local own = e.name == GetGuildInfo("player")
 	local cells = {
 		[1] = { onClick = function() OpenInRealm(e.name) end, hint = L.CELL_GUILD_HINT },
@@ -903,7 +954,7 @@ local function CensusRow(e)
 	}
 	if g.leader then
 		local lord = { name = g.leader, realm = g.realm, class = g.leaderClass, level = g.leaderLevel, zone = g.leaderZone,
-			guild = e.name, rank = LeaderTitle(e.name), online = g.leaderOnline, days = g.leaderDays }
+			guild = e.name, rank = LeaderTitle(e.name), online = lordOn, days = lordDays }
 		cells[4] = {
 			onClick = function() ns.UI.ShowPerson(lord) end,
 			tooltip = function(tt)
@@ -1044,7 +1095,7 @@ end
 local function ZoneLines(lines, s, q)
 	for _, z in ipairs(s.zoneList) do
 		local name = ns.Zones.NameForKey(z.key)
-		if NameHolds(q, name) then
+		if LookHolds(q, name) then
 			local _, change = ns.Data.ZoneTrend(z.key)
 			local e = ns.Data.Evening()
 			lines[#lines + 1] = {
@@ -1089,7 +1140,7 @@ local function PlayersFound(e, q, own, swept)
 	local g, out, seen = e.g, {}, {}
 	local function Add(p)
 		local short = p.name and ns.ShortName(p.name)
-		if not short or seen[short] or not NameHolds(q, p.name) then return end
+		if not short or seen[short] or not LookHolds(q, p.name) then return end
 		seen[short] = true
 		out[#out + 1] = p
 	end
@@ -1128,14 +1179,16 @@ local function CensusLines(s, q)
 	if q then
 		local min = RecruitQuery(q)
 		if min then RecruitingLines(lines, s, min) end
-		ZoneLines(lines, s, q)
+		-- (1.2.20: names, zones and players with look-alike letters as one, Lookalike.)
+		local lq = Lookalike(q)
+		ZoneLines(lines, s, lq)
 		local own, swept = GetGuildInfo("player"), nil
 		for _, e in ipairs(SortedGuilds(s.guilds)) do
-			if ns.Holds(q, Plain(e.name), e.g.leader and Plain(e.g.leader)) then
+			if CensusHolds(lq, Plain(e.name), e.g.leader and Plain(e.g.leader)) then
 				lines[#lines + 1] = CensusRow(e)
 			else
 				swept = swept or CensusSwept()
-				local found = PlayersFound(e, q, own, swept)
+				local found = PlayersFound(e, lq, own, swept)
 				if #found > 0 then
 					lines[#lines + 1] = CensusRow(e)
 					for i = 1, math.min(#found, Views.CENSUS_FOUND) do lines[#lines + 1] = PersonLine(e, found[i]) end
@@ -1146,7 +1199,7 @@ local function CensusLines(s, q)
 			end
 		end
 		for _, e in ipairs(s.seen or {}) do
-			if ns.Holds(q, Plain(e.name)) then lines[#lines + 1] = SeenRow(e) end
+			if CensusHolds(lq, Plain(e.name)) then lines[#lines + 1] = SeenRow(e) end
 		end
 		if #lines == 0 then lines[1] = NoMatch() end
 		return lines
@@ -1587,7 +1640,7 @@ local function RealmLines(s, q)
 		lines[#lines + 1] = {
 			header = true,
 			text = CROWN .. L.KING .. ": " .. Gold(Plain(king.g.leader or "?")),
-			right = Presence(king.g.leaderOnline, king.g.leaderDays),
+			right = Presence(Views.PresenceNow(king, king.g.leader, king.g.leaderOnline, king.g.leaderDays)),
 			tooltip = GuildTooltip(king),
 		}
 		-- The Treasurer of Sylvanistas, under the King: when that guild's report has him (the
@@ -1597,12 +1650,13 @@ local function RealmLines(s, q)
 			if ns.IsTreasurer(o.name, king.name) then t = o end
 		end
 		if t then
+			local on, days, dim = Views.PresenceNow(king, t.name, t.online, t.days)
 			local person = { name = t.name, realm = king.g.realm, guild = king.name, class = t.class, level = t.level, zone = t.zone,
-				rank = L.CAPTAIN, online = t.online, days = t.days }
+				rank = L.CAPTAIN, online = on, days = days }
 			lines[#lines + 1] = {
 				key = t.name,
 				text = ns.COIN .. L.TREASURER .. ": " .. Gold(Plain(t.name)),
-				right = Presence(t.online, t.days),
+				right = Presence(on, days, dim),
 				onClick = function() ns.UI.ShowPerson(person) end,
 			}
 			-- The treasury, when he shares it (Treasury.lua).
@@ -1674,10 +1728,11 @@ local function RealmLines(s, q)
 	-- closes and opens what the search opened, instead of the guild itself.
 	local function Guild(e, open, only, folds)
 		local g = e.g
+		local lordOn, lordDays, lordDim = Views.PresenceNow(e, g.leader, g.leaderOnline, g.leaderDays)
 		lines[#lines + 1] = {
 			id = Views.GuildId(e.name),
 			text = (open and "[-] " or "[+] ") .. Views.DisputeMark(g) .. Green("<" .. Plain(e.name) .. ">") .. " " .. Plain(g.leader or "?"),
-			right = Presence(g.leaderOnline, g.leaderDays),
+			right = Presence(lordOn, lordDays, lordDim),
 			onClick = function()
 				if folds then
 					folded[e.name] = not folded[e.name] or nil
@@ -1695,12 +1750,12 @@ local function RealmLines(s, q)
 		if not open then return end
 		if g.leader and (not only or only.lord) then
 			local lord = { name = g.leader, realm = g.realm, class = g.leaderClass, level = g.leaderLevel, zone = g.leaderZone,
-				guild = e.name, rank = LeaderTitle(e.name), online = g.leaderOnline, days = g.leaderDays }
+				guild = e.name, rank = LeaderTitle(e.name), online = lordOn, days = lordDays }
 			lines[#lines + 1] = {
 				key = g.leader,
-				indent = 1, text = Mark(g.leader, g.realm, g.leaderOnline) .. CROWN .. Gold(lord.rank) .. "  " .. ClassColored(g.leader, lord.class and ns.CLASS_FILES[lord.class])
+				indent = 1, text = Mark(g.leader, g.realm, lordOn) .. CROWN .. Gold(lord.rank) .. "  " .. ClassColored(g.leader, lord.class and ns.CLASS_FILES[lord.class])
 					.. Tag(g.leader, g.realm),
-				right = Presence(g.leaderOnline, g.leaderDays),
+				right = Presence(lordOn, lordDays, lordDim),
 				onClick = function() ns.UI.ShowPerson(lord) end,
 			}
 		end
@@ -1717,13 +1772,14 @@ local function RealmLines(s, q)
 				end }
 		end
 		for _, o in ipairs(listed) do
+			local on, days, dim = Views.PresenceNow(e, o.name, o.online, o.days)
 			local person = { name = o.name, realm = g.realm, class = o.class, level = o.level, zone = o.zone, guild = e.name,
-				rank = L.CAPTAIN, online = o.online, days = o.days }
+				rank = L.CAPTAIN, online = on, days = days }
 			lines[#lines + 1] = {
 				key = o.name,
-				indent = 2, text = Mark(o.name, g.realm, o.online) .. ASSIST .. ClassColored(o.name, o.class and ns.CLASS_FILES[o.class])
+				indent = 2, text = Mark(o.name, g.realm, on) .. ASSIST .. ClassColored(o.name, o.class and ns.CLASS_FILES[o.class])
 					.. Tag(o.name, g.realm) .. (ns.IsTreasurer(o.name, e.name) and ("  " .. ns.COIN .. Grey(L.TREASURER)) or ""),
-				right = (o.level and Grey(L.LEVEL_N:format(o.level)) .. "  " or "") .. Presence(o.online, o.days),
+				right = (o.level and Grey(L.LEVEL_N:format(o.level)) .. "  " or "") .. Presence(on, days, dim),
 				onClick = function() ns.UI.ShowPerson(person) end,
 			}
 		end

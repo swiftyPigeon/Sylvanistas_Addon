@@ -35,7 +35,7 @@ local L = ns.L
 -- keyboard and waits out a fight.
 --   V7~<id>                 check: what version do you run?        (whisper)
 --   V8~<id>~<version>       the answer                             (whisper)
---   V9~<version>            "please update": the newest the sender knows  (whisper, not the author)
+--   V9~<version>            "please update": the newest the sender knows  (whisper: the Dark Lady, Valkyr, moderators; 1.2.20)
 
 local Versions = {}
 ns.Versions = Versions
@@ -67,6 +67,19 @@ local function W() return ns.Workshop end
 local function Newer(a, b) return W().Newer(a, b) == true end
 local function Full(name) return ns.FullName(ns.Normal(tostring(name or ""))) end
 local function IsAuthor() local w = W() return w.IsAuthor ~= nil and w.IsAuthor() == true end
+-- 1.2.20 (from Olympus 1.2.1): who may ask a player to update: the author, the Dark Lady, her
+-- Valkyr and the moderators (High Council), by the name the server stamps (a sender) or our own.
+-- Every client drops anyone else's ask, which older versions still send; the menu line shows
+-- for them alone.
+local function MayAsk(name)
+	if type(name) ~= "string" or name == "" then return false end
+	local w = W()
+	if type(w) == "table" and type(w.IsAuthorName) == "function" and w.IsAuthorName(name) == true then return true end
+	return (type(ns.IsKingCharacter) == "function" and ns.IsKingCharacter(name) == true)
+		or (type(ns.IsSteward) == "function" and ns.IsSteward(name) == true)
+		or (type(ns.IsHighCouncillor) == "function" and ns.IsHighCouncillor(name) == true)
+end
+Versions.MayAsk = MayAsk
 -- Checks are kept by the short name, folded: the menu may give the name without its realm while
 -- the server stamps the answer with it (Forever's names are one across a realm group).
 local function Key(name) return ns.Fold(ns.ShortName(Full(name)) or "") end
@@ -358,6 +371,7 @@ end
 
 function Versions.AskUpdate(name)
 	local full = Full(name)
+	if full == "" or not MayAsk(ns.me) then return false end
 	if ns.ChatLocked() then
 		ns.Print(L.VERSION_LOCKED)
 		return false
@@ -427,6 +441,8 @@ end
 -- is his, and being on it (or newer) is being up to date; without it, no number of theirs is shown.
 function Versions.HandleAsk(dist, sender, text)
 	if dist ~= "WHISPER" then return end
+	-- (1.2.20: from the author, the Dark Lady, her Valkyr or a moderator alone.)
+	if not MayAsk(Full(sender)) then return end
 	local latest = tostring(text or ""):match("^V9~(%d+%.%d+%.%d+)$")
 	if not latest or #latest > 12 or not Newer(latest, ns.VERSION) or Ignored(sender) then return end
 	local M = ns.Moderation
@@ -509,7 +525,7 @@ function Versions.MenuLines(target, menu)
 	-- In a dungeon, a raid or a match nothing can go: the lines show, greyed, and say why.
 	local locked = target.locked == true
 	local function Tip(text) return locked and L.PLAYERMENU_LOCKED or text end
-	if state == "outdated" then
+	if state == "outdated" and MayAsk(ns.me) then
 		local tipText = IsAuthor() and L.VERSION_ASK_AUTHOR_TIP or L.VERSION_ASK_TIP
 		if not IsAuthor() and Newer(Versions.FIRST, version) then tipText = L.VERSION_ASK_OLD_TIP:format(version) end
 		menu.Button(L.VERSION_ASK, function() Versions.AskUpdate(name) end, L.VERSION_ASK, Tip(tipText), not locked)

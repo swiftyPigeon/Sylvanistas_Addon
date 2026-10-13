@@ -14,10 +14,50 @@ local function ClientInfo()
 	return ("%s (%s) toc %s, locale %s"):format(tostring(version), tostring(build), tostring(toc), tostring(GetLocale()))
 end
 
+-- 1.2.20 (from Olympus 1.2.1): what /syl status and /syl bug never show, nor the error list or the
+-- log keep. The sealed channel's name (Comm.ChannelSpec: "Syl" or "SylH" and eight letters and
+-- digits made from the realm key) gives a short key back to anyone who tries keys against it
+-- offline, and a report gets pasted on Discord. It shows as "(sealed channel)"; the public
+-- channel's name is no secret and stays. ("Sylvanistas" itself fits the pattern: never scrubbed.)
+local SEALED_NAME = "%f[%w]SylH?" .. ("[0-9a-z]"):rep(8) .. "%f[^%w]"
+local function Scrub(text)
+	return (tostring(text or ""):gsub(SEALED_NAME, function(m)
+		if m == "Sylvanistas" then return m end
+		return "(sealed channel)"
+	end))
+end
+ns.ScrubSealed = Scrub -- (tests)
+
+-- s with every `secret` in it (plain text) as "(key)".
+local function Without(s, secret)
+	if type(s) ~= "string" or type(secret) ~= "string" or secret == "" then return s end
+	local out, i = {}, 1
+	while true do
+		local a, b = s:find(secret, i, true)
+		if not a then break end
+		out[#out + 1] = s:sub(i, a - 1) .. "(key)"
+		i = b + 1
+	end
+	out[#out + 1] = s:sub(i)
+	return table.concat(out)
+end
+
+-- A failure inside /syl key <secret>: Core.lua's SlashWhere names the command with what followed
+-- it, the key itself here. It is kept as "slash key" alone, and the key (as typed, and as
+-- Comm.SetRealmKey keeps it) comes out of the message and the stack. "/syl key rotate" names no key.
+local function Unkeyed(where, msg, stack)
+	local cmd, typed = tostring(where or ""):match("^slash%s+(%S+)%s*(.-)%s*$")
+	if not cmd or cmd:lower() ~= "key" or typed == "" or typed:lower() == "rotate" then return where, msg, stack end
+	local kept = typed:gsub("[~|\n]", "")
+	return "slash key", Without(Without(msg, typed), kept), Without(Without(stack, typed), kept)
+end
+ns.Unkeyed = Unkeyed -- (tests)
+
 function ns.CaptureError(where, err)
 	local db = ns.db
 	local msg = tostring(err)
 	local stack = debugstack and debugstack(3, 12, 0) or ""
+	where, msg, stack = Unkeyed(where, msg, stack)
 	if not db then
 		print("|cffff4040Sylvanistas error (before load):|r " .. msg)
 		return
@@ -54,6 +94,22 @@ end
 ns.On("INIT", function()
 	for _, e in ipairs(ns.earlyErrors or {}) do ns.CaptureError("load", e[1]) end
 	ns.earlyErrors = {}
+	-- (1.2.20) A key typed with /syl key that older versions kept with a failure: out of the saved
+	-- errors and log ("ERROR in slash key <key>: ..." there: the line keeps the command alone).
+	for _, e in ipairs(type(ns.db.errors) == "table" and ns.db.errors or {}) do
+		if type(e) == "table" and type(e.where) == "string" then
+			local where = e.where
+			e.where, e.msg, e.stack = Unkeyed(e.where, e.msg, e.stack)
+			if e.where ~= where then e.key = e.where .. "|" .. tostring(e.msg) end
+		end
+	end
+	local log = type(ns.db.log) == "table" and ns.db.log or {}
+	for i, line in ipairs(log) do
+		if type(line) == "string" then
+			local head, cmd, rest = line:match("^(.-ERROR in slash%s+)(%S+)%s+(.*)$")
+			if head and cmd:lower() == "key" and not rest:lower():find("^rotate:") then log[i] = head .. "key (not kept)" end
+		end
+	end
 	-- Only Sylvanistas's own errors are kept (0.9.2, Bootstrap.lua): the saved list of an older
 	-- version, with every other addon's in it, is replaced, and nothing of theirs stays.
 	local all = ns.allErrors or {}
@@ -138,6 +194,23 @@ end
 -- probe saw, all in /syl bug. With the gamepad UI one line in chat, once a session, asks the
 -- player for that report: there it is the only way to learn what the game refused.
 local MAX_BLOCKED = 10
+-- The game raises the event inside the refused call, so the stack read here starts with this
+-- handler's own frames (it, pcall, Core.lua's SafeCall and event dispatch), which never made the
+-- call. They are dropped (1.2.20, from Olympus 1.2.1): the report's lines then start at the
+-- refused call and reach what called it.
+local OWN_FRAMES = { "AddOns[\\/]Sylvanistas[\\/]Diagnostics%.lua", "AddOns[\\/]Sylvanistas[\\/]Core%.lua", "^%[C%]: in function [`']x?pcall'" }
+local function Own(line)
+	for _, p in ipairs(OWN_FRAMES) do if line:find(p) then return true end end
+	return false
+end
+function ns.RefusedStack(stack) -- (tests)
+	local out, ours = {}, true
+	for line in tostring(stack or ""):gmatch("[^\n]+") do
+		ours = ours and Own(line)
+		if not ours then out[#out + 1] = line end
+	end
+	return #out > 0 and table.concat(out, "\n") or tostring(stack or "")
+end
 local blocked, toldGamepad = 0, false
 function ns.ResetBlocked() blocked, toldGamepad = 0, false end -- tests
 
@@ -160,7 +233,7 @@ local function RecordBlocked(event, func)
 	local stack = ""
 	if type(debugstack) == "function" then
 		local ok, s = pcall(debugstack, 2, 24, 6)
-		stack = ok and type(s) == "string" and s or ""
+		stack = ok and type(s) == "string" and ns.RefusedStack(s) or ""
 	end
 	local okProbe, taint = pcall(ns.TaintProbe)
 	b = b or { key = key, event = event, func = func, count = 1, first = now, last = now }
@@ -311,7 +384,9 @@ function ns.StatusText()
 	end
 	local c = ns.Comm and ns.Comm.Stats()
 	if c then
-		add("channel '%s' = #%s  sealed=%s  |  peers in guild=%d  |  reporter=%s (me: %s)", tostring(c.channelName), tostring(c.channel), tostring(c.sealed), c.peers, tostring(c.reporter), tostring(c.isReporter))
+		-- (1.2.20: the sealed channel's name never: see Scrub.)
+		add("channel %s = #%s  sealed=%s  |  peers in guild=%d  |  reporter=%s (me: %s)", c.sealed and "(sealed channel)" or ("'" .. tostring(c.channelName) .. "'"),
+			tostring(c.channel), tostring(c.sealed), c.peers, tostring(c.reporter), tostring(c.isReporter))
 		-- 1.2.2: key required, and none here: no channel (ns.REQUIRE_KEY).
 		if ns.Comm.KeyLocked and ns.Comm.KeyLocked() then add("%s", L.KEY_LOCKED) end
 		add("sent=%d recv=%d reports=%d sendFails=%d badMsgs=%d queue=%d lastFail=%s", c.sent, c.recv, c.reports, c.fails, c.bad, c.queue, tostring(c.lastFail))
@@ -333,8 +408,21 @@ function ns.StatusText()
 		local ok, list = pcall(function() return { GetChannelList() } end)
 		if ok and list and #list > 0 then
 			local stride = type(list[3]) == "boolean" and 3 or 2
+			-- (1.2.20) Named: the game's own (zone channels) and ours as "Sylvanistas"; any other is
+			-- the player's own (a private channel, another addon's): "other".
+			local ours = ns.Comm.ChannelName and ns.Comm.ChannelName()
+			local infoOf = C_ChatInfo and C_ChatInfo.GetChannelInfoFromIdentifier
 			local parts = {}
-			for i = 1, #list, stride do parts[#parts + 1] = ("%s %s"):format(tostring(list[i]), tostring(list[i + 1])) end
+			for i = 1, #list, stride do
+				local name, shown = list[i + 1], "other"
+				if type(name) == "string" and type(ours) == "string" and name:lower() == ours:lower() then
+					shown = "Sylvanistas"
+				elseif type(name) == "string" and type(infoOf) == "function" then
+					local okInfo, info = pcall(infoOf, name)
+					if okInfo and type(info) == "table" and (tonumber(info.zoneChannelID) or 0) > 0 then shown = name end
+				end
+				parts[#parts + 1] = ("%s %s"):format(tostring(list[i]), shown)
+			end
 			add("chat channels: %s", table.concat(parts, ", "))
 		end
 		add("other channels dropped: %d  |  census asked %d (left out %d), answered %d  |  runner-up: %s  |  first channel msg: %s",
@@ -377,6 +465,7 @@ function ns.StatusText()
 		add("author's roll call: %s (/syl rollcall on|off)", ns.Workshop and ns.Workshop.AnswerState and ns.Workshop.AnswerState() or "?")
 		-- (1.1) The author's released version as his presence named it, and whether this client is behind it.
 		add("%s", ns.Workshop and ns.Workshop.VersionLine and ns.Workshop.VersionLine() or "author's released version: ?")
+		add("version letters: %s", ns.Letters and ns.Letters.StatusLine and ns.Letters.StatusLine() or "not loaded")
 		-- (1.1.2) The right-click menus' lines, and this session's version checks and asks.
 		add("player menus: %s  |  versions: %s", ns.PlayerMenu and ns.PlayerMenu.StatusLine and ns.PlayerMenu.StatusLine() or "not loaded",
 			ns.Versions and ns.Versions.StatusLine and ns.Versions.StatusLine() or "not loaded")
@@ -428,12 +517,13 @@ function ns.StatusText()
 	-- The gamepad UI and what the game refused us this session; what its code reads, as now.
 	local refused = type(ns.db.actionsBlocked) == "table" and ns.db.actionsBlocked or {}
 	add("gamepad UI: %s  |  blocked this session: %d  |  blocked calls kept: %d%s", ns.GamepadUI() and "on" or "off", blocked, #refused,
-		#refused > 0 and (" (last: %s)"):format(tostring(refused[#refused].func)) or "")
+		-- (1.2.20: the last one's version too: one kept from an older version is not this one's.)
+		#refused > 0 and (" (last: %s, v%s)"):format(tostring(refused[#refused].func), tostring(refused[#refused].version or "?")) or "")
 	if ns.GamepadUI() or blocked > 0 then
 		local ok, line = pcall(ns.TaintProbe)
 		add("%s", ok and line or ("taint: probe failed: " .. tostring(line)))
 	end
-	return table.concat(lines, "\n")
+	return Scrub(table.concat(lines, "\n"))
 end
 
 function ns.BuildBugReport()
@@ -442,7 +532,11 @@ function ns.BuildBugReport()
 	-- report: a report sent in game stops at Workshop.BUG_MAX bytes, and this is the part that
 	-- names what to fix.
 	local refused = type(ns.db.actionsBlocked) == "table" and ns.db.actionsBlocked or {}
-	if #refused > 0 then
+	-- (1.2.20: the heading only over this version's: an older version's calls alone, kept in the
+	-- saved variables, made it head an empty list, as if this version had been blocked.)
+	local current = false
+	for _, b in ipairs(refused) do if b.version == ns.VERSION then current = true break end end
+	if current then
 		out[#out + 1] = "Blocked by the game:"
 		-- This version's newest two, their stacks cut to 8 lines: the errors below must still fit.
 		local shown = 0
@@ -488,7 +582,8 @@ function ns.BuildBugReport()
 	local log = ns.db.log
 	for i = math.max(1, #log - 25), #log do out[#out + 1] = "  " .. log[i] end
 	out[#out + 1] = "```"
-	return table.concat(out, "\n")
+	-- (1.2.20) The log and the errors name the sealed channel too: scrubbed with the status.
+	return Scrub(table.concat(out, "\n"))
 end
 
 function ns.PrintLayer()
