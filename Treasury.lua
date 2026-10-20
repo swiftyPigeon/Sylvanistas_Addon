@@ -271,10 +271,8 @@ Treasury.TreasurerPin = TreasurerPin
 -- King, his Steward and the keepers (1.1): with one fixed amount a week, they would be a list of
 -- who paid it, and request #36 gives it to the King and that guild's Captains alone (the dues' lists).
 -- Here, not in Dues.lua, so that it holds even while that file is missing (a restart owed).
-local function DuesLine(keeper, e)
-	if type(e) ~= "table" or e.out or e.item or e.kind == "transfer" or (tonumber(e.money) or 0) <= 0 then return false end
-	return TreasurerPin(keeper) ~= nil
-end
+-- (1.3.0: the dues are gone: no line is anyone's dues.)
+local function DuesLine() return false end
 Treasury.DuesLine = DuesLine
 
 -- One of the keepers pinned by name (the other side of a trade or a mail: its guild is not
@@ -358,7 +356,7 @@ function Treasury.Visible()
 end
 -- The tab itself (1.1): also for every member who may send the week's dues (Dues.lua), with only
 -- what the King shows of the treasury (Visible: nothing while he shows nothing).
-function Treasury.TabVisible() return Treasury.Visible() or ns.Dues.Pays() == true end
+function Treasury.TabVisible() return Treasury.Visible() end
 
 ---------------------------------------------------------------------------
 -- The books (each keeper character's, kept by his own client)
@@ -456,8 +454,6 @@ local function Add(s, e, sign, now)
 		s.allIn = math.max(0, s.allIn + copper)
 		s.byDonor[e.name] = (s.byDonor[e.name] or 0) + copper
 		if s.byDonor[e.name] <= 0 then s.byDonor[e.name] = nil end
-		-- 1.1: each donor's sum per week, for the dues (Dues.lua; never sent on the channel).
-		ns.Dues.WeekAdd(s, e, copper)
 	end
 	DayCount(s, e, copper, now)
 end
@@ -476,8 +472,6 @@ local function Sums(b)
 			if not e.excluded then Add(s, e, 1, now) end
 		end
 	end
-	-- 1.1: a book's sums from before the dues get their weeks from the lines it keeps, once.
-	if s.weeks == nil then ns.Dues.Backfill(s, b.lines) end
 	return s
 end
 Treasury.SumsOf = function(b) return Sums(b) end
@@ -573,8 +567,6 @@ function Treasury.Record(name, copper, how, out, o)
 	local who = ns.DisplayName(ns.Normal(name)) or name
 	local e = { name = who, money = copper, how = how, t = ns.Now(), out = out or nil, excluded = excluded or nil, kind = kind,
 		item = item, count = item and count or nil }
-	-- 1.1: its week, and a gift's giver's guild (Dues.lua; kept here, never sent).
-	ns.Dues.Stamp(e, name, o)
 	b.lines[#b.lines + 1] = e
 	while #b.lines > Treasury.MAX do table.remove(b.lines, 1) end
 	if not e.excluded then Count(b, e, 1) end
@@ -1047,31 +1039,10 @@ function Treasury.Totals(b)
 	return t
 end
 
--- 1.1, review (the ranking): a ranked donor's total in the Treasurer's book grew by the
--- dues' amount the week he paid it (one fixed amount), which told the channel who paid and so who
--- did not (request #36). The ranking (all time, which a moderator kept public) that leaves the Treasurer's
--- client (the channel's, the whole book whispered, 0.9's copy, his mail character's he passes on)
--- leaves out, of each giver's gold to the Treasurer's characters, each week's up to that week's
--- amount as the book kept it, and all he sent with the dues' note (Dues.DuesPart): what may be his
--- dues, paid or not. A total grows only by what a week's gold went over the amount, so one that did
--- not grow may be a payer's or not: it shows no payer of the amount the Treasurer's client knew that
--- week (one who paid more by trade or plain mail while it knew less shows by the difference). It is
--- that much lower than on the Treasurer's own screen. Another keeper's book, which is no dues: as it is.
+-- The ranking members may see (1.3.0: with the dues gone, the book's own).
 local function PublicRanking(b, t)
 	t = t or Treasury.Totals(b)
-	if not (b and TreasurerPin(b.name)) then return t.ranking end
-	local part, out = ns.Dues.DuesPart(Sums(b)), {}
-	for _, g in ipairs(t.ranking) do
-		local key = ns.Dues.Key(g.name)
-		local take = key and math.min(g.money, part[key] or 0) or 0
-		if key then part[key] = (part[key] or 0) - take end
-		if g.money - take >= 1 then out[#out + 1] = { name = g.name, money = g.money - take } end
-	end
-	table.sort(out, function(x, y)
-		if x.money ~= y.money then return x.money > y.money end
-		return x.name < y.name
-	end)
-	return out
+	return t.ranking -- (1.3.0: the dues are gone, nothing is taken out of it)
 end
 Treasury.PublicRanking = PublicRanking
 
@@ -2280,11 +2251,45 @@ function Treasury.SendKeepers(force)
 	ns.Comm.Send("CHANNEL", ("T1~K~%d~%s~%d~%s"):format(ns.King.NewId(), GetGuildInfo("player") or "", math.floor(k.at), table.concat(names, ",")), "treasurykeepers")
 end
 
+-- 1.3.0 (the user's call): the Treasurer is a guild rank, not a pinned name. The Dark Lady's own
+-- client (the only one whose keepers' list everyone trusts: T1~K, from her pinned name) puts every
+-- member of her guild whose rank is named Treasurer on that list, and takes them off when the rank
+-- goes; the names she added by hand stay (k.auto: the ones the rank put there). Once a minute.
+local function TreasurerRank(rank) return type(rank) == "string" and rank:lower():find("treasurer", 1, true) ~= nil end
+function Treasury.SyncRankKeepers()
+	if ns.TREASURY_OFF or not (ns.King and ns.King.IsKing and ns.King.IsKing()) or not ns.rdb then return false end
+	local now = {}
+	for _, m in ipairs(ns.Roster and ns.Roster.members or {}) do
+		if TreasurerRank(m.rank) and m.full then now[#now + 1] = m.full end
+	end
+	table.sort(now)
+	local k = KeeperStore()
+	local auto = {}
+	for _, n in ipairs(k and type(k.auto) == "table" and k.auto or {}) do auto[n:lower()] = true end
+	local names, seen = {}, {}
+	for _, n in ipairs(k and k.names or {}) do
+		if not auto[n:lower()] then names[#names + 1] = n seen[n:lower()] = true end -- (her own, by hand)
+	end
+	for _, n in ipairs(now) do
+		if not seen[n:lower()] and #names < Treasury.MAX_KEEPERS then names[#names + 1] = n seen[n:lower()] = true end
+	end
+	local before = table.concat(k and k.names or {}, ",")
+	if before == table.concat(names, ",") then return false end
+	ns.rdb.treasuryKeepers = { names = names, auto = now, t = ns.Now(),
+		at = math.max(Clock(), (k and tonumber(k.at) or 0) + 1), from = ns.me }
+	Treasury.SendKeepers(true)
+	ns.Log("treasury: keepers by the Treasurer rank: %s", table.concat(names, ", "))
+	ns.Fire("TREASURY_CHANGED")
+	ns.Fire("DATA_CHANGED")
+	return true
+end
+
 -- The King's list changed on his screen (his own, his Steward's, or the author's view's): kept, sent.
 local function SetKeepers(names)
 	local preview = ns.King.Preview()
 	local prev = preview and ns.db.previewTreasuryKeepers or KeeperStore()
-	local k = { names = names, t = ns.Now(), at = math.max(Clock(), (type(prev) == "table" and tonumber(prev.at) or 0) + 1), from = ns.me }
+	local k = { names = names, t = ns.Now(), at = math.max(Clock(), (type(prev) == "table" and tonumber(prev.at) or 0) + 1), from = ns.me,
+		auto = type(prev) == "table" and prev.auto or nil } -- (1.3.0: the rank's names stay the rank's)
 	if preview then
 		ns.db.previewTreasuryKeepers = k
 		ns.Print(L.THRONE_PREVIEW_NOTE)
@@ -2655,6 +2660,11 @@ function Treasury.Tick()
 	Treasury.SendKeepers()
 	Treasury.AskEarly()
 end
+
+-- 1.3.0: the Dark Lady's client keeps the Treasurer rank on the keepers' list (Treasury.SyncRankKeepers).
+ns.On("LOGIN", function()
+	ns.Every(60, "treasury rank keepers", function() ns.SafeCall("treasury rank keepers", Treasury.SyncRankKeepers) end)
+end)
 
 ns.On("LOGIN", function()
 	Treasury.Migrate()
@@ -3336,9 +3346,6 @@ end
 local function SummaryLines(role, q)
 	if q then return SummarySearch(role, q) end
 	local lines = { { header = true, text = L.TREASURY_TITLE } }
-	-- 1.1: the week's dues first (Dues.lua): the way to them, for whoever may see them, and the
-	-- button that fills in a member's own payment. A member the King shows nothing sees that alone.
-	ns.Dues.SummaryLines(lines, role)
 	if role == "member" and not Treasury.AnyShown() then return lines end
 	local keeper = Treasury.IsKeeper()
 	if keeper then
@@ -3455,8 +3462,7 @@ function Treasury.Build(q)
 	if Treasury.mode == "book" and not Treasury.MaySee("book") then Treasury.mode = "summary" end
 	if Treasury.mode == "keepers" and role == "member" then Treasury.mode = "summary" end
 	-- 1.1: the week's dues (Dues.lua), for whoever may see them.
-	if Treasury.mode == "dues" and not ns.Dues.Sees() then Treasury.mode = "summary" end
-	if Treasury.mode == "dues" then return ns.Dues.Build(q) end
+	if Treasury.mode == "dues" then Treasury.mode = "summary" end -- (1.3.0: the dues are gone)
 	local lines
 	if Treasury.mode == "book" then lines = BookLines(role, q)
 	elseif Treasury.mode == "keepers" then lines = KeeperLines()
@@ -3469,7 +3475,7 @@ end
 -- A list of donors shows on the tab (the book, or the ranking): its search box too (Views.lua).
 function Treasury.Searchable()
 	if Treasury.mode == "keepers" then return false end
-	if Treasury.mode == "dues" then return ns.Dues.Sees() == true end
+	if Treasury.mode == "dues" then return false end
 	if Treasury.mode == "book" and Treasury.MaySee("book") then return true end
 	-- (1.1: the bank's items too, and the sister guilds'.)
 	if BankVisible(Treasury.Role()) or (ns.Bank and ns.Bank.SeesSisters and ns.Bank.SeesSisters() and #ns.Bank.Sisters() > 0) then return true end

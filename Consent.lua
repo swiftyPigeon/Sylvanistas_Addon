@@ -338,7 +338,7 @@ Consent.Register({
 Consent.Register({
 	key = "layerhelp", label = "CONSENT_LAYERHELP", text = "CONSENT_LAYERHELP_TEXT",
 	shown = function() return not IsKing() end,
-	get = function() return ns.db.layerHelp end,
+	get = function() if ns.db.layerHelp == nil and ns.Hop and ns.Hop.Helps() then return true end return ns.db.layerHelp end, -- (1.3.0: on in the house)
 	set = function(on) ns.Hop.SetHelp(on) end,
 	note = function() return not ns.Layers.Sharing() and L.CONSENT_NEEDS_LOCATION or nil end,
 })
@@ -378,7 +378,7 @@ Consent.Register({
 })
 Consent.Register({
 	key = "chat", label = "CONSENT_CHAT", text = "CONSENT_CHAT_TEXT",
-	get = function() return ns.db.addonChat end,
+	get = function() return ns.db.addonChat ~= false end, -- (1.3.0: on unless a No: never waits for an answer)
 	set = function(on) ns.Channels.SetChatOn(on) end,
 })
 -- An officer's patrol findings to his guild's officers (Inspect.lua, request #29): officers alone

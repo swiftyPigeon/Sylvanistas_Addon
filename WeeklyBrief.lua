@@ -32,7 +32,7 @@ local function Store()
 	if type(s.vox) ~= "table" or type(s.vox.q) ~= "string" or type(s.vox.verdict) ~= "string" or not Number(s.vox.at) then s.vox = nil end
 	return s
 end
-local function Week() return ns.Dues and ns.Dues.Week and ns.Dues.Week() or nil end
+local function Week() return ns.Weeks and ns.Weeks.Week and ns.Weeks.Week() or nil end
 local function Census()
 	local D = ns.Data
 	if not D or not D.Summary or (D.Rebuilding and D.Rebuilding() ~= nil) then return nil end
@@ -205,6 +205,8 @@ function Brief.PersonalPage(q)
 			lines[#lines + 1] = { indent = 1, text = value, gapAfter = true }
 		end
 	end
+	-- 1.3.0: the recap under them (WeekLog.lua): dungeons, newly discovered, guild life, Share.
+	if ns.WeekLog and ns.WeekLog.Lines then ns.WeekLog.Lines(lines, q) end
 	return lines
 end
 

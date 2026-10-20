@@ -28,7 +28,7 @@ local NOTICE_WAIT = 10           -- ...a few seconds after the first line held, 
 local TIERS = {
 	A = { level = 1, label = "CHAN_ALL",      slash = "/sy",  word = "sylvanistas",  deny = "MEMBERS_ONLY",       color = { 0.90, 0.77, 0.36 } },
 	C = { level = 2, label = "CHAN_CAPTAINS", slash = "/syd", word = "dreadguard", deny = "CHAN_ONLY_CAPTAINS", color = { 0.35, 0.85, 0.85 } },
-	L = { level = 3, label = "CHAN_LORDS",    slash = "/sydl", word = "darklords", deny = "CHAN_ONLY_LORDS",    color = { 0.75, 0.50, 1.00 } },
+	L = { level = 3, label = "CHAN_LORDS",    slash = "/sydc", word = "darkcallers", deny = "CHAN_ONLY_LORDS",    color = { 0.75, 0.50, 1.00 } },
 }
 Channels.TIERS, Channels.ORDER = TIERS, { "A", "C", "L" }
 Channels.HISTORY = HISTORY
@@ -59,10 +59,11 @@ end
 -- or [Lords]. A line that arrives is dropped before anything keeps it (no history, nothing to
 -- the Chat tab or a companion through the bridge); the client still sits in the channel, for
 -- the census.
-function Channels.ChatOn() return ns.db ~= nil and ns.db.addonChat == true end
+-- 1.3.0 (the user's call): on from install. nil, never answered, is on; only a No turns them off.
+function Channels.ChatOn() return ns.db ~= nil and ns.db.addonChat ~= false end
 function Channels.ChatState()
 	local v = ns.db and ns.db.addonChat
-	return v == true and "on" or (v == false and "off" or "not chosen (off)")
+	return v == true and "on" or (v == false and "off" or "on (default)")
 end
 function Channels.SetChatOn(on)
 	ns.db.addonChat = on and true or false
@@ -114,7 +115,10 @@ end
 -- Our own rank always comes from the server.
 function Channels.MyLevel()
 	if not ns.IsMember() then return 0 end
-	return Channels.LevelOf(GetGuildInfo("player"), ns.Roster.MyRank())
+	local level = Channels.LevelOf(GetGuildInfo("player"), ns.Roster.MyRank())
+	-- 1.3.0: a Dreadguard (moderator) reads and writes [Dark Rangers] like an officer.
+	if level < 2 and ns.IsHighCouncillor(ns.me) then level = 2 end
+	return level
 end
 
 function Channels.CanUse(tier)
@@ -148,6 +152,16 @@ function Channels.VerifiedLevel(sender, guild)
 	local known = ns.Data.KnownRank(who, guild)
 	if known == nil then return 1, false end
 	return Channels.LevelOf(guild, known), true, known
+end
+-- 1.3.0: a Dreadguard (moderator: the signed list, by the name the server stamps) speaks in
+-- [Dark Rangers] like an officer, whatever their guild rank.
+do
+	local Raw = Channels.VerifiedLevel
+	function Channels.VerifiedLevel(sender, guild)
+		local level, verified, rank = Raw(sender, guild)
+		if level and level >= 1 and level < 2 and ns.IsHighCouncillor(sender) then return 2, true, rank end
+		return level, verified, rank
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -1706,7 +1720,7 @@ ns.Comm.Handle("N1", function(dist, sender, text) Channels.HandlePin(dist, sende
 function Channels.PinStatus(now)
 	local p = Current(now)
 	if not p then return "none" end
-	local ranks = { [3] = "the Dark Lady", [2] = "Valkyr or Dark Ranger", [1] = "Dark Lord" }
+	local ranks = { [3] = "the Dark Lady", [2] = "Valkyr or Deathstalker", [1] = "Darkcaller" }
 	return ("by %s <%s> (%s)%s%s, ends in %dm"):format(ns.DisplayName(p.sender) or "?", Codec.Plain(p.guild), ranks[p.rank] or "?",
 		p.mine and ", ours" or "", Channels.Pin(now) ~= p and ", not shown here (chats off or net-off)" or "",
 		math.ceil((p.expires - (now or ns.Now())) / 60))
@@ -1810,8 +1824,8 @@ end
 
 local WORDS = {
 	all = "A", a = "A", sylvanistas = "A", todos = "A",
-	dreadguard = "C", dreadguards = "C", d = "C", captains = "C", captain = "C", c = "C", capitaes = "C", ["capitães"] = "C",
-	darklords = "L", darklord = "L", dl = "L", veterans = "L", veteran = "L", v = "L", lords = "L", lord = "L", l = "L", lordes = "L",
+	darkrangers = "C", darkranger = "C", dr = "C", d = "C", captains = "C", captain = "C", c = "C", capitaes = "C", ["capitães"] = "C",
+	darkcallers = "L", darkcaller = "L", dc = "L", darklords = "L", darklord = "L", dl = "L", veterans = "L", veteran = "L", v = "L", lords = "L", lord = "L", l = "L", lordes = "L",
 }
 function Channels.TierForWord(w)
 	return WORDS[(tostring(w or ""):lower():gsub("^%s+", ""):gsub("%s+$", ""))]
@@ -1827,6 +1841,8 @@ function Channels.ToggleMute(word)
 		return
 	end
 	local muted = Muted()
+	-- 1.3.0 (the user's rule): the officers' chats ([Dark Rangers], [Darkcallers]) are muted by the Dark Lady alone.
+	if (tier == "C" or tier == "L") and not muted[tier] and not ns.IAmDarkLady() then return ns.Print(L.MUTE_NOT_OFFICERS) end
 	if muted[tier] then
 		muted[tier] = nil
 		ns.Print(L.CHAN_UNMUTED:format(Label(tier)))
@@ -1919,17 +1935,18 @@ local function Slash(tier, where)
 		ns.SafeCall(where, Channels.Send, tier, msg)
 	end
 end
--- /syd and /sydl (Dreadguard, Dark Lords); /syc, /syv and /syld still work.
-SLASH_SYLVANISTASALL1, SLASH_SYLVANISTASCAPTAINS1, SLASH_SYLVANISTASLORDS1 = "/sy", "/syd", "/sydl"
+-- /syd and /sydc (Dreadguard, Darkcallers); /syc, /syv, /syld and /sydl (1.3.0: Dark Lords before) still work.
+SLASH_SYLVANISTASALL1, SLASH_SYLVANISTASCAPTAINS1, SLASH_SYLVANISTASLORDS1 = "/sy", "/syd", "/sydc"
 SLASH_SYLVANISTASCAPTAINS2, SLASH_SYLVANISTASLORDS2, SLASH_SYLVANISTASLORDS3 = "/syc", "/syv", "/syld"
+SLASH_SYLVANISTASLORDS4 = "/sydl"
 SlashCmdList.SYLVANISTASALL = Slash("A", "slash /sy")
 SlashCmdList.SYLVANISTASCAPTAINS = Slash("C", "slash /syd")
-SlashCmdList.SYLVANISTASLORDS = Slash("L", "slash /sydl")
+SlashCmdList.SYLVANISTASLORDS = Slash("L", "slash /sydc")
 
 ---------------------------------------------------------------------------
 -- 1.2.21 (from Olympus 1.2.1): the channel's name before a line in the game's chat, [Sylvanistas],
--- [Dreadguard] or [Dark Lords], is a link, as the game's own [Party] or [Guild] are: a left click
--- opens the game's chat box with /sy, /syd or /sydl in it, ready for the line. Only where this
+-- [Dreadguard] or [Darkcallers], is a link, as the game's own [Party] or [Guild] are: a left click
+-- opens the game's chat box with /sy, /syd or /sydc in it, ready for the line. Only where this
 -- client may write in that channel now (Channels.CanWrite); elsewhere the plain name, as before.
 -- At the click it is asked again, and a channel closed since says why instead. Forever's UI hands
 -- links of type "addon" to SetItemRef, which only marks them handled; the click is ours after that,
@@ -1967,7 +1984,7 @@ function Channels.TagLinked(tier)
 	return tagHooked and not ns.GamepadUI() and type(ChatFrame_OpenChat) == "function" and Channels.CanWrite(tier) or false
 end
 
--- "[Sylvanistas]", "[Dreadguard]" or "[Dark Lords]" before a line: the link where TagLinked says so.
+-- "[Sylvanistas]", "[Dreadguard]" or "[Darkcallers]" before a line: the link where TagLinked says so.
 function Channels.Tag(tier)
 	local name = "[" .. Label(tier) .. "]"
 	if not Channels.TagLinked(tier) then return name end

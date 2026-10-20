@@ -40,7 +40,7 @@ Recruit.ROUTE_FRESH = 600   -- a route this recent: no new J1 at a search
 Recruit.ROUTE_KEEP = 1800   -- a route is shown this long
 Recruit.ROUTE_ASKS = 3      -- gates one answer named: more members asked, up to this many within ROUTE_FRESH
 Recruit.ROUTE_GUILDS = 8    -- guilds in one answer, at most
-Recruit.ROUTE_CONTACTS = 2  -- officers named per guild, at most
+Recruit.ROUTE_CONTACTS = 3  -- Valkyr and officers named per guild, at most (1.3.0: 3, Valkyr first)
 Recruit.ANSWER_EACH = 60    -- a member answers one asker at most this often...
 Recruit.ANSWER_MAX = 10     -- ...and this many askers a minute in all (do not contact: a bare "no" past it)
 Recruit.REQUEST_EACH = 600  -- a request from one player counts once this often
@@ -418,8 +418,12 @@ local function Contacts(o, own)
 		out[#out + 1] = Field(ns.DisplayName(full))
 	end
 	if own and o.name == own then
+		-- 1.3.0: our guild's Valkyr online first (the recruiters), then its officers.
 		for _, m in ipairs(ns.Roster.online or {}) do
-			if (m.rankIndex or 9) <= ns.CAPTAIN_RANK then Add(m.name) end
+			if ns.IsValkyr(ns.FullName(m.name)) then Add(m.name) end
+		end
+		for _, m in ipairs(ns.Roster.online or {}) do
+			if (m.rankIndex or 9) <= ns.CAPTAIN_RANK and not ns.IsValkyr(ns.FullName(m.name)) then Add(m.name) end
 		end
 	else
 		local function Named(name, rank)
@@ -603,6 +607,10 @@ end
 
 -- Someone who can't invite: an officer of ours online to point to (never ourselves).
 function Recruit.Officer()
+	-- 1.3.0: a Valkyr online first (the recruiters), then an officer.
+	for _, m in ipairs(ns.Roster.online or {}) do
+		if ns.IsValkyr(ns.FullName(m.name)) and ns.FullName(m.name) ~= ns.me then return m.name end
+	end
 	for _, m in ipairs(ns.Roster.online or {}) do
 		if (m.rankIndex or 9) <= ns.CAPTAIN_RANK and ns.FullName(m.name) ~= ns.me then return m.name end
 	end

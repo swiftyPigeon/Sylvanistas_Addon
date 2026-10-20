@@ -354,7 +354,7 @@ function Codec.DecodeLayer(s)
 	return { mapID = tonumber(mapID), zoneUID = tonumber(zoneUID), rank = math.min(tonumber(rank), 9), guild = guild }
 end
 
-Codec.DECREE_KINDS = { ARMS = true, MUSTER = true, ROYAL = true, HERALDRY = true }
+Codec.DECREE_KINDS = { ARMS = true, MUSTER = true, ROYAL = true, HERALDRY = true, REV = true } -- (REV: the Revenant Call, 1.3.0)
 
 -- Wall of Shame (chunked, channel): S1~guild~rankIndex~name:guild,name:guild,...
 Codec.MAX_SHAME = 40

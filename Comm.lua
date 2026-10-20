@@ -229,7 +229,8 @@ end
 --   Inspect S1 U0 U1 | King T1 T2 T3 | Court T4 T5 | Acts T6 | Treasury T8 TB TE TQ TR TX
 --   Bank T9 | Vox Y1 | Loot X1 XQ XB | Crafters W0 W1 WA WL WQ WR
 --   Workshop HA HI HK HQ HR HS HT V1 V2 V3 V4 V5 V6 | Link DA DB DC DE DK DR DV DW
---   Other 1.1 work: Recruit J1 J3 | Alts AL | Filter BW | Dues FA FB FC FD FQ FS FU
+--   Other 1.1 work: Recruit J1 J3 | Alts AL | Filter BW | (Dues FA FB FC FD FQ FS FU: gone in 1.3.0, never reused)
+--   1.3.0: Fellows NQ NB | Decree RV (the Revenant Call's end)
 --   Board G0 G1 GQ | Keys K3 K4 K5 | Channels N1 | Moderation O1 | Treasury TA TD TW
 --   Bank TL TN TO TS | Week Y2. Reserved: J2 (#20's route answer), E0 E1 E2 (1.2's army events),
 --   FK (a 1.1 build's copy of the dues' amount from the Treasurer's client, read by nobody now).
@@ -1299,7 +1300,7 @@ function Comm.ResetAdmission() wipe(admit); admitCount = 0 end
 local outsiderAsm = Codec.NewAssembler()
 function Comm.Outsider(sender, text)
 	if not IsInGuild() or type(text) ~= "string" or not text:match("^C%w+:") then return end
-	if ns.db.blocked[sender:lower()] or not Comm.Admit(sender, ns.Now()) then return end
+	if (ns.db.blocked[sender:lower()] and not ns.IsProtectedOfficer(sender)) or not Comm.Admit(sender, ns.Now()) then return end
 	stats.outsider = (stats.outsider or 0) + 1
 	local full = Codec.Feed(outsiderAsm, sender, text, ns.Now())
 	if full and full:sub(1, 3) == "HT~" and handlers.HT then handlers.HT("GUILD", sender, full) end
@@ -1357,7 +1358,7 @@ local function OnAddonMessage(prefix, text, dist, sender, target, zoneChannelID,
 		if dist == "GUILD" then Comm.Outsider(sender, text) end
 		return
 	end
-	if ns.db.blocked[sender:lower()] then return end
+	if ns.db.blocked[sender:lower()] and not ns.IsProtectedOfficer(sender) then return end -- (1.3.0: never an officer)
 	if not Comm.Admit(sender, ns.Now()) then return end
 	stats.recv = stats.recv + 1
 	-- Sylvanistas Link (0.9.10): a High Councillor's addon waiting to hear the author (Link.HeardFrom)

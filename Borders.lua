@@ -77,6 +77,7 @@ ns.BORDERS_COUNCIL_GOLD = false
 --            guild's: our roster)
 --   officer  its officers: the census's (the same way, two senders), or our own guild's officer
 --            ranks (Roster.lua)
+--   hand     the Dark Lady's Dark Rangers (1.3.0: King.IsHandName, her list or a Valkyr's)
 --   ranks    a member of a Sylvanistas guild whose rank name holds one of these words (any case, a
 --            whole word): rank names are what each guild master wrote, as the game shows them
 local WINGED = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Gold-Winged"
@@ -87,9 +88,12 @@ Borders.TIERS = {
 	{ name = "gold-elite", atlas = WINGED, x = 11, y = -4, king = true, council = "BORDERS_COUNCIL_GOLD" },
 	{ name = "silver-elite", atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Rare-Silver-Winged", x = 8, y = -7,
 		council = true },
-	{ name = "gold", atlas = PLAIN, x = 0, y = 1, leader = true },
-	{ name = "silver", atlas = "ui-hud-unitframe-target-portraiton-boss-rare-silver", x = 0, y = 1, officer = true },
-	{ name = "bronze-elite", atlas = WINGED, bronze = true, x = 11, y = -4, ranks = { "raider" } },
+	-- 1.3.0 (the user's order): Dark Rangers (officers) and Deathstalkers (her named helpers, `hand`) gold,
+	-- Raiders silver, Darkcallers (the other guilds' guild masters) bronze wings; the house's guild
+	-- masters are the Dark Lady's (gold wings, `king`). Silver wings stay the moderators' (Dreadguards).
+	{ name = "gold", atlas = PLAIN, x = 0, y = 1, hand = true, officer = true }, -- (Dark Rangers and Deathstalkers)
+	{ name = "silver", atlas = "ui-hud-unitframe-target-portraiton-boss-rare-silver", x = 0, y = 1, ranks = { "raider" } },
+	{ name = "bronze-elite", atlas = WINGED, bronze = true, x = 11, y = -4, leader = true }, -- (Darkcallers)
 	{ name = "bronze", atlas = PLAIN, bronze = true, x = 0, y = 1, ranks = { "veteran", "veterano", "veterana" } },
 }
 
@@ -151,9 +155,11 @@ local function Facts(unit)
 	f.off = NetOff(who, f.guild)
 	f.councillor = ns.IsHighCouncillor(who) == true
 	f.council = f.councillor and not ns.CouncilMasked()
+	f.hand = ns.King ~= nil and type(ns.King.IsHandName) == "function" and ns.King.IsHandName(who) == true
 	if not f.guild or not ns.IsFederation(f.guild) then return f end
 	f.sylvanistas, f.rankName = true, rankName
 	f.king = ns.IsKingGuild(f.guild) and (ns.IsKingCharacter(who) or (ns.KingCharacter() == nil and rankIndex == 0))
+		or ns.IsAltGuild(f.guild) and (ns.IsKingAltCharacter(who) or (ns.KingAltCharacter() == nil and rankIndex == 0)) -- (1.3.0: her alt)
 	local guilds = ns.rdb and ns.rdb.guilds
 	local report = type(guilds) == "table" and guilds[f.guild] or nil
 	f.report = report
@@ -164,6 +170,8 @@ local function Facts(unit)
 		f.fromRoster = type(rankIndex) ~= "number"
 		f.leader = rank == 0
 		f.officer = type(rank) == "number" and rank > 0 and rank <= ns.CAPTAIN_RANK
+		-- 1.3.0: the house's rank 1 are its Dreadguards (moderators): silver wings, not an officer's gold.
+		if f.officer and ns.IsHouseGuild(f.guild) then f.officer, f.council = false, not ns.CouncilMasked() end
 	elseif type(report) == "table" then
 		-- Another guild: the rank its census gives him, as the Crown's checks trust it (Data.KnownRank,
 		-- not soft): the picture most senders give, and two senders naming him in it, one of them
@@ -176,6 +184,7 @@ local function Facts(unit)
 		if (named or 0) < 2 then rank = nil end
 		f.leader = rank == 0
 		f.officer = type(rank) == "number" and rank > 0 and rank <= ns.CAPTAIN_RANK
+		if f.officer and ns.IsHouseGuild(f.guild) then f.officer, f.council = false, not ns.CouncilMasked() end
 	end
 	return f
 end
@@ -184,7 +193,7 @@ local function Match(f)
 	if not f or f.off then return nil end
 	for _, t in ipairs(Borders.TIERS) do
 		local council = t.council == true or (type(t.council) == "string" and ns[t.council] == true)
-		if (t.king and f.king) or (council and f.council) or (t.leader and f.leader) or (t.officer and f.officer)
+		if (t.king and f.king) or (council and f.council) or (t.hand and f.hand) or (t.leader and f.leader) or (t.officer and f.officer)
 			or (t.ranks and f.sylvanistas and RankHolds(t.ranks, f.rankName)) then
 			return t
 		end
@@ -241,6 +250,7 @@ end
 -- The nameplate mark (Nameplates.lua) of each border, for anyone but the King: the High Council
 -- (gold wings too behind ns.BORDERS_COUNCIL_GOLD), Lords and Captains the game's silver elite
 -- mark, Raiders and Veterans the bronze. The King's mark, the game's gold, is his alone.
+-- (1.3.0: the tiers' people changed, not this: Dark Rangers and Raiders silver, Darkcallers and Veterans bronze.)
 Borders.MARK_OF = { ["gold-elite"] = "silver", ["silver-elite"] = "silver", gold = "silver", silver = "silver",
 	["bronze-elite"] = "bronze", bronze = "bronze" }
 
@@ -285,6 +295,7 @@ function Borders.MarkOfName(who, guild)
 	f.off = NetOff(who, guild)
 	f.councillor = ns.IsHighCouncillor(who) == true
 	f.council = f.councillor and not ns.CouncilMasked()
+	f.hand = ns.King ~= nil and type(ns.King.IsHandName) == "function" and ns.King.IsHandName(who) == true
 	if f.off then return nil, f end
 	if guild and ns.IsFederation(guild) then
 		f.sylvanistas = true
@@ -306,8 +317,10 @@ function Borders.MarkOfName(who, guild)
 				and true or false
 		end
 		f.king = ns.IsKingGuild(guild) and (ns.IsKingCharacter(who) or (ns.KingCharacter() == nil and rank == 0))
+			or ns.IsAltGuild(guild) and (ns.IsKingAltCharacter(who) or (ns.KingAltCharacter() == nil and rank == 0))
 		f.leader = rank == 0
 		f.officer = type(rank) == "number" and rank > 0 and rank <= ns.CAPTAIN_RANK
+		if f.officer and ns.IsHouseGuild(guild) then f.officer, f.council = false, not ns.CouncilMasked() end
 	end
 	if f.king then return "gold", f end
 	local t = Match(f)

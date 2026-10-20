@@ -39,7 +39,7 @@ end
 function Answers.Allowed()
 	local W = ns.Workshop
 	if W and W.IsAuthor and (W.IsAuthor() == true or (W.Preview and W.Preview() == true)) then return true end
-	return ns.IsHighCouncillor(ns.me) == true or ns.IsSteward(ns.me) == true
+	return ns.HasDreadguardPowers(ns.me) == true or ns.IsSteward(ns.me) == true
 end
 
 -- The bank's lines holding `q` (a question, the line, the longer answer or the topic, any case),

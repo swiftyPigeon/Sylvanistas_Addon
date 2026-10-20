@@ -5,15 +5,16 @@ Start with **Part 1** whatever your rank, then read your own part.
 | Your place in <Sylvanistas> | Read |
 |---|---|
 | Everyone | [Part 1: Getting started](#part-1-getting-started-everyone) and [Part 2: The Forsaken](#part-2-the-forsaken-every-member) |
-| Officers (guild ranks 0 and 1) | + [Part 3: Dreadguard](#part-3-dreadguard-officers) |
-| Helpers the Dark Lady names | + [Part 4: Dark Rangers](#part-4-dark-rangers) |
+| Officers (guild ranks 0 and 1) | + [Part 3: Dark Rangers](#part-3-dark-rangers-officers) |
+| Helpers the Dark Lady names | + [Part 4: Deathstalkers](#part-4-deathstalkers) |
 | The guild master (Testiana Paladina) | + [Part 5: The Dark Lady](#part-5-the-dark-lady-guild-master) |
 | The addon keeper (Riztosin Psalmpalm) | + [Part 6: The addon keeper](#part-6-the-addon-keeper) |
 
-> **Who is who in the addon:** the **Dark Lady** is the guild master. **Dreadguard** are the
-> officers (guild ranks 0 and 1). **Dark Rangers** are helpers she names in the addon. The
-> **Valkyr** is her deputy (not switched on yet). A
-> **Dark Lord** is the guild master of a Sylvanistas guild (with one guild, that is the Dark Lady).
+> **Who is who in the addon:** in Sylvanistas and Sylvanistas Underground the ranks are **Dark Lady** (guild master),
+> **Dreadguard** (rank 1, the moderators), **Valkyr** (rank 2, the recruiters) and **Forsaken**. In other Sylvanistas
+> guilds, the guild master is a **Darkcaller**, rank 1 are its **Dark Rangers** (officers) and rank 2 its **Valkyr**. **Deathstalkers** are
+> helpers the Dark Lady names in the addon. Valkyr (in every guild) get join requests first and open the portal for new
+> recruits. The Dark Lady leads both <Sylvanistas> (mains) and its alt branch <Sylvanistas Underground> (alts).
 > **The Forsaken** are everyone. The addon gives powers by **rank position**, not rank name.
 
 ---
@@ -51,13 +52,12 @@ Start with **Part 1** whatever your rank, then read your own part.
 ## Part 2: The Forsaken (every member)
 
 ### Layer hop
-- **Join the Dark Lady's layer:** go to her zone, then click **Ask invite** in the window, or type `/syl hop`.
-- **Join any other layer:** open the **Realm** tab, find the layer in the layers list, and **click it**.
-- **What happens:** a member on that layer gets your request and invites you, the game moves you
-  to their layer, and the addon takes you out of the group.
-- **Help others:** keep **layer help** on (`/syl layerhelp on`). `/syl layerauto on` invites
-  without asking each time: your guildmates, the Dark Lady, her Valkyr and her Dark Rangers.
-  Players of other guilds still get a window to click.
+- **Join the Dark Lady's layer:** go to her zone, then click the **swirling portal** next to the search box on the
+  **Shadows** tab (or type `/syl hop`).
+- **What happens:** a member on her layer gets your request and invites you, the game moves you to their layer,
+  and the addon takes you out of the group.
+- **Help others:** in Sylvanistas and Sylvanistas Underground, helping is **on**: your add-on invites members of
+  either guild on its own when they ask (`/syl layerhelp off` stops it). Players of other guilds get a window to click.
 - Your layer is read from nearby NPCs: **target or mouse over an NPC** if the addon doesn't know it yet.
 
 ### Parties
@@ -66,7 +66,7 @@ it and can't be invited by it.
 
 Party invites are **off until you say yes**: on the privacy page the first time you open the
 addon, on the **Board**, or with a command. The **Board** opens with `/syl lfg`, or from
-**The Realm** tab; its **Parties** section holds every button below.
+**Shadows** tab; its **Parties** section holds every button below.
 
 | Want to… | Do |
 |---|---|
@@ -87,11 +87,11 @@ addon, on the **Board**, or with a command. The **Board** opens with `/syl lfg`,
 - **The Forever beta forgets addon settings at login,** so the privacy page asks about party
   invites again each session. Answer it again, or type `/syl party on`.
 
-### The Census
+### The Crypt
 - **Hover the minimap button** for the totals and how many guildmates are online with the addon.
-- **Click a part of a guild's row:** the **name** opens it in **The Realm**; **Members** opens your
+- **Click a part of a guild's row:** the **name** opens it in **Shadows**; **Members** opens your
   guild's full member list (another guild: what its report holds); **Online** shows who is online and
-  where; the **Dark Lord** opens their card. Each part lights up under the mouse and says where it goes.
+  where; the **Darkcaller** opens their card. Each part lights up under the mouse and says where it goes.
 - **Column titles** sort the list; the sorted one stays lit with ▲ or ▼, and a second click reverses it.
 - A line that ends with an **i** has more to say: hover it.
 
@@ -99,8 +99,7 @@ addon, on the **Board**, or with a command. The **Board** opens with `/syl lfg`,
 It celebrates who wears the Sylvanistas tabard; nobody is ever listed for not wearing it.
 | Want to… | Do |
 |---|---|
-| See guildmates around you (level, where, tabard) | **Fellow Forsaken** button, then walk among them |
-| Find guildmates who could use a hand | **Raising the Loyal** button: lower level than you or gear below their level, those in the tabard first. Click one to whisper or invite. |
+| Find guildmates in your zone below your level, to help kill their mobs (no group or chat needed) | **Fellow Forsaken** button: a list, nearest first ("fighting" when they're in combat). On your map: a **tabard** for those wearing it, a **violet arrow** on the minimap for those who aren't. Your guild only; anyone can say no in `/syl privacy` |
 | See who wears it most | **Loyalists**: seen in the tabard on 3 different days or more (a tabard mark by their name) |
 | Count tonight's regalia | the top of the tab: how many, and where |
 
@@ -115,28 +114,28 @@ come in your tabard.
 |---|---|
 | `/sy <text>` | every Sylvanistas member with the addon |
 | `/sy` alone | opens the **Chat** tab |
-| Click **[Sylvanistas]**, **[Dreadguard]** or **[Dark Lords]** before a line | opens the chat box to write in that channel, like [Party] (only channels you may write in) |
+| Click **[Sylvanistas]**, **[Dark Rangers]** or **[Darkcallers]** before a line | opens the chat box to write in that channel, like [Party] (only channels you may write in) |
 | `/syl mute sylvanistas` | hides that channel from your chat window |
 
 These chats are **not private**: never type passwords or secrets there.
 
 ### Screams (map calls)
 Officers and the Dark Lady send **Screams**. You'll see a message, hear a sound and see a map marker:
-- **Call for the Revenant:** someone needs help here (an elite, a rare, a quest boss). Lasts 5 minutes.
+- **Revenant Call:** any member targets a **rare** (or tougher) enemy and calls (`/syl rise`, or the Screams tab). Everyone sees a **skull** on the map; members in that zone or the next one over get an alert window. The skull goes when the target dies, or after 5 minutes.
 - **Gathering:** meet here (dungeon run, raid, guild event). Lasts 30 minutes.
-- **Banshee Scream:** an announcement from the Dark Lady or the Dreadguard.
+- **Banshee Scream:** an announcement from the Dark Lady or the Dark Rangers.
 - **Assemble the Loyal:** tabards on, gather here (Forsaken Regalia).
 
 All current Screams are on the **Screams** tab (`/syl screams`).
 
-**Officer musters** are quieter: no sound, no alert, no map pin. They're listed in **The Realm** →
+**Officer musters** are quieter: no sound, no alert, no map pin. They're listed in **Shadows** →
 **Officer musters** (`/syl musters`) for 20 minutes: the zone, what it's for, and how many Forsaken are there.
 
 ### When the Dark Lady asks something
 - **Voice of the Forsaken** (polls): a window pops up, so tick your answer. Prefer chat only? `/syl voice off`.
 - **Conclave:** when she holds a conclave, a line appears if you're in her zone. Click it to ask to speak with her.
   When she calls you, she may add a short note: it stays in your log (`/syl log`).
-- **Summon the Dark Lords:** a roll call for Dark Lords and Dreadguards; answer **Present, my Lady** or **Busy**.
+- **Summon the Darkcallers:** a roll call for Darkcallers and Dark Rangers; answer **Present, my Lady** or **Busy**.
 - **Covenants:** her formal letters. Click **As you command** to acknowledge.
 
 ### Groups, crafting and more
@@ -147,8 +146,8 @@ All current Screams are on the **Screams** tab (`/syl screams`).
 | Your week at a glance | `/syl brief`: **Your week, in five lines** (next event, what's open, guildmates online, a sister guild on your layer, whether you're up to date) |
 | Find a crafter | `/syl craft <item>` |
 | List your professions | open a profession, then `/syl crafter on` |
-| Link your alts | `/syl alt add <name>`, then log the alt and confirm |
-| See loot notes | `/syl loot` |
+| Link your alts | a character in **Sylvanistas Underground** is asked once, at login, to link with your Sylvanistas character (one click). Otherwise `/syl alt add <name>` on your main, then log the alt and confirm. Linked alts show "Ana's alt" in the lists |
+| See Raid Loot (raid decisions and points) | `/syl loot` |
 | Ask the moderators for help | `/syl helpme <question>` |
 
 ### Quiet and privacy
@@ -174,17 +173,19 @@ All current Screams are on the **Screams** tab (`/syl screams`).
 
 ---
 
-## Part 3: Dreadguard (officers)
+## Part 3: Dark Rangers (officers)
+
+> In <Sylvanistas> and <Sylvanistas Underground>, rank 1 is the **Dreadguard**: the officer tools below, plus the moderators' (hiding a player from the network, the shared word filter, help requests, the Answers button).
 
 Officers are guild **ranks 0 and 1**. Everything in Part 2, plus:
 
 ### Seal the guild channel (do this once, together)
 Until it's sealed, anyone who joins the hidden channel by name can read the census.
-1. Agree on **one secret** (6+ characters) with the Dark Lady and the other Dreadguard, **privately**.
+1. Agree on **one secret** (6+ characters) with the Dark Lady and the other Dark Ranger, **privately**.
 2. One of you types `/syl key <secret>`.
-3. Members online move at once; others get the key at login **from any Dreadguard who is online**.
+3. Members online move at once; others get the key at login **from any Dark Ranger who is online**.
 4. Check with `/syl status`: it should say **channel sealed**.
-5. If the key is lost (everyone logged off) or `/syl status` says **public**, the first Dreadguard
+5. If the key is lost (everyone logged off) or `/syl status` says **public**, the first Dark Ranger
    online types `/syl key <the same secret>`. **The same secret, or the guild splits in two.**
 
 **If the key leaks:** `/syl key rotate` makes a new key nobody sees and moves the guild to it.
@@ -192,38 +193,38 @@ Until it's sealed, anyone who joins the hidden channel by name can read the cens
 ### Send Screams
 | Scream | How |
 |---|---|
-| **Call for the Revenant** | `/syl rise <note>` or the button on the **Screams** tab |
+| **Revenant Call** (any member) | target a rare (or tougher) enemy, then `/syl rise <note>` or the button on the **Screams** tab |
 | **Gathering** | `/syl gather <note>` or the button on the **Screams** tab |
-| **Banshee Scream** | the button on the **Screams** tab (the Dark Lady and the Dreadguard) |
+| **Banshee Scream** | the button on the **Screams** tab (the Dark Lady and the Dark Rangers) |
 | Preview only you see | add `test`: `/syl rise test` |
 
 ### Officers' chat and tools
 | Want to… | Do |
 |---|---|
 | Invite every solo guildmate in the zone who takes party invites | **Board** → **Gather the zone**, or `/syl party zone`. Past five, you're asked to turn the group into a raid. |
-| Talk to officers and Dark Lords | `/syd <text>` (Dreadguard channel) |
+| Talk to officers and Darkcallers | `/syd <text>` (Dark Ranger channel) |
 | See who's been away | `/syl inactive 7` (or 14, 30). Removing someone takes a confirm, one per click. |
-| Call a quiet muster to your zone for your own guild (20 minutes, no alert or map pin) | **The Realm** → **Officer musters** → **Call a muster**, or `/syl musters`. **End my muster** stops it early. |
-| Call the guild together in regalia | **Assemble the Loyal** (Forsaken Regalia tab): a Scream with a map pin, tabards on; your Fellow Forsaken then counts who came in regalia (guild masters, and the Dark Lady's officers) |
+| Call a quiet muster to your zone for your own guild (20 minutes, no alert or map pin) | **Shadows** → **Officer musters** → **Call a muster**, or `/syl musters`. **End my muster** stops it early. |
+| Call the guild together in regalia | **Assemble the Loyal** (Regalia tab): a Scream with a map pin, tabards on; your Fellow Forsaken then counts who came in regalia (guild masters, and the Dark Lady's officers) |
 | Check a player's gear | target them in range, `/syl gear` |
-| Write loot notes and points | **Realm** tab, loot notes (`/syl loot`) |
+| Write Raid Loot decisions and points | **Shadows** tab, **Raid Loot** (`/syl loot`): click a raid drop, pick who gets it and why |
 | Answer recruits | a recruit's request shows **Invite** and **Decline** buttons. A recruit the moderators took off the network shows who, when and why first; you still choose. |
 | Remove a member or change a rank | the game's own guild window, as usual (the addon no longer gets in the way) |
 
 ---
 
-## Part 4: Dark Rangers
+## Part 4: Deathstalkers
 
 The Dark Lady names you on her **Sanctum** tab. You then see the **Sanctum** tab and can, for her:
 
 | Tool | Where |
 |---|---|
-| **Summon Dark Lords** (roll call) | **The Realm** tab |
+| **Summon Darkcallers** (roll call) | **Shadows** tab |
 | **Voice of the Forsaken** (polls) | **Voice of the Forsaken** tab |
 | **Agenda** (events on the guild's week) | **Agenda** button on the **Sanctum**, e.g. `Sat 20:00 Raid night` |
-| **Officer musters** for every Sylvanistas guild | **The Realm** → **Officer musters**, or `/syl musters` |
+| **Officer musters** for every Sylvanistas guild | **Shadows** → **Officer musters**, or `/syl musters` |
 | **Banshee Inspection** (tabard check, strict mode only) | **Forsaken Regalia** tab |
-| **Portal** (pins a guild on top for recruits, 2 hours) | **Realm** tab, recruiting |
+| **Portal** (pins a guild on top for recruits, 2 hours) | **Shadows** tab, recruiting |
 | **Pin a line** for every member, 2 hours | `/syl pin <text>`; `/syl pin off` |
 | **Hide a player** from all addon screens | `/syl netoff <name>: <reason>`; `/syl neton <name>` |
 | **Gather the zone** (party, then raid) | **Board** → **Gather the zone**, or `/syl party zone` |
@@ -236,8 +237,8 @@ Everything above, plus tools only she has. Her character is **Testiana Paladina*
 calls her **Dark Lady** and puts her **crown** on the map.
 
 ### First steps
-1. **Seal the channel** with the Dreadguard (Part 3).
-2. **Name your Dark Rangers:** **Sanctum** tab → **Dark Rangers**.
+1. **Seal the channel** with the Dark Rangers (Part 3).
+2. **Name your Deathstalkers:** **Sanctum** tab → **Deathstalkers**.
 3. **Show your crown** on the map (the **Sanctum** tab), so members can find you and hop to your layer.
    On your layer and not in a group? The addon may offer to **invite people who want to join your layer**:
    say yes to let it handle that.
@@ -246,17 +247,19 @@ calls her **Dark Lady** and puts her **crown** on the map.
 | Tool | What it does |
 |---|---|
 | **Hold Conclave** (**Sanctum**) | members in your zone queue to speak with you; you call them one by one |
-| **Covenants** | formal letters to the Dark Lords, the Dreadguard or everyone, signed by you |
+| **Covenants** | formal letters to the Darkcallers, the Dark Rangers or everyone, signed by you |
 | **Voice of the Forsaken** | quick polls, 2 to 6 answers |
 | **Agenda / the week** | dated events with signups (raid night, etc.) |
 | **Banshee Scream** | a free-text announcement shown to every member |
 | **Gather the zone** (**Board**, or `/syl party zone`) | invites every guildmate solo in your zone who takes party invites; past five, you're asked to turn the group into a raid |
 | **Call with a note** (**Sanctum**, while holding Conclave) | calls someone with a short line that stays in their log |
-| **Officer musters** (`/syl musters`) | a quiet 20-minute call to your zone for every Sylvanistas guild (her Valkyr and Dark Rangers too) |
+| **Officer musters** (`/syl musters`) | a quiet 20-minute call to your zone for every Sylvanistas guild (her Deathstalkers too) |
 | **Thank the Loyal** (Forsaken Regalia) | names your Loyalists in guild chat, with thanks for wearing the colors |
 | **Banshee Inspection** (strict mode only) | members who opted in check tabards around them for 2 minutes |
 | **Absolution** (strict mode only) | clears a name from your untabarded list for a week |
 | **Portal** | sends new recruits to a guild for 2 hours |
+| **Treasury** (**Treasury** tab) | give a member of Sylvanistas the guild rank **Treasurer**: their add-on keeps the treasury's book (gold and items given to them by trade or mail are donations) and the bank snapshot. You choose what members see: the balance, the donor ranking, the book |
+| **Add-on versions** (**Sanctum**) | who in your guild is up to date and who is behind; click one to ask them to update, or ask everyone behind |
 | **Key rotation** | **Sanctum** (or `/syl key rotate`): a new channel key nobody sees |
 
 The addon ships in **casual** mode: Forsaken Regalia, and no untabarded list at all. If you ever want
@@ -285,21 +288,19 @@ Riztosin Psalmpalm has the **Workshop** tab:
 - **Bug reports:** members can send theirs to you in game while you're online.
 
 **Releasing an update:** change the version in `Core.lua` (`ns.VERSION`) and in `Sylvanistas.toc`
-together, using plain rising numbers. The current version is **1.2.21**; the next must be higher,
-e.g. `1.2.22` for fixes or `1.3.0` for new features (not `1.2.3`: the add-on compares each number,
-so 1.2.3 counts as older than 1.2.21). Each release also gets a "What's new" letter: its version in
+together, using plain rising numbers. The current version is **1.3.0**; the next must be higher,
+e.g. `1.3.1` for fixes or `1.4.0` for new features (the add-on compares each number: 1.3.10 is newer than 1.3.9). Each release also gets a "What's new" letter: its version in
 `Letters.lua` (`Letters.LIST`), and in `Locales.lua` a headline, a subsection title and its points
 (`L.LETTER_<version>_HEADLINE`, `_TITLE` and the points, one per line starting with "- "). After a release, the **Workshop** roll call shows who
 has updated: the **Ask to update** button nudges everyone behind, and clicking a player's line asks
-that player alone. Only the keeper, the Dark Lady, her Valkyr and the moderators can ask.
+that player alone. Only the keeper, the Dark Lady and the moderators can ask.
 
 ---
 
 ## Not switched on yet
 | Feature | Why |
 |---|---|
-| **Valkyr** (the Dark Lady's deputy) and **moderator Dreadguard** | appointed by a signed list, which needs a signing key |
-| **Treasury, Dues, Bank** | no treasurer yet (`ns.TREASURY_OFF = true` in `Core.lua`) |
+| **Treasury, Bank** | set up at launch: the Treasurer is the guild rank **Treasurer** (`ns.TREASURY_OFF = true` in `Core.lua` until then) |
 | **Discord Link** | needs a Discord bot |
 | **Key required, guild block list** | built, off until the Dark Lady needs them (Part 5) |
 
@@ -312,24 +313,25 @@ that player alone. Only the keeper, the Dark Lady, her Valkyr and the moderators
 | `/syl hop` | all | ask for an invite to the Dark Lady's layer |
 | `/syl layerhelp on` | all | let others ask you for invites |
 | `/syl layerauto on` | all | invite trusted askers without a window |
-| `/sy` / `/syd` / `/sydl` | all / Dreadguard / Dark Lords | chats |
+| `/sy` / `/syd` / `/sydc` | all / Dark Ranger / Darkcallers | chats |
 | `/syl screams` | all | the Screams tab |
 | `/syl voice on/off` | all | polls in a window, or in chat only |
 | `/syl lfg …`, `/syl week` | all | the Board, the week |
-| `/syl inspect` | all | the Forsaken Regalia tab |
+| `/syl inspect` | all | the Regalia tab |
 | `/syl party on/off` | all | take party invites when solo, or not |
 | `/syl partyauto on/off` | all | join those invites without the popup |
 | `/syl party gather` / `scream` | all | gather a party / Party Scream |
-| `/syl party zone` | Dreadguard, Dark Rangers, Dark Lady | gather the whole zone |
-| `/syl rise`, `/syl gather` | Dreadguard | Call for the Revenant, Gathering |
-| `/syl key <secret>` | Dreadguard | seal the channel |
-| `/syl key rotate` | Dreadguard, Dark Lady | new channel key |
-| `/syl pin <text>` | Dark Lady, Dark Rangers | pin a line for 2 hours |
-| `/syl netoff <name>: <reason>` | Dark Lady, Dark Rangers | hide a player from all addon screens |
+| `/syl party zone` | Dark Ranger, Deathstalkers, Dark Lady | gather the whole zone |
+| `/syl rise` | anyone | Revenant Call (target a rare or tougher enemy) |
+| `/syl gather` | Dark Rangers, Dreadguards | Gathering |
+| `/syl key <secret>` | Dreadguards, Dark Rangers | seal the channel |
+| `/syl key rotate` | Dark Lady | new channel key |
+| `/syl pin <text>` | Dark Lady, Deathstalkers | pin a line for 2 hours |
+| `/syl netoff <name>: <reason>` | Dark Lady, Dreadguards, Deathstalkers | hide a player from all addon screens |
 | `/syl released` | addon keeper | mark the version CurseForge approved |
 | `/syl bug` | all | copy a bug report |
 | `/syl letters` (or `/syl whatsnew`) | all | what's new in each version |
 | `/syl brief` | all | your week, in five lines (the Board has the week's numbers) |
-| `/syl musters` | all | officer musters (officers, the Dark Lady and her Dark Rangers call them) |
+| `/syl musters` | all | officer musters (officers, the Dark Lady and her Deathstalkers call them) |
 | `/syl hotkey on/off` | all | the Shift-J shortcut |
 | `/syl help` | all | every command, in chat |

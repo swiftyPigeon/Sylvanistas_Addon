@@ -314,6 +314,7 @@ function Inspect.SetPatrol(on)
 		return
 	end
 	patrol = on and true or false
+	if ns.Casual() and ns.Fellows then ns.Fellows.SetLooking(patrol) end -- (1.3.0: guildmates in our zone below our level)
 	if ns.Casual() then ns.Print(patrol and L.FELLOW_ON or L.FELLOW_OFF)
 	else ns.Print(patrol and L.PATROL_ON or L.PATROL_OFF) end
 	ns.Log("patrol = %s", tostring(patrol))

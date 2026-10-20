@@ -77,7 +77,7 @@ local function MayAsk(name)
 	if type(w) == "table" and type(w.IsAuthorName) == "function" and w.IsAuthorName(name) == true then return true end
 	return (type(ns.IsKingCharacter) == "function" and ns.IsKingCharacter(name) == true)
 		or (type(ns.IsSteward) == "function" and ns.IsSteward(name) == true)
-		or (type(ns.IsHighCouncillor) == "function" and ns.IsHighCouncillor(name) == true)
+		or (type(ns.HasDreadguardPowers) == "function" and ns.HasDreadguardPowers(name) == true)
 end
 Versions.MayAsk = MayAsk
 -- Checks are kept by the short name, folded: the menu may give the name without its realm while
@@ -545,6 +545,34 @@ end
 function Versions.HasSylvanistas(name)
 	local state = Versions.Status(name)
 	return state == "current" or state == "outdated" or state == "newer" or state == "sylvanistas"
+end
+
+-- 1.3.0 (the user's call): the Dark Lady's simple roll call on the Sanctum: her guild's add-on
+-- users heard lately (their hellos, Comm.Peers), how many are up to date, who is behind (a click
+-- asks that one to update, Versions.AskUpdate, with its limits), and one line to ask them all.
+function Versions.SanctumLines(Line, INK, TITLE)
+	local guild = IsInGuild() and GetGuildInfo("player") or "?"
+	local current, behind = 1, {} -- (ourselves: up to date by definition)
+	for _, name in ipairs(ns.Comm.Peers and ns.Comm.Peers() or {}) do
+		local state, version = Versions.Status(name)
+		if state == "outdated" then behind[#behind + 1] = { name = name, version = version }
+		elseif state == "current" or state == "newer" then current = current + 1 end
+	end
+	table.sort(behind, function(a, b) return a.name < b.name end)
+	local lines = { Line(L.SANCTUM_VERSIONS_TITLE:format(guild), TITLE),
+		Line(L.SANCTUM_VERSIONS_COUNTS:format(current, #behind, Versions.Latest()), INK, { gapAfter = #behind == 0,
+			tooltip = function(tt) tt:AddLine(L.SANCTUM_VERSIONS_TITLE:format(guild), 1, 0.82, 0); tt:AddLine(L.SANCTUM_VERSIONS_TIP, 1, 1, 1, true) end }) }
+	for _, b in ipairs(behind) do
+		lines[#lines + 1] = Line("|cff990000" .. ns.DisplayName(b.name) .. "|r  " .. tostring(b.version or "?"), INK, { indent = 1,
+			onClick = function() Versions.AskUpdate(b.name) end,
+			tooltip = function(tt) tt:AddLine(ns.DisplayName(b.name), 1, 0.82, 0); tt:AddLine(L.SANCTUM_VERSIONS_ASK_ONE, 1, 1, 1, true) end })
+	end
+	if #behind > 0 then
+		lines[#lines + 1] = Line("|cff990000" .. L.SANCTUM_VERSIONS_ASK_ALL .. "|r", INK, { gapAfter = true,
+			onClick = function() for _, b in ipairs(behind) do if not Versions.AskUpdate(b.name) then break end end end,
+			tooltip = function(tt) tt:AddLine(L.SANCTUM_VERSIONS_ASK_ALL, 1, 0.82, 0); tt:AddLine(L.SANCTUM_VERSIONS_ASK_ALL_TIP:format(Versions.ASK_HOUR), 1, 1, 1, true) end })
+	end
+	return lines
 end
 
 function Versions.StatusLine()

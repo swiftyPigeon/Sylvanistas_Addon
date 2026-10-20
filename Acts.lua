@@ -320,7 +320,7 @@ end
 
 function Acts.OpenGates(guild)
 	local preview = ns.King.Preview()
-	if not ns.King.CanCommand() and not preview then return ns.Print(L.THRONE_ONLY_KING) end
+	if not ns.King.CanCommand() and not ns.IsValkyr(ns.me) and not preview then return ns.Print(L.THRONE_ONLY_KING) end
 	guild = ns.King.CleanGuild(guild)
 	if not guild then return end
 	gates = { id = ns.King.NewId(), guild = guild, by = ns.me, at = ns.Now() + Acts.GATES_TIME, mine = true, preview = preview or nil }
