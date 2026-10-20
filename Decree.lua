@@ -2,8 +2,13 @@ local ADDON, ns = ...
 local L = ns.L
 
 -- Royal decrees sent to every Sylvanistas guild over SylvanistasNet:
---   ARMS   "Call for the Revenant" (help needed here) - raid-warning text + soft sound, marker for 5 min
---   MUSTER "Gathering here"        (meeting point)     - raid-warning text + soft sound, marker for 30 min
+--   REV    "Revenant Call" (1.3.0, was ARMS "Call for the Revenant"): a rare or tougher enemy in the
+--          caller's target. A skull on every member's map; the alert (a toast, ns.Toast, and a soft
+--          sound) only for members in the caller's zone or one next to it (Decree.Near). Its words:
+--          "<target's GUID>^<target's name>^<note>". It ends when the target dies (the caller's
+--          addon sends RV~<GUID>; a client that sees it die ends it too) or after 5 minutes.
+--          ARMS from clients before 1.3.0 still shows, as before, under the new name.
+--   MUSTER "Gathering" (meeting point): a toast + soft sound, marker for 30 min
 -- Only Captains (rank <= ns.CAPTAIN_RANK) can send, and the King's Steward (1.0.0). Receivers
 -- rate-limit per sender and, for senders only the census vouches for, the whole army (the
 -- flood guard). A decree's words are its sender's own text: sent with the logged API (1.0.0),
@@ -14,7 +19,7 @@ ns.Decree = Decree
 
 local Pins = ns.Pins()
 local SHOW_FLAG = HBD_PINS_WORLDMAP_SHOW_CONTINENT or 2
-local DURATION = { ARMS = 5 * 60, MUSTER = 30 * 60, ROYAL = 60 * 60, HERALDRY = 60 * 60 }
+local DURATION = { ARMS = 5 * 60, REV = 5 * 60, MUSTER = 30 * 60, ROYAL = 60 * 60, HERALDRY = 60 * 60 }
 local CROWN_ONLY = { ROYAL = true, HERALDRY = true }
 Decree.CROWN_ONLY = CROWN_ONLY
 local SEND_COOLDOWN = 60
@@ -34,12 +39,13 @@ local function Where()
 	return mapID, x, y
 end
 
-local LABEL = { ARMS = "ARMS", MUSTER = "MUSTER", ROYAL = "ROYAL", HERALDRY = "HERALDRY_CALL" }
+local LABEL = { ARMS = "ARMS", REV = "ARMS", MUSTER = "MUSTER", ROYAL = "ROYAL", HERALDRY = "HERALDRY_CALL" }
 -- Each decree's sound switch (1.1, ns.SOUND_KINDS): the Tabard inspection goes with the Royal decree.
-local SOUND = { ARMS = "arms", MUSTER = "muster", ROYAL = "royal", HERALDRY = "royal" }
+local SOUND = { ARMS = "arms", REV = "arms", MUSTER = "muster", ROYAL = "royal", HERALDRY = "royal" }
 Decree.SOUND = SOUND
 local ICONS = {
 	ARMS = "Interface\\Icons\\Spell_Shadow_RaiseDead",
+	REV = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull",
 	MUSTER = "Interface\\Icons\\INV_Misc_Horn_01",
 	ROYAL = "Interface\\AddOns\\Sylvanistas\\media\\logo64",
 	HERALDRY = "Interface\\Icons\\INV_Shirt_GuildTabard_01",
@@ -64,7 +70,7 @@ end
 -- rather than over their numbers (1.0.0, Map.Badge; a square of 34 before). An expired decree's
 -- icon waits for the next one.
 Decree.BADGE = 20
-local COLORS = { ARMS = { 1, 0.25, 0.2 }, MUSTER = { 1, 0.8, 0.2 }, ROYAL = { 0.9, 0.76, 0.36 }, HERALDRY = { 0.35, 0.6, 1 } }
+local COLORS = { ARMS = { 1, 0.25, 0.2 }, REV = { 0.85, 0.1, 0.1 }, MUSTER = { 1, 0.8, 0.2 }, ROYAL = { 0.9, 0.76, 0.36 }, HERALDRY = { 0.35, 0.6, 1 } }
 local spare = {}
 
 local function MakePin(d)
@@ -78,10 +84,59 @@ local function MakePin(d)
 end
 
 -- A decree's words as they show: the player's block terms hide them until a click on the Decrees
--- tab shows them (1.1, #31); the decree itself, its alarm and its marker stay.
+-- tab shows them (1.1, #31); the decree itself, its alarm and its marker stay. A Revenant Call's:
+-- its target's name, then the note.
 function Decree.Words(d)
 	if d.hidden and not d.revealed then return ns.L.FILTER_WORDS_HIDDEN_SHORT end
+	if d.kind == "REV" then
+		local note = d.note and d.note ~= "" and (" - " .. d.note) or ""
+		return (d.target or "?") .. note
+	end
 	return d.text or ""
+end
+
+-- 1.3.0: a Revenant Call's words, taken apart: its target's GUID, name and the caller's note.
+local function ReadRevenant(d)
+	local guid, name, note = tostring(d.text or ""):match("^([^%^]*)%^([^%^]*)%^?(.*)$")
+	if not guid or guid == "" then return false end
+	d.guid, d.target, d.note = guid, name ~= "" and name or "?", note or ""
+	return true
+end
+
+-- 1.3.0: a map in our zone, or in one next to it: the same zone, one inside the other (a city), or
+-- whose rectangles on the continent touch (within NEAR_YARDS), from HereBeDragons' world
+-- coordinates. No adjacency table to keep: it works for any zone the library knows.
+Decree.NEAR_YARDS = 300
+local HBD = LibStub and LibStub("HereBeDragons-2.0", true)
+local function Rect(mapID)
+	if not (HBD and HBD.GetWorldCoordinatesFromZone) then return nil end
+	local x1, y1, inst = HBD:GetWorldCoordinatesFromZone(0, 0, mapID)
+	local x2, y2 = HBD:GetWorldCoordinatesFromZone(1, 1, mapID)
+	if not x1 or not x2 then return nil end
+	return math.min(x1, x2), math.max(x1, x2), math.min(y1, y2), math.max(y1, y2), inst
+end
+function Decree.Near(mapID)
+	local mine = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+	if not mine or not mapID then return false end
+	if mine == mapID then return true end
+	local ax1, ax2, ay1, ay2, ai = Rect(mine)
+	local bx1, bx2, by1, by2, bi = Rect(mapID)
+	if not ax1 or not bx1 or ai ~= bi then return false end
+	local m = Decree.NEAR_YARDS
+	return ax1 - m <= bx2 and bx1 - m <= ax2 and ay1 - m <= by2 and by1 - m <= ay2
+end
+
+-- 1.3.0: the target a Revenant Call needs: a living enemy, rare or tougher (rare, rare elite,
+-- world boss). nil and why when there is none.
+local RARE = { elite = true, rare = true, rareelite = true, worldboss = true } -- (elites too: the user's call)
+function Decree.RevenantTarget()
+	if not UnitExists or not UnitExists("target") then return nil end
+	if UnitIsDead("target") or not UnitCanAttack("player", "target") then return nil end
+	local c = UnitClassification and UnitClassification("target")
+	if not RARE[c] then return nil end
+	local ok, guid, name = pcall(function() return UnitGUID("target"), UnitName("target") end)
+	if not ok or type(guid) ~= "string" or type(name) ~= "string" then return nil end
+	return guid, name
 end
 
 -- own: sent or previewed here (the player's click): shown in an instance too. Anyone else's
@@ -91,13 +146,23 @@ local function Show(d, own)
 	d.expires = d.t + DURATION[d.kind]
 	table.insert(active, 1, d)
 	local zone = ns.Zones.NameForKey("m" .. d.mapID)
-	local text = ("%s %s%s"):format(Label(d), zone, d.text ~= "" and (" - " .. Decree.Words(d)) or "")
-	ns.Print(("|cffff4040%s|r  (%s <%s>)"):format(text, d.sender, d.guild))
-	ns.Alert(SOUND[d.kind] or "muster", (d.kind == "MUSTER" or d.kind == "ARMS") and "soft" or "loud", {
-		text = text, color = { r = 1, g = 0.3, b = 0.1 }, own = own,
-		what = ("%s (%s)"):format(L["HELP_" .. d.kind .. "_NAME"], zone),
-		open = function() return ns.Now() <= d.expires end,
-	})
+	local words = Decree.Words(d)
+	local text = ("%s %s%s"):format(Label(d), zone, words ~= "" and (" - " .. words) or "")
+	-- 1.3.0: a Revenant Call alerts only the caller's zone and the ones next to it; farther away,
+	-- its skull on the map and its line on the Screams tab alone.
+	local alert = own or d.kind ~= "REV" or Decree.Near(d.mapID)
+	if alert then
+		ns.Print(("|cffff4040%s|r  (%s <%s>)"):format(text, d.sender, d.guild))
+		-- (1.3.0: the Banshee Scream and Assemble the Loyal on a parchment scroll; the calls in the
+		-- small window, ns.Alert.)
+		local scroll = (d.kind == "ROYAL" or d.kind == "HERALDRY") and { title = Label(d), body = (words ~= "" and words or zone),
+			by = ("%s <%s>  ·  %s"):format(d.sender or "?", d.guild ~= "" and d.guild or "?", zone) } or nil
+		ns.Alert(SOUND[d.kind] or "muster", (d.kind == "MUSTER" or d.kind == "ARMS" or d.kind == "REV") and "soft" or "loud", {
+			text = text, color = { r = 1, g = 0.3, b = 0.1 }, own = own, scroll = scroll, icon = ICONS[d.kind],
+			what = ("%s (%s)"):format(L["HELP_" .. (LABEL[d.kind] == "ARMS" and "ARMS" or d.kind) .. "_NAME"], zone),
+			open = function() return ns.Now() <= d.expires end,
+		})
+	end
 	if Pins then d.pin = MakePin(d) end
 	Decree.RefreshPins()
 	ns.Log("decree %s from %s <%s> map %d", d.kind, d.sender, d.guild, d.mapID)
@@ -132,7 +197,10 @@ local function Steward() return ns.King ~= nil and ns.King.IsSteward ~= nil and 
 function Decree.CanSend(kind)
 	if Steward() then return true end
 	if CROWN_ONLY[kind] then return ns.IsCrown() end
-	return ns.Roster.IsOfficer()
+	-- 1.3.0: the Revenant Call is every member's (its rare target is the gate); the others a Dark
+	-- Ranger's (an officer) or a Dreadguard's (a moderator), equal in authority.
+	if kind == "ARMS" or kind == "REV" then return ns.IsMember() == true end
+	return ns.Roster.IsOfficer() or ns.IsHighCouncillor(ns.me) == true
 end
 
 function Decree.Send(kind, text)
@@ -145,7 +213,7 @@ function Decree.Send(kind, text)
 		ns.Print(L.CROWN_ONLY)
 		return
 	end
-	if not steward and not ns.Roster.IsOfficer() then
+	if not steward and not Decree.CanSend(kind) then
 		ns.Print(L.DECREE_OFFICERS_ONLY)
 		return
 	end
@@ -165,14 +233,25 @@ function Decree.Send(kind, text)
 		ns.Print(L.DECREE_NO_POSITION)
 		return
 	end
+	-- 1.3.0: the Revenant Call, on a rare or tougher enemy in our target (its GUID and name ride in
+	-- its words, before the note).
+	local guid, target
+	if kind == "ARMS" or kind == "REV" then
+		guid, target = Decree.RevenantTarget()
+		if not guid then return ns.Print(L.REVENANT_NEED_RARE) end
+		kind = "REV"
+		text = ("%s^%s^%s"):format(guid, target, tostring(text or ""):gsub("%^", ""))
+	end
 	lastSent = now
 	local guild = steward and ns.KingGuildName() or GetGuildInfo("player") or ""
 	local rank = steward and 0 or ns.Roster.MyRank()
 	-- Logged (1.0.0): the server keeps its words, so abuse can be reported (Comm.Send).
 	ns.Comm.Send("CHANNEL", ns.Codec.EncodeDecree(kind, mapID, x, y, guild, rank, text), nil, nil, true)
 	-- 1.1 (#12): our own decree never comes back to us: in our log as we send it.
-	ns.Chronicle.Add("decree", ns.me, Label({ kind = kind }) .. " " .. ns.Zones.NameForKey("m" .. mapID), { words = text })
-	Show({ kind = kind, mapID = mapID, x = x, y = y, guild = guild, rank = rank, text = text or "", sender = ns.DisplayName(ns.me), t = now }, true)
+	ns.Chronicle.Add("decree", ns.me, Label({ kind = kind }) .. " " .. ns.Zones.NameForKey("m" .. mapID), { words = target or text })
+	local d = { kind = kind, mapID = mapID, x = x, y = y, guild = guild, rank = rank, text = text or "", sender = ns.DisplayName(ns.me), t = now, mine = true }
+	if kind == "REV" then ReadRevenant(d) end
+	Show(d, true)
 	-- 1.2.2: Assemble the Loyal (casual): our patrol counts who comes in regalia (Inspect.Assembly).
 	if kind == "HERALDRY" and ns.Casual() and ns.Inspect.StartAssembly then ns.Inspect.StartAssembly() end
 end
@@ -181,8 +260,68 @@ end
 function Decree.Preview(kind)
 	local mapID, x, y = Where()
 	if not mapID then return end
-	Show({ kind = kind, mapID = mapID, x = x, y = y, guild = GetGuildInfo("player") or "Sylvanistas", rank = 0,
-		text = L.DECREE_PREVIEW_TEXT, sender = ns.DisplayName(ns.me), t = ns.Now() }, true)
+	local d = { kind = kind, mapID = mapID, x = x, y = y, guild = GetGuildInfo("player") or "Sylvanistas", rank = 0,
+		text = L.DECREE_PREVIEW_TEXT, sender = ns.DisplayName(ns.me), t = ns.Now() }
+	if kind == "ARMS" then
+		local _, name = Decree.RevenantTarget()
+		d.kind, d.guid, d.target, d.note = "REV", "preview", name or L.REVENANT_PREVIEW_TARGET, L.DECREE_PREVIEW_TEXT
+	end
+	Show(d, true)
+end
+
+-- 1.3.0: a Revenant Call over: its target died. Its skull and line go at once.
+function Decree.EndRevenant(guid, sender)
+	if type(guid) ~= "string" or guid == "" then return end
+	local changed
+	for _, d in ipairs(active) do
+		if d.kind == "REV" and d.guid == guid and (sender == nil or d.mine or ns.ShortName(d.sender) == ns.ShortName(ns.DisplayName(sender))) then
+			d.expires, changed = 0, true
+		end
+	end
+	if changed then
+		Decree.Active()
+		ns.Fire("DECREES_CHANGED")
+	end
+end
+-- Our own call's target died (we saw it): the others are told, and it ends here.
+local function OnDeath(guid)
+	for _, d in ipairs(active) do
+		if d.kind == "REV" and d.guid == guid and ns.Now() <= d.expires then
+			if d.mine then ns.Comm.Send("CHANNEL", "RV~" .. guid) end
+			Decree.EndRevenant(guid)
+			return
+		end
+	end
+end
+-- Seen dead: Forever forbids an addon the combat log (registering COMBAT_LOG_EVENT_UNFILTERED is
+-- refused, ADDON_ACTION_FORBIDDEN), so while a Revenant Call is on, once a second we look at the
+-- units this client can see (target, focus, mouseover, the nameplates) for its target, dead. Each
+-- unit's GUID read under pcall: Forever may hand some as secret values.
+local WATCH = { "target", "focus", "mouseover" }
+local function DeadGUID(unit)
+	local ok, guid, dead = pcall(function()
+		if not UnitExists(unit) then return nil, false end
+		return UnitGUID(unit), UnitIsDead(unit)
+	end)
+	if ok and dead and type(guid) == "string" then return guid end
+	return nil
+end
+function Decree.CheckDeaths()
+	local any
+	for _, d in ipairs(active) do if d.kind == "REV" and d.guid and ns.Now() <= d.expires then any = true break end end
+	if not any then return end
+	local units = {}
+	for _, u in ipairs(WATCH) do units[#units + 1] = u end
+	for i = 1, 40 do units[#units + 1] = "nameplate" .. i end
+	for _, u in ipairs(units) do
+		local guid = DeadGUID(u)
+		if guid then
+			for _, d in ipairs(active) do
+				local ok, same = pcall(function() return d.kind == "REV" and d.guid == guid end)
+				if ok and same then return OnDeath(d.guid) end
+			end
+		end
+	end
 end
 
 -- The 15 s expiry timer also follows a switch of the interface style without a /reload: to the
@@ -229,6 +368,10 @@ ns.Comm.Handle("D1", function(dist, sender, text)
 	local steward = kings and not king and ns.King ~= nil and ns.King.IsStewardName(sender)
 	local hand = kings and not king and not steward and not ns.IsKingGuild(mine) and ns.King ~= nil and ns.King.IsHandName(sender)
 	local rank = (king or steward or hand) and 0 or ns.Data.KnownRank(sender, d.guild)
+	-- 1.3.0: a Dreadguard (moderator) speaks as an officer; a Revenant Call is any member's (our
+	-- roster's, or one speaking for that guild alone, Data.ClaimGuild).
+	if not rank and ns.IsHighCouncillor(sender) then rank = ns.CAPTAIN_RANK end
+	if not rank and d.kind == "REV" and (ns.Roster.RankOf(sender) ~= nil or ns.Data.ClaimGuild(sender, d.guild)) then rank = 9 end
 	if not rank then
 		ns.Log("decree from %s ignored: rank in %s not verified", sender, d.guild)
 		return
@@ -236,7 +379,7 @@ ns.Comm.Handle("D1", function(dist, sender, text)
 	d.rank = rank
 	if CROWN_ONLY[d.kind] then
 		if not ns.IsCrownRank(d.guild, rank) then return end
-	elseif rank > ns.CAPTAIN_RANK then
+	elseif rank > ns.CAPTAIN_RANK and d.kind ~= "REV" then
 		return
 	end
 	-- The King, his Steward, his Hands and our own guild's officers (our roster: the server's
@@ -262,15 +405,26 @@ ns.Comm.Handle("D1", function(dist, sender, text)
 		d.text = ""
 	end
 	d.sender, d.t = ns.DisplayName(sender), now
+	if d.kind == "REV" and not ReadRevenant(d) then return end
 	-- 1.1 (#31): its words hidden when the player's block terms hit them (Filter.lua).
 	local F = ns.Filter
 	if d.text ~= "" and F and not F.missing and F.Hides(d.text) then d.hidden = true end
 	-- 1.1 (#12): in this client's log of acts, with the name the server stamped.
-	ns.Chronicle.Add("decree", sender, Label(d) .. " " .. ns.Zones.NameForKey("m" .. d.mapID), { words = d.text })
+	ns.Chronicle.Add("decree", sender, Label(d) .. " " .. ns.Zones.NameForKey("m" .. d.mapID), { words = d.kind == "REV" and d.target or d.text })
 	Show(d)
 end)
 
+-- 1.3.0: RV~<GUID>, a Revenant Call's caller saw its target die: that caller's call ends.
+-- (Not DE: Link.lua's.)
+ns.Comm.Handle("RV", function(dist, sender, text)
+	if dist ~= "CHANNEL" then return end
+	local guid = tostring(text or ""):match("^RV~([%w%-]+)$")
+	if guid then Decree.EndRevenant(guid, sender) end
+end)
+
 ns.On("LOGIN", function()
+	-- (1.3.0: not the combat log, which Forever forbids an addon: Decree.CheckDeaths.)
+	ns.Every(1, "revenant deaths", function() ns.SafeCall("revenant death", Decree.CheckDeaths) end)
 	ns.Every(15, "decree expiry", function()
 		local before = #active
 		Decree.Active()

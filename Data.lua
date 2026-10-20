@@ -54,8 +54,10 @@ function Data.Guild(name)
 end
 
 -- Where the King is pinned by name (ns.KING_CHARACTER), a report of his guild that names
--- anyone else as its leader (or nobody) is not his guild's: forged, or out of date.
+-- anyone else as its leader (or nobody) is not his guild's: forged, or out of date. So is one of
+-- his alt branch (1.3.0) naming anyone but his pinned alt (ns.GM_ALT_CHARACTER).
 function Data.OtherKing(guild, leader)
+	if ns.IsAltGuild(guild) then return ns.KingAltCharacter() ~= nil and not ns.IsKingAltCharacter(leader) end
 	return ns.IsKingGuild(guild) and ns.KingCharacter() ~= nil and not ns.IsKingCharacter(leader)
 end
 
@@ -171,6 +173,12 @@ local senderGuild = {} -- "Name-Realm" -> { guild, t }
 
 -- One guild per sender, shared by reports and chat: a name that speaks for one guild can't
 -- speak for another. A player who really moved guilds speaks again after CLAIM_TTL quiet.
+-- 1.3.0: the guild a sender last spoke for (fresh), or nil (Hop.HouseAsker: an invite, nothing more).
+function Data.ClaimedGuild(sender)
+	local c = senderGuild[ns.FullName(sender)]
+	if c and ns.Now() - c.t < Data.CLAIM_TTL then return c.guild end
+	return nil
+end
 function Data.ClaimGuild(sender, guild)
 	local who, now = ns.FullName(sender), ns.Now()
 	local c = senderGuild[who]

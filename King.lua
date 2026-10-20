@@ -290,6 +290,8 @@ end
 -- position).
 function King.Authorized(kind, sender, guild)
 	if KingSender(sender, guild, kind == "P" or kind == "Q") then return true end
+	-- 1.3.0: a Valkyr (an ambassador) opens and closes the portal for recruits, and nothing else.
+	if kind == "G" and ns.IsValkyr(sender) then return true end
 	if King.STEWARD_MAY[kind] == true and King.IsStewardName(sender) then return true end
 	return King.HAND_MAY[kind] == true and Hand(sender)
 end
@@ -1452,6 +1454,10 @@ local function HomeLines()
 		for _, l in ipairs(ns.Keys.ThroneLines and ns.Keys.ThroneLines() or {}) do lines[#lines + 1] = l end
 	end
 	if #lines > 1 then lines[#lines].gapAfter = true end
+	-- 1.3.0: her simple roll call: who in her guild is out of date (Versions.SanctumLines).
+	if mine and ns.Versions and ns.Versions.SanctumLines then
+		for _, l in ipairs(ns.Versions.SanctumLines(Line, INK, TITLE)) do lines[#lines + 1] = l end
+	end
 	for _, l in ipairs(ns.Treasury and ns.Treasury.ThroneLines and ns.Treasury.ThroneLines() or {}) do lines[#lines + 1] = l end
 	return lines
 end

@@ -2270,7 +2270,7 @@ local available, lastHelpSent, lastAvailSent, helpFrom = {}, -math.huge, -math.h
 local asking -- our request waiting for a councillor's "got it": { t, acked }
 Workshop.ACK_WAIT = 10
 function Workshop.SetCouncilHelp(on)
-	if not ns.IsHighCouncillor(ns.me) then return ns.Print(L.COUNCIL_HELP_ONLY) end
+	if not ns.HasDreadguardPowers(ns.me) then return ns.Print(L.COUNCIL_HELP_ONLY) end
 	ns.db.councilHelp = on and true or false
 	ns.Print(on and L.COUNCIL_HELP_ON or L.COUNCIL_HELP_OFF)
 	lastAvailSent = -math.huge
@@ -2279,14 +2279,14 @@ function Workshop.SetCouncilHelp(on)
 	Workshop.SayAvailable()
 end
 function Workshop.SayAvailable()
-	if not ns.db.councilHelp or not ns.IsHighCouncillor(ns.me) then return end
+	if not ns.db.councilHelp or not ns.HasDreadguardPowers(ns.me) then return end
 	local now = ns.Now()
 	if now - lastAvailSent < Workshop.HELP_EVERY then return end
 	lastAvailSent = now
 	ns.Comm.Send("CHANNEL", "HA~1", "counciladvert")
 end
 function Workshop.HandleAvailable(dist, sender, text)
-	if dist ~= "CHANNEL" or not ns.IsHighCouncillor(sender) then return end
+	if dist ~= "CHANNEL" or not ns.HasDreadguardPowers(sender) then return end
 	available[ns.FullName(sender)] = (text ~= "HA~0") and ns.Now() or nil
 end
 function Workshop.Available()
@@ -2318,12 +2318,12 @@ function Workshop.AskCouncil(text)
 	end)
 end
 function Workshop.HandleCouncilAck(dist, sender)
-	if dist ~= "WHISPER" or not asking or asking.acked or not ns.IsHighCouncillor(sender) then return end
+	if dist ~= "WHISPER" or not asking or asking.acked or not ns.HasDreadguardPowers(sender) then return end
 	asking.acked = true
 	ns.Print(L.COUNCIL_ASK_SENT)
 end
 function Workshop.HandleAsk(dist, sender, text)
-	if dist ~= "WHISPER" or not ns.db.councilHelp or not ns.IsHighCouncillor(ns.me) then return end
+	if dist ~= "WHISPER" or not ns.db.councilHelp or not ns.HasDreadguardPowers(ns.me) then return end
 	local now, who = ns.Now(), ns.FullName(sender)
 	if now - (helpFrom[who] or -math.huge) < 60 then return end
 	helpFrom[who] = now

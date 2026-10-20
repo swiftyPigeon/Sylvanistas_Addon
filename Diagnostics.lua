@@ -243,6 +243,21 @@ local function RecordBlocked(event, func)
 	while #list > MAX_BLOCKED do table.remove(list, 1) end
 end
 
+local function Diagnostics_SayBlocked(func, where, at)
+	local line
+	if type(debugstack) == "function" then
+		local ok, s = pcall(debugstack, 2, 30, 0)
+		for l in tostring(ok and s or ""):gmatch("[^\n]+") do
+			local file, n = l:match("AddOns[\\/]Sylvanistas[\\/]([%w_]+%.lua)[\"%]]*:(%d+)")
+			if file and file ~= "Diagnostics.lua" and file ~= "Core.lua" then line = file .. ":" .. n break end
+		end
+	end
+	local ago = at and GetTime and math.floor(GetTime() - at + 0.5)
+	local doing = where and L.BLOCKED_DOING:format(tostring(where), ago or 0) or ""
+	local combat = InCombatLockdown and InCombatLockdown() and L.BLOCKED_IN_COMBAT or ""
+	ns.Print("|cffff4040" .. L.BLOCKED_WHY:format(func, line or "?") .. "|r " .. doing .. combat)
+end
+
 for _, event in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
 	ns.RegisterEvent(event, function(addon, func)
 		-- Another addon's: logged as always.
@@ -255,6 +270,10 @@ for _, event in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
 			ns.Log("%s: %s tried %s (%d this session)", event, tostring(addon), tostring(func), blocked)
 		end
 		RecordBlocked(event, tostring(func))
+		-- 1.3.0: said in chat, the first times a session: which game call was blocked, our line
+		-- that made it (the first of our files on the stack, past this one and Core.lua), what
+		-- we were doing last (ns.SafeCall's label) and whether the player was in combat.
+		if blocked <= 5 then pcall(Diagnostics_SayBlocked, tostring(func), ns.lastWhere, ns.lastWhereAt) end
 		if ns.GamepadUI() and not toldGamepad then
 			toldGamepad = true
 			ns.Print("|cffff4040" .. L.BLOCKED_GAMEPAD .. "|r")

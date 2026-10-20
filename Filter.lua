@@ -180,14 +180,14 @@ function Filter.IsEditorName(name)
 	if ns.IsKingCharacter(name) then return true end
 	local K = ns.King
 	if K and not K.missing and (K.IsStewardName(name) or K.IsHandName(name)) then return true end
-	return ns.IsHighCouncillor(name)
+	return ns.HasDreadguardPowers(name) -- (1.3.0: the house's Dark Rangers too)
 end
 
 function Filter.CanEdit()
 	if not ns.me or not ns.IsMember() then return false end
 	local K = ns.King
 	if K and not K.missing and (K.IsKing() or K.IsSteward() or K.IsHand()) then return true end
-	return ns.IsHighCouncillor(ns.me)
+	return ns.HasDreadguardPowers(ns.me)
 end
 
 local function Active()

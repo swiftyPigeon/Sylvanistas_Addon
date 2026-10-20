@@ -134,7 +134,23 @@ end
 -- Everyone who shares their layer helps once they said yes to it (1.1, request #11: the
 -- first-open page, or /syl layerhelp on; nil, never answered, is off). Not the King: he is the
 -- one everybody wants, and his screen is on stream.
-function Hop.Helps() return ns.db ~= nil and ns.db.layerHelp == true end
+-- 1.3.0 (the user's call): in the house (<Sylvanistas>, <Sylvanistas Underground>) helping is on
+-- unless its player said no; elsewhere it waits for a yes, as before.
+local function InHouse() return ns.IsHouseGuild(IsInGuild() and GetGuildInfo("player") or nil) end
+function Hop.Helps()
+	if ns.db == nil then return false end
+	if InHouse() then return ns.db.layerHelp ~= false end
+	return ns.db.layerHelp == true
+end
+-- A member of the house asking, as far as we can tell: our own house guild's (our roster), or the
+-- other house guild's by what its sender last spoke for (Data.ClaimedGuild): an invite, nothing more.
+function Hop.HouseAsker(name)
+	if not InHouse() then return false end
+	name = ns.FullName(name)
+	if ns.Roster.RankOf(name) then return true end
+	local claimed = ns.Data.ClaimedGuild and ns.Data.ClaimedGuild(name)
+	return claimed ~= nil and ns.IsHouseGuild(claimed)
+end
 function Hop.CanHelp(mapID, zoneUID)
 	if not Hop.Helps() or not ns.IsMember() then return false end
 	-- An offer tells the asker we are on that layer: only for players who share theirs (0.9.2).
@@ -248,7 +264,10 @@ function Hop.HandleRequest(dist, sender, text)
 	-- 1.2.20 (from Olympus 1.2.1): only for a player the addon can vouch for (Hop.Trusted); anyone
 	-- else gets the window, a click.
 	local wanted = ns.db.layerAutoInvite or (KingChoice() == "auto" and OnKingLayer(true))
-	local auto = wanted and Hop.Trusted(sender)
+	-- 1.3.0: the house invites the house on its own (a member who never said no to helping).
+	local house = Hop.HouseAsker(sender) and ns.db.layerHelp ~= false
+	local auto = (wanted and Hop.Trusted(sender)) or house
+	wanted = wanted or house
 	if auto and OnlyGuests() then return Invite(sender, id, true) end
 	-- unvouched: the player chose not to be asked, and only Hop.Trusted brought this window up
 	-- (Answer: its no is no step towards the pause).

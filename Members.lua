@@ -108,7 +108,7 @@ local lastMentor = -math.huge
 local firstRoster -- { guild, names = { [raw] = true } }: the members at this session's first read
 local joined = {} -- [raw] = true: in our guild since then
 
-function Members.IsLord() return IsInGuild() and ns.Roster.MyRank() == 0 end
+function Members.IsLord() return IsInGuild() and (ns.Roster.MyRank() == 0 or ns.IsValkyr(ns.me)) end -- (1.3.0: Valkyr, the recruiters, too)
 
 local function Mentors(guild)
 	ns.rdb.mentors = ns.rdb.mentors or {}

@@ -70,7 +70,11 @@ Loot.ASK_AGAIN = 60        -- the page opened this long after our last ask asks 
 Loot.ASK_HOLD = 10         -- someone's ask heard this recently for what we lack: ours waits
 Loot.ASKS_MAX = 16         -- our asks in a session at most
 Loot.KNOWN_MAX = 8         -- ranges kept per stream (the oldest go first: they are asked for again)
-Loot.DROPS_MAX = 20        -- the group's loot kept for the officers' notes, this session
+Loot.DROPS_MAX = 60        -- the group's loot kept for the officers' notes (1.3.0: kept a week, saved)
+Loot.DROPS_KEEP = 7 * 86400
+Loot.BOSS_WINDOW = 180     -- loot this soon after a boss died is that boss's
+-- 1.3.0: the decisions an officer picks for a drop, written as the note's words.
+Loot.DECISIONS = { "LOOT_DEC_MAIN", "LOOT_DEC_OFF", "LOOT_DEC_UPGRADE", "LOOT_DEC_ROLL", "LOOT_DEC_POINTS", "LOOT_DEC_DE" }
 Loot.random = math.random
 Loot.after = function(seconds, where, fn) ns.After(seconds, where, fn) end
 
@@ -87,7 +91,9 @@ local heardAsk         -- someone's ask last heard: { n, p, t }
 local heardPage = -math.huge -- an officer's answer last heard
 local liveFrom = {}    -- [guild key] = the change time from which this session hears every change
 local counter = 0
-local drops = {}       -- { { id, link, to, t } }, newest first
+local drops = {}       -- { { id, link, to, t, where, boss, noted } }, newest first (ns.rdb.lootDrops, 1.3.0)
+local lastBoss         -- { name, t }: the last boss our group killed (ENCOUNTER_END)
+local pick             -- the drop opened on the page: { d, to }
 
 local function ServerNow() return (GetServerTime and GetServerTime()) or time() end
 local B36 = function(n) return ns.Codec.Base36(n) or "0" end
@@ -293,13 +299,16 @@ Loot.Member = Member
 -- A member's points, set by hand ("Bob 12"; "Bob" alone clears them). A notebook: nothing adds
 -- or takes any.
 function Loot.SetPoints(text)
-	if not Loot.IsOfficer() then return ns.Print(L.LOOT_OFFICERS_ONLY) end
-	local b = Book()
-	if not b then return end
 	text = Clean(text, 80)
 	local name, value = text:match("^(.-)%s+([%+%-]?%d+)$")
 	if not name then name = text end
-	local v = value and tonumber(value) or nil
+	return Loot.SetMemberPoints(name, value and tonumber(value) or nil)
+end
+-- 1.3.0: the same for one member of the roster (the points page's click): `v` nil clears them.
+function Loot.SetMemberPoints(name, v)
+	if not Loot.IsOfficer() then return ns.Print(L.LOOT_OFFICERS_ONLY) end
+	local b = Book()
+	if not b then return end
 	if v and math.abs(v) > Loot.POINTS_LIMIT then return ns.Print(L.LOOT_POINTS_BAD:format(Loot.POINTS_LIMIT, Loot.POINTS_LIMIT)) end
 	local member = Member(name)
 	if not member then return ns.Print(L.LOOT_POINTS_NOT_MEMBER:format(name ~= "" and name or "?")) end
@@ -717,10 +726,37 @@ local function Pattern(fmt)
 	return "^" .. p .. "$"
 end
 
--- A loot line of the group's: the item (rare and better, or not yet known to the client) and who got
--- it, kept for the officers to write its note with a click. Nothing else is done with it.
+-- Rare and better (1.3.0: only those; an item the client doesn't know yet goes by its link's
+-- colour: blue, purple, orange or the heirloom gold).
+local RARE_COLORS = { ff0070dd = true, ffa335ee = true, ffff8000 = true, ffe6cc80 = true }
+local function Rare(link, quality)
+	if quality then return quality >= 3 end
+	local color = type(link) == "string" and link:match("^|c(%x%x%x%x%x%x%x%x)")
+	return color ~= nil and RARE_COLORS[color:lower()] == true
+end
+-- 1.3.0: raids alone (the user's call): loot in a raid instance, never a dungeon or the world.
+local function InRaidInstance()
+	if not GetInstanceInfo then return false end
+	local ok, _, kind = pcall(GetInstanceInfo)
+	return ok and kind == "raid"
+end
+-- Where the group is: the instance's name inside one, else the zone.
+local function Where()
+	if GetInstanceInfo then
+		local ok, name, kind = pcall(GetInstanceInfo)
+		if ok and type(name) == "string" and name ~= "" and kind and kind ~= "none" then return name end
+	end
+	local zone = GetRealZoneText and GetRealZoneText() or ""
+	return zone ~= "" and zone or nil
+end
+function Loot.OnBossKilled(_, name, _, _, success)
+	if success == 1 or success == true then lastBoss = { name = Clean(name, 40), t = ns.Now() } end
+end
+
+-- A loot line of the group's in a raid: the item (rare and better) and who got it, where and from which
+-- boss, kept for the officers to write its note with two clicks. Nothing else is done with it.
 function Loot.OnLootMessage(text)
-	if type(text) ~= "string" or not (IsInGroup and IsInGroup()) or not Loot.IsOfficer() then return end
+	if type(text) ~= "string" or not (IsInGroup and IsInGroup()) or not Loot.IsOfficer() or not InRaidInstance() then return end
 	local link = text:match("|c%x+|Hitem:[^|]+|h%[[^%]]*%]|h|r") or text:match("|Hitem:[^|]+|h%[[^%]]*%]|h")
 	local id = link and tonumber(link:match("|Hitem:(%d+)"))
 	if not id then return end
@@ -729,7 +765,7 @@ function Loot.OnLootMessage(text)
 		local ok, _, _, q = pcall(GetItemInfo, link)
 		if ok then quality = q end
 	end
-	if quality and quality < 3 then return end
+	if not Rare(link, quality) then return end
 	local to
 	for _, fmt in ipairs({ LOOT_ITEM, LOOT_ITEM_MULTIPLE }) do
 		local p = Pattern(fmt)
@@ -743,7 +779,9 @@ function Loot.OnLootMessage(text)
 		end
 	end
 	if not to then return end
-	table.insert(drops, 1, { id = id, link = link, to = Clean(ns.ShortName(to), Loot.TO_MAX), t = ns.Now() })
+	local now = ns.Now()
+	local boss = lastBoss and now - lastBoss.t <= Loot.BOSS_WINDOW and lastBoss.name or nil
+	table.insert(drops, 1, { id = id, link = link, to = Clean(ns.ShortName(to), Loot.TO_MAX), t = now, where = Where(), boss = boss })
 	while #drops > Loot.DROPS_MAX do table.remove(drops) end
 	Changed()
 end
@@ -836,6 +874,84 @@ function Loot.Link()
 	}
 end
 
+-- 1.3.0: the guildmates in our group now (party or raid), short names, ours first.
+local function GroupGuildmates()
+	local out, seen = {}, {}
+	local n = GetNumGroupMembers and GetNumGroupMembers() or 0
+	local raid = IsInRaid and IsInRaid()
+	for i = 0, n do
+		local unit = i == 0 and "player" or (raid and ("raid" .. i) or (i <= 4 and ("party" .. i)))
+		local name = unit and UnitName and UnitName(unit)
+		if type(name) == "string" and name ~= "" and Member(name) then
+			local short = ns.ShortName(name)
+			if not seen[short] then seen[short], out[#out + 1] = true, short end
+		end
+	end
+	return out
+end
+local function Refresh() if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end end
+function Loot.PickTo(name)
+	if pick then pick.to = Clean(ns.ShortName(name), Loot.TO_MAX) end
+	Refresh()
+end
+-- A drop's note from the decision picked: "Main spec · The Deadmines (Edwin VanCleef)".
+function Loot.Decide(d, to, key)
+	local words = L[key] or key
+	local place = d.where and (d.where .. (d.boss and (" (" .. d.boss .. ")") or "")) or d.boss
+	if place then words = words .. " · " .. place end
+	if Loot.Write(words, d.id, to) then d.noted = to end
+	pick = nil
+	Refresh()
+end
+function Loot.DropLines(lines)
+	local lastPlace
+	for _, d in ipairs(drops) do
+		local place = (d.where or "?") .. "  ·  " .. date("%a %d %b", d.t)
+		if place ~= lastPlace then
+			if lastPlace and lines[#lines] then lines[#lines].gapAfter = true end
+			lines[#lines + 1] = { header = true, text = d.where or L.LOOT_DROPS_SOMEWHERE, right = Grey(date("%a %d %b", d.t)) }
+			lastPlace = place
+		end
+		local opened = pick and pick.d == d
+		lines[#lines + 1] = { indent = 1,
+			text = (opened and "[-] " or "[+] ") .. (ItemText(d.id) or "?") .. "  " .. Grey("> " .. d.to)
+				.. (d.noted and ("  " .. Green(L.LOOT_NOTED)) or ""),
+			right = Grey((d.boss and (d.boss .. "  ·  ") or "") .. ns.Ago(d.t)),
+			onClick = function()
+				pick = not opened and { d = d, to = d.to } or nil
+				Refresh()
+			end,
+			tooltip = function(tt)
+				if tt.SetHyperlink then pcall(tt.SetHyperlink, tt, "item:" .. d.id) end
+				tt:AddLine(L.LOOT_DROP_TIP, 0.6, 0.6, 0.6, true)
+			end }
+		if opened then
+			lines[#lines + 1] = { indent = 2, text = Gold(L.LOOT_WHO_GETS) }
+			local names, seen = { d.to }, { [d.to] = true }
+			for _, n in ipairs(GroupGuildmates()) do if not seen[n] then seen[n], names[#names + 1] = true, n end end
+			if pick.to and not seen[pick.to] then names[#names + 1] = pick.to end
+			for _, n in ipairs(names) do
+				local on = n == pick.to
+				lines[#lines + 1] = { indent = 3,
+					text = (on and Green("> " .. n) or Grey(n)) .. (n == d.to and Grey("  " .. L.LOOT_LOOTED_IT) or ""),
+					onClick = function() Loot.PickTo(n) end }
+			end
+			lines[#lines + 1] = { indent = 3, text = Grey(L.LOOT_OTHER_MEMBER),
+				onClick = function() ns.ShowDialog("SYLVANISTAS_LOOT_MEMBER", nil, nil, d) end }
+			lines[#lines + 1] = { indent = 2, text = Gold(L.LOOT_DECISION:format(pick.to)) }
+			for _, key in ipairs(Loot.DECISIONS) do
+				lines[#lines + 1] = { indent = 3, text = Green(L[key]), onClick = function() Loot.Decide(d, pick.to, key) end }
+			end
+			lines[#lines + 1] = { indent = 3, text = Grey(L.LOOT_DEC_OTHER),
+				onClick = function()
+					ns.ShowDialog("SYLVANISTAS_LOOT_NOTE", L.LOOT_NOTE_FOR:format(ItemName(d.id), pick.to), nil, { item = d.id, to = pick.to })
+				end }
+			lines[#lines].gapAfter = true
+		end
+	end
+	if lines[#lines] then lines[#lines].gapAfter = true end
+end
+
 -- The page's lines; `q`, the Realm's search: notes and points whose words hold it.
 function Loot.Lines(q)
 	local officer = Loot.IsOfficer()
@@ -847,26 +963,16 @@ function Loot.Lines(q)
 			tt:AddLine(L.LOOT_ABOUT, 1, 1, 1, true)
 		end }
 	if officer and not q then
-		lines[#lines + 1] = { text = Green(L.LOOT_WRITE), onClick = function() ns.ShowDialog("SYLVANISTAS_LOOT_NOTE", L.LOOT_NOTE_PROMPT, nil, {}) end,
-			tooltip = function(tt) tt:AddLine(L.LOOT_WRITE, 1, 0.82, 0); tt:AddLine(L.LOOT_WRITE_TIP, 1, 1, 1, true) end }
-		lines[#lines + 1] = { text = Green(L.LOOT_POINTS_SET), onClick = function() ns.ShowDialog("SYLVANISTAS_LOOT_POINTS", nil, nil, "") end,
-			tooltip = function(tt) tt:AddLine(L.LOOT_POINTS_SET, 1, 0.82, 0); tt:AddLine(L.LOOT_POINTS_SET_TIP, 1, 1, 1, true) end }
-		lines[#lines].gapAfter = true
-		-- The group's loot this session: a click writes its note.
+		-- 1.3.0: what dropped, by place; a click opens it: who gets it (the looter, the guildmates in
+		-- the group, or another member), then a decision, which writes the note.
 		if #drops > 0 then
-			lines[#lines + 1] = { header = true, text = L.LOOT_DROPS }
-			for _, d in ipairs(drops) do
-				lines[#lines + 1] = { indent = 1, text = (ItemText(d.id) or "?") .. "  " .. Grey("> " .. d.to), right = Grey(ns.Ago(d.t)),
-					onClick = function()
-						ns.ShowDialog("SYLVANISTAS_LOOT_NOTE", L.LOOT_NOTE_FOR:format(ItemName(d.id), d.to), nil, { item = d.id, to = d.to })
-					end,
-					tooltip = function(tt)
-						if tt.SetHyperlink then pcall(tt.SetHyperlink, tt, "item:" .. d.id) end
-						tt:AddLine(L.LOOT_DROP_TIP, 0.6, 0.6, 0.6, true)
-					end }
-			end
-			lines[#lines].gapAfter = true
+			Loot.DropLines(lines)
+		else
+			lines[#lines + 1] = { text = Grey(L.LOOT_DROPS_NONE) }
 		end
+		lines[#lines + 1] = { text = Grey(L.LOOT_WRITE), onClick = function() ns.ShowDialog("SYLVANISTAS_LOOT_NOTE", L.LOOT_NOTE_PROMPT, nil, {}) end,
+			tooltip = function(tt) tt:AddLine(L.LOOT_WRITE, 1, 0.82, 0); tt:AddLine(L.LOOT_WRITE_TIP, 1, 1, 1, true) end }
+		lines[#lines].gapAfter = true
 	end
 	local notes, shown = Loot.Notes(), 0
 	for _, e in ipairs(notes) do
@@ -888,24 +994,45 @@ function Loot.Lines(q)
 		end
 	end
 	if #notes == 0 and not q then lines[#lines + 1] = { text = Grey(officer and L.LOOT_EMPTY_OFFICER or L.LOOT_EMPTY) } end
-	-- The points, if the guild uses them: a column of numbers set by hand.
+	-- The points, if the guild uses them: a column of numbers set by hand. 1.3.0: for officers, the
+	-- whole roster (points first, then everyone else), a click on a member sets theirs; for
+	-- everyone else the members with points alone.
 	local points, found = Loot.Points(), 0
-	if #points > 0 then
-		local header = { header = true, text = L.LOOT_POINTS_TITLE,
+	local rows, seen = {}, {}
+	for _, p in ipairs(points) do
+		rows[#rows + 1] = { member = p.member, p = p }
+		seen[ns.Fold(ns.ShortName(p.member))] = true
+	end
+	if officer then
+		local rest = {}
+		for _, m in ipairs(ns.Roster.members or {}) do
+			if m.full and not seen[ns.Fold(ns.ShortName(m.full))] then rest[#rest + 1] = { member = m.full, m = m } end
+		end
+		table.sort(rest, function(a, c) return ns.DisplayName(a.member) < ns.DisplayName(c.member) end)
+		for _, r in ipairs(rest) do rows[#rows + 1] = r end
+	end
+	if #rows > 0 then
+		local header = { header = true, text = L.LOOT_POINTS_TITLE, right = officer and Grey(L.LOOT_POINTS_CLICK) or nil,
 			tooltip = function(tt) tt:AddLine(L.LOOT_POINTS_TITLE, 1, 0.82, 0); tt:AddLine(L.LOOT_POINTS_TIP, 1, 1, 1, true) end }
-		for _, p in ipairs(points) do
-			if not q or ns.Holds(q, ns.DisplayName(p.member)) then
+		for _, r in ipairs(rows) do
+			local name, p = ns.DisplayName(r.member), r.p
+			if not q or ns.Holds(q, name) then
 				if found == 0 then
 					if lines[#lines] then lines[#lines].gapAfter = true end
 					lines[#lines + 1] = header
 				end
 				found = found + 1
-				lines[#lines + 1] = { indent = 1, text = ns.DisplayName(p.member), right = Gold(tostring(p.v)),
-					onClick = officer and function() ns.ShowDialog("SYLVANISTAS_LOOT_POINTS", nil, nil, ns.DisplayName(p.member) .. " " .. p.v) end or nil,
+				lines[#lines + 1] = { indent = 1, key = r.member, text = p and name or Grey(name), right = p and Gold(tostring(p.v)) or Grey("-"),
+					onClick = officer and function() ns.ShowDialog("SYLVANISTAS_LOOT_POINTS", name, nil, { member = r.member, v = p and p.v }) end or nil,
 					tooltip = function(tt)
-						tt:AddLine(ns.DisplayName(p.member), 1, 0.82, 0)
-						tt:AddLine(L.LOOT_POINTS_BY:format(ns.DisplayName(p.by) or "?", date("%Y-%m-%d %H:%M", p.rev)), 1, 1, 1, true)
-						if p.via then tt:AddLine(L.LOOT_VIA_TIP:format(ns.DisplayName(p.via) or "?"), 0.6, 0.6, 0.6, true) end
+						tt:AddLine(name, 1, 0.82, 0)
+						if p then
+							tt:AddLine(L.LOOT_POINTS_BY:format(ns.DisplayName(p.by) or "?", date("%Y-%m-%d %H:%M", p.rev)), 1, 1, 1, true)
+							if p.via then tt:AddLine(L.LOOT_VIA_TIP:format(ns.DisplayName(p.via) or "?"), 0.6, 0.6, 0.6, true) end
+						else
+							tt:AddLine(L.LOOT_POINTS_NONE, 1, 1, 1, true)
+						end
+						if officer then tt:AddLine(L.LOOT_POINTS_CLICK_TIP, 0.6, 0.6, 0.6, true) end
 					end }
 			end
 		end
@@ -977,24 +1104,116 @@ StaticPopupDialogs["SYLVANISTAS_LOOT_REMOVE"] = {
 	hideOnEscape = true,
 	preferredIndex = 3,
 }
+-- 1.3.0: another member of the guild for a drop (data: the drop), by name, checked in the roster.
+StaticPopupDialogs["SYLVANISTAS_LOOT_MEMBER"] = {
+	text = L.LOOT_MEMBER_PROMPT,
+	button1 = OKAY or "Okay",
+	button2 = CANCEL or "Cancel",
+	hasEditBox = true,
+	editBoxWidth = 200,
+	maxLetters = 60,
+	OnShow = function(self)
+		local eb = self.editBox or self.EditBox
+		if eb then eb:SetText(""); eb:SetFocus() end
+	end,
+	OnAccept = function(self)
+		local eb = self.editBox or self.EditBox
+		local name = eb and eb:GetText() or ""
+		if not Member(name) then
+			ns.Print(L.LOOT_POINTS_NOT_MEMBER:format(name ~= "" and name or "?"))
+			return true
+		end
+		Loot.PickTo(ns.ShortName(Member(name)))
+	end,
+	EditBoxOnEnterPressed = function(self)
+		local parent = self:GetParent()
+		local name = self:GetText() or ""
+		if not Member(name) then return ns.Print(L.LOOT_POINTS_NOT_MEMBER:format(name ~= "" and name or "?")) end
+		Loot.PickTo(ns.ShortName(Member(name)))
+		parent:Hide()
+	end,
+	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
+
+-- 1.3.0: one member's points (data: { member, v }): a number saves them; Clear asks for the word
+-- CLEAR first (SYLVANISTAS_LOOT_CLEAR), so a stray click never wipes them.
+local function PointsTyped(text)
+	text = tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	return tonumber(text:match("^[%+%-]?%d+$") or "")
+end
+local function SavePoints(text, data)
+	if type(data) ~= "table" or not data.member then return end
+	local v = PointsTyped(text)
+	if not v then
+		ns.Print(L.LOOT_POINTS_NUMBER)
+		return true
+	end
+	ns.SafeCall("loot points", Loot.SetMemberPoints, data.member, v)
+end
 StaticPopupDialogs["SYLVANISTAS_LOOT_POINTS"] = {
 	text = L.LOOT_POINTS_PROMPT,
 	button1 = L.LOOT_SAVE,
 	button2 = CANCEL or "Cancel",
+	button3 = L.LOOT_POINTS_CLEAR,
 	hasEditBox = true,
-	editBoxWidth = 220,
-	maxLetters = 80,
+	editBoxWidth = 120,
+	maxLetters = 7,
 	OnShow = function(self, data)
 		local eb = self.editBox or self.EditBox
-		if eb then eb:SetText(type(data) == "string" and data or ""); eb:SetFocus() end
+		if eb then eb:SetText(type(data) == "table" and data.v and tostring(data.v) or ""); eb:SetFocus() end
 	end,
-	OnAccept = function(self)
+	OnAccept = function(self, data)
 		local eb = self.editBox or self.EditBox
-		ns.SafeCall("loot points", Loot.SetPoints, eb and eb:GetText())
+		return SavePoints(eb and eb:GetText(), data or self.data)
 	end,
-	EditBoxOnEnterPressed = function(self)
+	OnAlt = function(self, data)
+		data = data or self.data
+		if type(data) ~= "table" or not data.member then return end
+		ns.ShowDialog("SYLVANISTAS_LOOT_CLEAR", ns.DisplayName(data.member), L.LOOT_CLEAR_WORD, data)
+	end,
+	EditBoxOnEnterPressed = function(self, data)
 		local parent = self:GetParent()
-		ns.SafeCall("loot points", Loot.SetPoints, self:GetText())
+		if SavePoints(self:GetText(), data or parent.data) then return end
+		parent:Hide()
+	end,
+	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
+local function ClearTyped(text)
+	return tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""):upper() == L.LOOT_CLEAR_WORD:upper()
+end
+local function ClearPoints(text, data)
+	if not ClearTyped(text) then
+		ns.Print(L.TYPE_WORD_FIRST:format(L.LOOT_CLEAR_WORD))
+		return true
+	end
+	if type(data) == "table" and data.member then ns.SafeCall("loot points", Loot.SetMemberPoints, data.member, nil) end
+end
+StaticPopupDialogs["SYLVANISTAS_LOOT_CLEAR"] = {
+	text = L.LOOT_CLEAR_PROMPT,
+	button1 = L.LOOT_POINTS_CLEAR,
+	button2 = CANCEL or "Cancel",
+	hasEditBox = true,
+	editBoxWidth = 120,
+	maxLetters = 16,
+	OnShow = function(self)
+		local eb = self.editBox or self.EditBox
+		if eb then eb:SetText(""); eb:SetFocus() end
+	end,
+	OnAccept = function(self, data)
+		local eb = self.editBox or self.EditBox
+		return ClearPoints(eb and eb:GetText(), data or self.data)
+	end,
+	EditBoxOnEnterPressed = function(self, data)
+		local parent = self:GetParent()
+		if ClearPoints(self:GetText(), data or parent.data) then return end
 		parent:Hide()
 	end,
 	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
@@ -1009,6 +1228,18 @@ table.insert(ns.RealmPages, { key = "loot", Link = function() return Loot.Link()
 
 ns.On("LOGIN", function()
 	ns.RegisterEvent("CHAT_MSG_LOOT", function(text) Loot.OnLootMessage(text) end)
+	pcall(ns.RegisterEvent, "ENCOUNTER_END", function(...) ns.SafeCall("loot boss", Loot.OnBossKilled, ...) end)
+	-- (1.3.0: the drops kept a week in the saved variables, not this session alone.)
+	if ns.rdb then
+		if type(ns.rdb.lootDrops) ~= "table" then ns.rdb.lootDrops = {} end
+		local kept, now = {}, ns.Now()
+		for _, d in ipairs(ns.rdb.lootDrops) do
+			if type(d) == "table" and tonumber(d.id) and type(d.to) == "string" and tonumber(d.t) and now - d.t < Loot.DROPS_KEEP then kept[#kept + 1] = d end
+		end
+		for _, d in ipairs(drops) do kept[#kept + 1] = d end -- (any heard before login ran)
+		while #kept > Loot.DROPS_MAX do table.remove(kept) end
+		ns.rdb.lootDrops, drops = kept, kept
+	end
 	-- An officer's addon asks for the changes it lacks once the roster is in (the answers are
 	-- taken from officers our roster knows); nobody answering, its book is the guild's.
 	ns.After(50 + Loot.random() * 30, "loot ask", function()

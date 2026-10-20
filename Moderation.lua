@@ -155,7 +155,7 @@ local function Rank(name)
 		if K.IsStewardName(name) then return 2 end
 		if K.IsHandName(name) then return 1 end
 	end
-	return ns.IsHighCouncillor(name) == true and 1 or 0
+	return ns.HasDreadguardPowers(name) and 1 or 0 -- (1.3.0: the house's Dark Rangers too)
 end
 Moderation.Rank = Rank
 
@@ -405,11 +405,11 @@ function Moderation.Entry(kind, name, off, at, by, reason)
 	if kind == "c" then
 		name = CharName(name)
 		if not name then return nil, "name" end
-		if IsKing(name) then return nil, "the pinned King" end
+		if IsKing(name) or ns.IsKingAltCharacter(name) then return nil, "the pinned King" end
 	else
 		name = GuildName(name)
 		if not name then return nil, "not a Sylvanistas guild" end
-		if ns.IsKingGuild(name) then return nil, "the King's guild" end
+		if ns.IsHouseGuild(name) then return nil, "the King's guild" end
 	end
 	by = CharName(by)
 	if not by then return nil, "issuer" end
@@ -626,11 +626,13 @@ function Moderation.Set(kind, input, off, reason)
 	if kind == "g" then
 		name = GuildName(input, true)
 		if not name then ns.Print(L.NETOFF_GUILD_BAD) return false end
-		if ns.IsKingGuild(name) then ns.Print(L.NETOFF_NOT_KING_GUILD) return false end
+		if ns.IsHouseGuild(name) then ns.Print(L.NETOFF_NOT_KING_GUILD) return false end
 	else
 		name = CharName(input, true)
 		if not name then ns.Print(L.NETOFF_WHO_BAD) return false end
-		if IsKing(name) then ns.Print(L.NETOFF_NOT_KING) return false end
+		if IsKing(name) or ns.IsKingAltCharacter(name) then ns.Print(L.NETOFF_NOT_KING) return false end
+		-- 1.3.0 (the user's rule): an officer is taken off by the Dark Lady alone.
+		if ns.IsProtectedOfficer(name) and not ns.IAmDarkLady() then ns.Print(L.NETOFF_NOT_OFFICER) return false end
 		if Key("c", name) == Key("c", ns.me) then ns.Print(L.NETOFF_NOT_SELF) return false end
 		-- One who gives words (or a name his player linked): only from higher up.
 		local target = TargetRank(name)

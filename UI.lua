@@ -21,6 +21,7 @@ local UI = {}
 ns.UI = UI
 
 local DEFAULT_W, DEFAULT_H = 338, 424
+UI.WIDTH_SCALE = 1.35 -- 1.3.0: the window this much wider than the Social window, so names and columns fit
 local DETAIL_H = 78
 local HD_TABS_W, PANEL_GAP = 32, 32 -- RightSideTab.xml (32 wide); UIPanelLayoutFrame.lua PANEl_SPACING_X
 local HD_TABS_REACH = 40            -- a side tab and its art, past the window's right edge
@@ -38,7 +39,7 @@ local personFrames = {}             -- style -> person details panel (created on
 -- icon: the side tab's (HD window), a texture or a function giving one. A new tab is one
 -- entry here, its L.TAB_ label and, if it has any, its BUTTONS.
 local TABS = {
-	{ key = "census", label = "TAB_CENSUS", icon = "Interface\\Icons\\achievement_guildperk_havegroup willtravel" },
+	{ key = "census", label = "TAB_CENSUS", icon = "Interface\\Icons\\Spell_Shadow_GatherShadows" }, -- (1.3.0: the Crypt, Torment's icon)
 	-- The Realm's banner is the faction's: the Horde's red one on a Horde character.
 	{ key = "realm", label = "TAB_REALM", icon = function()
 		local faction = ns.faction or (UnitFactionGroup and UnitFactionGroup("player"))
@@ -74,6 +75,10 @@ UI.TABS = TABS
 
 local function DecreeAction(kind)
 	return function()
+		-- 1.3.0: the Revenant Call needs a rare or tougher enemy targeted, before its note is asked.
+		if kind == "ARMS" and ns.Decree.CanSend(kind) and not ns.Decree.RevenantTarget() then
+			return ns.Print(L.REVENANT_NEED_RARE)
+		end
 		if ns.Decree.CanSend(kind) then
 			ns.ShowDialog("SYLVANISTAS_DECREE", ns.Decree.Label({ kind = kind }), nil, kind)
 		else
@@ -119,8 +124,9 @@ local BUTTONS = {
 		{ "RAISING_BTN", function()
 			if not ns.Inspect.IsPatrolling() then ns.Inspect.SetPatrol(true) end
 			UI.SelectTab("heraldry", "regalia:raising")
-		end, shown = function() return ns.Casual() end },
-		{ "COPY_BTN", function() UI.ShowCopy(ns.Casual() and L.TAB_HERALDRY or L.INSPECT_TITLE, ns.Inspect.DiscordText()) end },
+		end, shown = function() return false end }, -- (1.3.0: one Fellow Forsaken, the user's call)
+		{ "COPY_BTN", function() UI.ShowCopy(ns.Casual() and L.TAB_HERALDRY or L.INSPECT_TITLE, ns.Inspect.DiscordText()) end,
+			shown = function() return not ns.Casual() end }, -- (1.3.0: not on Forsaken Regalia, the user's call)
 	},
 	-- The Throne: the agenda (the King and his Hands), the court (the King's).
 	-- The roll call lives in the Realm, the inspection in the Tabards (King.RollCallLines...).
@@ -535,9 +541,10 @@ end
 function UI.DockSize(hostW, hostH, heightOnly, baseW, baseH)
 	baseW, baseH = baseW or DEFAULT_W, baseH or DEFAULT_H
 	local okW, okH = hostW and hostW > 200, hostH and hostH > 200
-	if heightOnly then return baseW, okH and hostH or baseH end
-	if okW and okH then return hostW, hostH end
-	return baseW, baseH
+	local k = UI.WIDTH_SCALE or 1
+	if heightOnly then return math.floor(baseW * k), okH and hostH or baseH end
+	if okW and okH then return math.floor(hostW * k), hostH end
+	return math.floor(baseW * k), baseH
 end
 
 -- Size of a new window: as if docked to the guild window in use (GuildFrame.lua knows
@@ -549,6 +556,7 @@ local function HostSize(style)
 		return UI.DockSize(host.dock:GetWidth(), host.dock:GetHeight(), host.heightOnly, SocialSize())
 	end
 	local w, h = SocialSize()
+	w = math.floor(w * (UI.WIDTH_SCALE or 1))
 	if style == "hd" then return w, HD_DEFAULT_H end
 	return w, h
 end
@@ -889,11 +897,26 @@ local function CreateMain(style)
 	f.colHeader:SetHeight(g.header.h)
 	if f.listBox then f.colHeader:SetFrameLevel(f.listBox:GetFrameLevel() + 2) end
 	f.colHeader.buttons = {}
-	for c = 1, 4 do
+	for c = 1, 7 do -- (the Crypt's four columns; the Shadows' sections, 1.3.0)
 		local b = ColumnHeader(f, c)
 		b:SetHeight(g.header.h)
+		local light = b.GetHighlightTexture and b:GetHighlightTexture()
+		if light then
+			if light.SetDesaturated then light:SetDesaturated(true) end
+			light:SetVertexColor(unpack(UI.SORT_LIGHT))
+		end
+		b:SetScript("OnEnter", function(self)
+			if not self.labelKey or self.section then return end
+			GameTooltip:SetOwner(self, "ANCHOR_TOP")
+			GameTooltip:SetText(L[self.labelKey])
+			GameTooltip:AddLine(L.SORT_TIP, 1, 1, 1, true)
+			GameTooltip:Show()
+		end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		b:SetScript("OnClick", function(self)
-			if self.sortKey then
+			if self.section then
+				ns.Views.SelectSection(self.section)
+			elseif self.sortKey then
 				ns.Views.SortBy(self.sortKey)
 				UI.MarkSorted()
 				UI.Refresh()
@@ -1224,14 +1247,25 @@ end
 -- Positions that depend on the window width (buttons, columns, list width) and on
 -- membership (the Join screen has no column titles).
 -- 1.2.21: the column the list is sorted by stays lit, with its direction (the tab look of
--- Olympus's census titles); clicking another sorts by it, again reverses it.
+-- Olympus's census titles); clicking another sorts by it, again reverses it. 1.3.0: the arrow a
+-- game texture (the game's fonts have no triangle: it showed as a box), the light a pale violet.
+UI.SORT_DOWN = " |TInterface\\Buttons\\Arrow-Down-Up:12:12:0:-3|t"
+UI.SORT_UP = " |TInterface\\Buttons\\Arrow-Up-Up:12:12:0:3|t"
+UI.SORT_LIGHT = { 0.80, 0.62, 1.00 }
 function UI.MarkSorted()
 	if not (main and main.colHeader) then return end
 	local sort = ns.Views.sort
+	local section = main.tab == "realm" and ns.Views.RealmSection()
 	for _, b in ipairs(main.colHeader.buttons or {}) do
-		if b.labelKey then
+		if b.labelKey and b.section then
+			local on = b.section == section
+			b:SetText(L[b.labelKey])
+			if b.LockHighlight then
+				if on then b:LockHighlight() else b:UnlockHighlight() end
+			end
+		elseif b.labelKey then
 			local on = b.sortKey ~= nil and type(sort) == "table" and sort.key == b.sortKey
-			b:SetText(L[b.labelKey] .. (on and (sort.desc and " \226\150\188" or " \226\150\178") or ""))
+			b:SetText(L[b.labelKey] .. (on and (sort.desc and UI.SORT_DOWN or UI.SORT_UP) or ""))
 			if b.LockHighlight then
 				if on then b:LockHighlight() else b:UnlockHighlight() end
 			end
@@ -1247,7 +1281,8 @@ function UI.Layout()
 	LayoutDetailButtons()
 	FitHeader()
 	main.layoutLocked = not ns.IsMember()
-	local hasCols = not main.layoutLocked and ns.Views.COLUMNS[main.tab] ~= nil and main.tab == "census"
+	local sections = not main.layoutLocked and main.tab == "realm" and ns.Views.RealmSections() or nil
+	local hasCols = not main.layoutLocked and (ns.Views.COLUMNS[main.tab] ~= nil and main.tab == "census" or sections ~= nil)
 	main.colHeader:SetShown(hasCols)
 	-- The Chat tab: the header's counts, the list and the detail box give their place to its parts.
 	local chat = not main.layoutLocked and main.tab == "chat" and ChatPaneReady()
@@ -1267,7 +1302,8 @@ function UI.Layout()
 	local listW = w - g.scroll.left + right - 2
 	for _, v in pairs(main.views) do v:SetWidth(listW) end
 	if hasCols then
-		local layout = ns.Views.COLUMNS[main.tab]
+		local layout = sections or ns.Views.COLUMNS[main.tab]
+		if sections then for _, col in ipairs(sections) do col.w = 1 / #sections end end
 		local x = 0
 		for c, b in ipairs(main.colHeader.buttons) do
 			local col = layout[c]
@@ -1278,7 +1314,7 @@ function UI.Layout()
 				-- The old headers' middle part is sized by Blizzard's code; the HD ones stretch.
 				if (main.style == "old" or b.whoTemplate) and WhoFrameColumn_SetWidth then pcall(WhoFrameColumn_SetWidth, b, width) else b:SetWidth(width) end
 				b:SetWidth(width)
-				b.sortKey, b.labelKey = col.sort, col.key
+				b.sortKey, b.labelKey, b.section = col.sort, col.key, col.section
 				b:SetText(L[col.key])
 				b:Show()
 				x = x + width - 2
@@ -1559,6 +1595,7 @@ end
 function UI.Refresh()
 	if not main or not main:IsShown() then return end
 	UI.lastRedraw = GetTime()
+	if main.tab == "realm" then UI.MarkSorted() end -- (the section shown lit, 1.3.0)
 	ns.SafeCall("ui refresh", function()
 		local s = ns.Data.Summary()
 		local F = ns.FormatNumber
@@ -2039,6 +2076,7 @@ function UI.IsShown() return main and main:IsShown() end
 function UI.DockedTo() return main and main.docked and main.host or nil end
 -- "old" or "hd": the look of the window in use (nil before the first open), for /syl status.
 function UI.WindowStyle() return main and main.style end
+function UI.Frame() return main end -- (1.3.0: the window in use, to place the alert settings beside it)
 
 function UI.StatusLine()
 	local guild = GetGuildInfo("player")
@@ -2096,7 +2134,9 @@ ns.On("LAYERS_CHANGED", function()
 	if main and (main.tab == "decrees" or main.tab == "realm" or main.tab == "census") then UI.RefreshSoon() end
 end)
 ns.On("HOP_CHANGED", function() if main and (main.tab == "census" or main.tab == "realm") then UI.RefreshSoon() end end)
-ns.On("DECREES_CHANGED", function() UI.RefreshSoon() end)
+ns.On("DECREES_CHANGED", function() UI.RefreshSoon(); if ns.Views.RefreshModeration then ns.Views.RefreshModeration() end end)
+ns.On("FELLOWS_CHANGED", function() UI.RefreshSoon() end)
+ns.On("WEEKLOG_CHANGED", function() UI.RefreshSoon() end)
 -- The King's calls show on the Throne, the roll call in the Realm, the inspection in the Tabards.
 ns.On("THRONE_CHANGED", function()
 	if main and (main.tab == "throne" or main.tab == "realm" or main.tab == "heraldry") then UI.RefreshSoon() end

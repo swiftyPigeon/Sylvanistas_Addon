@@ -74,6 +74,7 @@ local lists = {}        -- [crafter .. "~" .. key] = { parts = {}, n, t, recipes
 local asked = {}        -- [crafter .. "~" .. key] = when we asked
 local lastListing, lastListingText = -math.huge, nil
 local open = {}         -- [crafter] = true: shown opened on the page
+local mineOpen = false  -- 1.3.0: our own listing shown opened on the page
 local pendingRead       -- a profession read waiting for its data
 local questioned = {}   -- [key] = true: asked this session (once, until answered: a closed window is no answer)
 
@@ -642,13 +643,35 @@ function Crafters.Lines(q)
 		lines[#lines + 1] = { text = Green(L.CRAFTER_ASK), onClick = function() Crafters.AskPrompt() end,
 			tooltip = function(tt) tt:AddLine(L.CRAFTER_ASK, 1, 0.82, 0); tt:AddLine(L.CRAFTER_ASK_TIP, 1, 1, 1, true) end }
 		-- Our own listing, and how to change it.
+		-- 1.3.0: a click opens it (each profession, its skill, its recipes, when it was read); taking
+		-- it off the board is a line of its own there, behind typing REMOVE (Crafters.AskUnlist).
 		local listed = Crafters.Listed()
 		if #listed > 0 then
 			local names = {}
 			for _, p in ipairs(listed) do names[#names + 1] = ("%s %d"):format(p.name, p.rank or 0) end
-			lines[#lines + 1] = { text = Grey(L.CRAFTER_YOU:format(table.concat(names, ", "))), right = Gold(L.CRAFTER_UNLIST),
-				onClick = function() Crafters.Choose(nil, false) end,
-				tooltip = function(tt) tt:AddLine(L.CRAFTER_UNLIST, 1, 0.82, 0); tt:AddLine(L.CRAFTER_UNLIST_TIP, 1, 1, 1, true) end }
+			lines[#lines + 1] = { text = (mineOpen and "[-] " or "[+] ") .. Grey(L.CRAFTER_YOU:format(table.concat(names, ", "))),
+				onClick = function()
+					mineOpen = not mineOpen
+					if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+				end,
+				tooltip = function(tt) tt:AddLine(L.CRAFTER_YOU_TITLE, 1, 0.82, 0); tt:AddLine(L.CRAFTER_YOU_TIP, 1, 1, 1, true) end }
+			if mineOpen then
+				for _, p in ipairs(listed) do
+					local recipes = type(p.recipes) == "table" and p.recipes or {}
+					lines[#lines + 1] = { indent = 1, text = Gold(p.name),
+						right = Grey(L.CRAFTER_SKILL:format(p.rank or 0, p.max or 0, #recipes) .. (p.t and ("  ·  " .. ns.Ago(p.t)) or "")),
+						tooltip = function(tt)
+							tt:AddLine(p.name, 1, 0.82, 0)
+							tt:AddLine(L.CRAFTER_MINE_TIP:format(p.rank or 0, p.max or 0, #recipes, p.t and ns.Ago(p.t) or "?"), 1, 1, 1, true)
+						end }
+					local items, others = RecipeItems(recipes)
+					if #items > 0 then lines[#lines + 1] = { indent = 2, items = items } end
+					if others > 0 then lines[#lines + 1] = { indent = 2, text = Grey(L.CRAFTER_OTHERS:format(others)) } end
+				end
+				lines[#lines + 1] = { indent = 1, text = "|cffff6060" .. L.CRAFTER_UNLIST .. "|r",
+					onClick = function() Crafters.AskUnlist() end,
+					tooltip = function(tt) tt:AddLine(L.CRAFTER_UNLIST, 1, 0.82, 0); tt:AddLine(L.CRAFTER_UNLIST_TIP, 1, 1, 1, true) end }
+			end
 		else
 			lines[#lines + 1] = { text = Grey(L.CRAFTER_HOW_LIST) }
 		end
@@ -750,6 +773,62 @@ function Crafters.Lines(q)
 	end
 	return lines
 end
+
+-- 1.3.0: taking our listing off the board, only once the word is typed (L.CRAFTER_REMOVE_WORD,
+-- any case): a stray click on the page no longer does it.
+local function RemoveTyped(text)
+	return tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""):upper() == L.CRAFTER_REMOVE_WORD:upper()
+end
+function Crafters.AskUnlist()
+	if #Crafters.Listed() == 0 then return end
+	ns.ShowDialog("SYLVANISTAS_CRAFTER_REMOVE", L.CRAFTER_REMOVE_WORD)
+end
+-- (The game's popup greys its button until the word is typed; Sylvanistas's own window, Dialog.lua,
+-- can't: there a wrong word keeps the dialog up, with a line that says why.)
+local function RemoveButton(popup)
+	return popup and (popup.button1 or (popup.GetButton and popup:GetButton(1)))
+end
+StaticPopupDialogs["SYLVANISTAS_CRAFTER_REMOVE"] = {
+	text = L.CRAFTER_REMOVE_PROMPT,
+	button1 = L.CRAFTER_UNLIST,
+	button2 = CANCEL or "Cancel",
+	hasEditBox = true,
+	editBoxWidth = 160,
+	maxLetters = 16,
+	OnShow = function(self)
+		local eb = self.editBox or self.EditBox
+		if eb then eb:SetText(""); eb:SetFocus() end
+		local b = RemoveButton(self)
+		if b then b:Disable() end
+	end,
+	EditBoxOnTextChanged = function(self)
+		local b = RemoveButton(self:GetParent())
+		if b then b:SetEnabled(RemoveTyped(self:GetText())) end
+	end,
+	OnAccept = function(self)
+		local eb = self.editBox or self.EditBox
+		if not RemoveTyped(eb and eb:GetText()) then
+			ns.Print(L.TYPE_WORD_FIRST:format(L.CRAFTER_REMOVE_WORD))
+			return true
+		end
+		mineOpen = false
+		ns.SafeCall("crafter remove", Crafters.Choose, nil, false)
+		if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+	end,
+	EditBoxOnEnterPressed = function(self)
+		local parent = self:GetParent()
+		if not RemoveTyped(self:GetText()) then return ns.Print(L.TYPE_WORD_FIRST:format(L.CRAFTER_REMOVE_WORD)) end
+		parent:Hide()
+		mineOpen = false
+		ns.SafeCall("crafter remove", Crafters.Choose, nil, false)
+		if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+	end,
+	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
 
 -- The dialogs: the question when a profession opens (data: its key), the ask's box (gamepad UI).
 StaticPopupDialogs["SYLVANISTAS_CRAFTER_LIST"] = {

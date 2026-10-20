@@ -451,6 +451,7 @@ function Alts.Slash(rest)
 	if verb == "add" then return Alts.Add(arg) end
 	if verb == "remove" or verb == "del" or verb == "tirar" then return Alts.Remove(arg) end
 	if verb == "yes" or verb == "confirm" then return Alts.Confirm(true) end
+	if verb == "main" then return Alts.LinkTo(CharName(arg, ns.realm)) end -- (1.3.0: this Underground character under that main)
 	Alts.PrintStatus()
 end
 
@@ -487,6 +488,86 @@ StaticPopupDialogs["SYLVANISTAS_ALT_CONFIRM"] = {
 }
 
 -- The alt's question, once a session, never in combat: its main's offer, waiting in the account.
+-- 1.3.0 (the user's call): a character of <Sylvanistas Underground>, the alt branch, is an alt by
+-- definition. Logged in unlinked, it is asked once, one click, to link with the account's character
+-- in <Sylvanistas> (the account's own saved variables say which: nobody else can make the link).
+-- Several there: /syl alt main <name>. A No is kept: that pair is never asked again.
+function Alts.HouseMains()
+	local a, out = Account(), {}
+	local me = ns.me and Key(ns.me)
+	for key, guild in pairs(a.guilds) do
+		local c = type(a.chars) == "table" and a.chars[key] or nil
+		if key ~= me and ns.IsKingGuild(guild) and type(c) == "table" and type(c.name) == "string"
+			and (c.faction or "Alliance") == (ns.faction or "Alliance") and c.group == ns.GroupOf(ns.realm)
+			and type(a.links[key]) ~= "table" then
+			out[#out + 1] = c.name
+		end
+	end
+	table.sort(out)
+	return out
+end
+function Alts.LinkTo(main)
+	if not ns.me or type(main) ~= "string" then return false end
+	local a = Account()
+	local key = Key(ns.me)
+	if type(a.links[key]) == "table" or #AccountAlts(ns.me) > 0 then ns.Print(L.ALT_ALREADY:format(ns.DisplayName(ns.me))) return false end
+	local ok
+	for _, m in ipairs(Alts.HouseMains()) do if Key(m) == Key(main) then main, ok = m, true end end
+	if not ok then ns.Print(L.ALT_HOUSE_NOT_MINE:format(ns.DisplayName(main))) return false end
+	if #AccountAlts(main) >= Alts.MAX_ALTS then ns.Print(L.ALT_FULL:format(Alts.MAX_ALTS)) return false end
+	if Alts.Frozen({ main, ns.me }) then ns.Print(L.ALT_FROZEN) return false end
+	a.offers[key] = nil
+	a.links[key] = { name = ns.me, main = main, at = Clock() }
+	Changed()
+	ns.Print(L.ALT_LINKED:format(ns.DisplayName(ns.me), ns.DisplayName(main)))
+	Alts.Send(true)
+	return true
+end
+local houseAsked = false
+function Alts.OfferHouse()
+	if houseAsked or not ns.me or not ns.IsAltGuild(IsInGuild() and GetGuildInfo("player") or nil) then return false end
+	local a = Account()
+	local key = Key(ns.me)
+	if type(a.links[key]) == "table" or #AccountAlts(ns.me) > 0 then return false end
+	if type(a.declined) ~= "table" then a.declined = {} end
+	local mains = {}
+	for _, m in ipairs(Alts.HouseMains()) do if a.declined[key] ~= Key(m) then mains[#mains + 1] = m end end
+	if #mains == 0 then return false end
+	houseAsked = true
+	if #mains > 1 then
+		local shown = {}
+		for _, m in ipairs(mains) do shown[#shown + 1] = ns.DisplayName(m) end
+		ns.Print(L.ALT_HOUSE_PICK:format(table.concat(shown, ", ")))
+		return true
+	end
+	ns.ShowDialog("SYLVANISTAS_ALT_HOUSE", ns.DisplayName(ns.me), ns.DisplayName(mains[1]), mains[1])
+	return true
+end
+StaticPopupDialogs["SYLVANISTAS_ALT_HOUSE"] = {
+	text = L.ALT_HOUSE_ASK,
+	button1 = YES or "Yes",
+	button2 = NO or "No",
+	OnAccept = function(self, main) ns.SafeCall("alt house yes", Alts.LinkTo, main or (self and self.data)) end,
+	OnCancel = function(self, main, reason)
+		if reason ~= "clicked" then return end
+		main = main or (self and self.data)
+		local a = Account()
+		if type(a.declined) ~= "table" then a.declined = {} end
+		if ns.me and type(main) == "string" then a.declined[Key(ns.me)] = Key(main) end
+	end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
+
+-- 1.3.0: the main a character goes under (its player's main, when it is someone's alt), or nil.
+function Alts.MainOf(name)
+	local g = type(name) == "string" and Alts.Group(name)
+	if g and g.main and Key(g.main) ~= Key(name) then return g.main end
+	return nil
+end
+
 function Alts.AskConfirm()
 	if asked or not ns.me then return false end
 	local offer = Account().offers[Key(ns.me)]
@@ -538,7 +619,14 @@ ns.On("LOGIN", function()
 			Account().guilds[key] = guild
 			Bump()
 		end
+		-- (1.3.0: and its name, faction and realm group, for the Underground's one-click link.)
+		if key then
+			local a = Account()
+			if type(a.chars) ~= "table" then a.chars = {} end
+			a.chars[key] = { name = ns.me, faction = ns.faction, group = ns.GroupOf(ns.realm) }
+		end
 	end)
+	ns.After(Alts.ASK_AFTER + 5, "alt house", function() ns.SafeCall("alt house", Alts.OfferHouse) end)
 	ns.After(Alts.ASK_AFTER, "alt confirm", Alts.AskConfirm)
 	ns.After(Alts.LOGIN_AFTER, "alt claim", function() Alts.Send(true) end)
 	ns.Every(60, "alt links", function()

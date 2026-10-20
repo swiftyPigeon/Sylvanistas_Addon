@@ -57,6 +57,7 @@ local function Authorized(by, guild, dist)
 		return type(rank) == "number" and rank <= ns.CAPTAIN_RANK
 	end
 	if ns.IsKingCharacter(by) then return true end
+	if ns.IsHighCouncillor(by) then return true end -- (1.3.0: Dreadguards call musters, as officers do)
 	local K = ns.King
 	return K ~= nil and ((K.IsStewardName and K.IsStewardName(by)) or (K.IsHandName and K.IsHandName(by))) and true or false
 end

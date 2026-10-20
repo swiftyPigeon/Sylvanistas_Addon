@@ -11,11 +11,13 @@ ns.GUILD_NAME = "Sylvanistas"                  -- the main guild's exact name (c
 ns.GM_CHARACTER = "Testiana Paladina"          -- the guild master (the Dark Lady): her character's exact name
 ns.GM_REALM = "ClassicBetaPvE"                 -- her realm group (e.g. "ClassicBetaPvE"); nil: learned from her first message, see /syl status
 ns.GM_DISPLAY = "Dark Lady"                   -- what the addon calls her on the lines and the crown
+ns.ALT_GUILD_NAME = "Sylvanistas Underground" -- the alt branch: the main guild's alternate characters, one house with it (exact name)
+ns.GM_ALT_CHARACTER = "CHANGEME_DarkLadyAlt"  -- its guild master: the Dark Lady's alt, exactly as the game writes it (her title, not her powers)
 ns.AUTHOR_CHARACTER = "Riztosin Psalmpalm"      -- the addon keeper's character (the Workshop tab, bug reports, signed lists)
 ns.REALM_GROUP = "ClassicBetaPvE"              -- the author's and Treasurer's realm group (e.g. "ClassicBetaPvP")
 ns.TREASURER_CHARACTER = "CHANGEME_Treasurer"  -- the Treasurer (in the main guild)
 ns.TREASURER_MAIL_CHARACTER = "CHANGEME_TreasurerMail" -- where dues and treasury mail go (any guild)
-ns.TREASURY_OFF = true                        -- true turns the Treasury, Dues and Bank tabs off
+ns.TREASURY_OFF = true                        -- true turns the Treasury and Bank off (1.3.0: off in beta; on at launch, the Treasurer a guild rank)
 ns.WALL_OF_SHAME = false                       -- true lets the Dark Lady show the untabarded list to every member (the "Wall of Shame")
 ns.REQUIRE_KEY = false                        -- true: a guild without the channel key (/syl key, from the Dark Lady) gets no network, only its own roster. Seal the channel first.
 ns.BLOCKED_GUILDS = {                          -- guilds cut off for good, whatever their name: exact names, e.g. ["Sylvanistas Whatever"] = true (never the Dark Lady's)
@@ -23,7 +25,7 @@ ns.BLOCKED_GUILDS = {                          -- guilds cut off for good, whate
 ns.TABARD_MODE = "casual"                      -- "casual": Forsaken Regalia (who wears it, never who doesn't); "strict": the tabard inspection as before 1.2.2
 
 ns.NAME = "Sylvanistas"
-ns.VERSION = "1.2.21"
+ns.VERSION = "1.3.0"
 ns.PREFIX = "SYLVANISTAS"        -- addon message prefix (max 16 chars)
 ns.CHANNEL = "SylvanistasNet"    -- hidden chat channel (Alliance: unused, the addon is Horde-only)
 ns.CHANNEL_HORDE = "SylvanistasNetH" -- the Horde's hidden chat channel, shared by every Sylvanistas guild
@@ -64,10 +66,10 @@ function ns.FormatNumber(n)
 	return sign .. out
 end
 
--- 1.2.2: a guild on ns.BLOCKED_GUILDS (top of this file), by its exact name; never the King's.
+-- 1.2.2: a guild on ns.BLOCKED_GUILDS (top of this file), by its exact name; never the King's house.
 function ns.IsBlockedGuild(guild)
 	return type(guild) == "string" and type(ns.BLOCKED_GUILDS) == "table" and ns.BLOCKED_GUILDS[guild] == true
-		and not ns.IsKingGuild(guild)
+		and not ns.IsHouseGuild(guild)
 end
 
 -- 1.2.2: Forsaken Regalia (ns.TABARD_MODE): casual counts who wears the tabard and never lists who
@@ -688,12 +690,147 @@ function ns.Alert(kind, tone, a)
 		ns.Fire("DECREES_CHANGED")
 		return false
 	end
-	if a.text and RaidNotice_AddMessage and RaidWarningFrame then
-		RaidNotice_AddMessage(RaidWarningFrame, a.text, ChatTypeInfo and ChatTypeInfo["RAID_WARNING"] or a.color or { r = 1, g = 0.82, b = 0 })
+	-- 1.3.0: no more raid-warning text (the user's call): the Banshee Scream and Assemble the Loyal
+	-- on a parchment scroll (a.scroll = { title, body, by }), everything else in the small window.
+	if type(a.scroll) == "table" and ns.Scroll then
+		ns.Scroll(a.scroll.title, a.scroll.body, a.scroll.by, a.icon)
+	elseif a.text and ns.Toast then
+		ns.Toast(a.text, a.icon)
 	end
 	ns.PlayAlert(tone, kind, a.own)
 	if a.show then a.show() end
 	return true
+end
+
+-- 1.3.0: the toast, a small window for a call (the Revenant Call, a Gathering): black and
+-- see-through, a silver border, the call's icon and words, an X. Dragged with the mouse (its place
+-- kept, ns.db.toastPos), gone after TOAST_SECONDS, later while the mouse is on it. One at a time:
+-- a new call takes the window.
+ns.TOAST_SECONDS = 5
+local toast
+local function ToastFrame()
+	if toast then return toast end
+	local f = CreateFrame("Frame", "SylvanistasToast", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+	f:SetSize(300, 58)
+	f:SetFrameStrata("HIGH")
+	f:SetClampedToScreen(true)
+	if f.SetBackdrop then
+		f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+			edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+		f:SetBackdropColor(0, 0, 0, 0.65)
+		f:SetBackdropBorderColor(0.78, 0.8, 0.84, 1) -- (metallic silver)
+	end
+	f.icon = f:CreateTexture(nil, "ARTWORK")
+	f.icon:SetSize(36, 36)
+	f.icon:SetPoint("LEFT", 12, 0)
+	f.text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	f.text:SetPoint("LEFT", f.icon, "RIGHT", 10, 0)
+	f.text:SetPoint("RIGHT", -28, 0)
+	f.text:SetJustifyH("LEFT")
+	f.text:SetWordWrap(true)
+	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+	close:SetSize(24, 24)
+	close:SetPoint("TOPRIGHT", 0, 0)
+	close:SetScript("OnClick", function() f:Hide() end)
+	f:SetMovable(true)
+	f:EnableMouse(true)
+	f:RegisterForDrag("LeftButton")
+	f:SetScript("OnDragStart", function(self) self:StartMoving() end)
+	f:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		local point, _, rel, x, y = self:GetPoint(1)
+		if ns.db then ns.db.toastPos = { point, rel, x, y } end
+	end)
+	f:SetScript("OnUpdate", function(self)
+		if self.until_ and GetTime() > self.until_ and not self:IsMouseOver() then self:Hide() end
+	end)
+	f:Hide()
+	toast = f
+	return f
+end
+function ns.Toast(text, icon)
+	local f = ToastFrame()
+	f:ClearAllPoints()
+	local p = ns.db and ns.db.toastPos
+	if type(p) == "table" and p[1] then f:SetPoint(p[1], UIParent, p[2] or p[1], p[3] or 0, p[4] or 0)
+	else f:SetPoint("TOP", UIParent, "TOP", 0, -160) end
+	f.icon:SetTexture(icon or ns.ICON)
+	f.text:SetText(text or "")
+	f:SetHeight(math.max(58, (f.text:GetStringHeight() or 0) + 26))
+	f.until_ = GetTime() + ns.TOAST_SECONDS
+	f:Show()
+end
+
+-- 1.3.0: the scroll, for the Banshee Scream and Assemble the Loyal: the call on parchment (the
+-- letters' paper, UI.PARCHMENTS), its title in the quest font, its words in dark ink, who sent it,
+-- an X. It stays until closed; dragged with the mouse (its place kept, ns.db.scrollPos). One at a
+-- time: a new one takes it.
+local scroll
+local function ScrollFrame()
+	if scroll then return scroll end
+	local f = CreateFrame("Frame", "SylvanistasScroll", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
+	f:SetSize(360, 200)
+	f:SetFrameStrata("HIGH")
+	f:SetClampedToScreen(true)
+	if f.SetBackdrop then
+		f:SetBackdrop({ edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Gold-Border", edgeSize = 24,
+			insets = { left = 6, right = 6, top = 6, bottom = 6 } })
+	end
+	local paper = f:CreateTexture(nil, "BACKGROUND")
+	paper:SetPoint("TOPLEFT", 6, -6)
+	paper:SetPoint("BOTTOMRIGHT", -6, 6)
+	local file = ns.UI and ns.UI.FirstTexture and ns.UI.PARCHMENTS and ns.UI.FirstTexture(ns.UI.PARCHMENTS) or "Interface\\QuestFrame\\QuestBG"
+	if GetFileIDFromPath and not GetFileIDFromPath(file) then
+		paper:SetColorTexture(0.87, 0.80, 0.64, 0.97)
+	else
+		paper:SetTexture(file)
+		if file:find("QuestBG", 1, true) then paper:SetTexCoord(0, 296 / 512, 0, 331 / 512) end
+	end
+	f.icon = f:CreateTexture(nil, "ARTWORK")
+	f.icon:SetSize(28, 28)
+	f.icon:SetPoint("TOPLEFT", 18, -16)
+	f.title = f:CreateFontString(nil, "OVERLAY", _G.QuestTitleFont and "QuestTitleFont" or "GameFontNormalLarge")
+	f.title:SetPoint("LEFT", f.icon, "RIGHT", 8, 0)
+	f.title:SetPoint("RIGHT", -34, 0)
+	f.title:SetJustifyH("LEFT")
+	f.title:SetTextColor(0.25, 0.1, 0.05)
+	f.body = f:CreateFontString(nil, "OVERLAY", _G.QuestFont and "QuestFont" or "GameFontHighlight")
+	f.body:SetPoint("TOPLEFT", f.icon, "BOTTOMLEFT", 0, -10)
+	f.body:SetPoint("RIGHT", -22, 0)
+	f.body:SetJustifyH("LEFT")
+	f.body:SetWordWrap(true)
+	f.body:SetTextColor(0.18, 0.12, 0.06)
+	f.by = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	f.by:SetPoint("BOTTOMRIGHT", -20, 16)
+	f.by:SetTextColor(0.6, 0, 0) -- (crimson: grey is unreadable on the parchment)
+	local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", -2, -2)
+	close:SetScript("OnClick", function() f:Hide() end)
+	f:SetMovable(true)
+	f:EnableMouse(true)
+	f:RegisterForDrag("LeftButton")
+	f:SetScript("OnDragStart", function(self) self:StartMoving() end)
+	f:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		local point, _, rel, x, y = self:GetPoint(1)
+		if ns.db then ns.db.scrollPos = { point, rel, x, y } end
+	end)
+	f:Hide()
+	scroll = f
+	return f
+end
+function ns.Scroll(title, body, by, icon)
+	local f = ScrollFrame()
+	f:ClearAllPoints()
+	local p = ns.db and ns.db.scrollPos
+	if type(p) == "table" and p[1] then f:SetPoint(p[1], UIParent, p[2] or p[1], p[3] or 0, p[4] or 0)
+	else f:SetPoint("TOP", UIParent, "TOP", 0, -140) end
+	f.icon:SetTexture(icon or ns.ICON)
+	f.title:SetText(title or "")
+	f.body:SetText(body or "")
+	f.by:SetText(by or "")
+	f:SetHeight(math.max(140, (f.body:GetStringHeight() or 0) + 100))
+	f:Show()
 end
 
 -- What waits and is still current, one per key (the latest, with the popup an earlier one
@@ -780,9 +917,7 @@ function ns.ReleaseHeld()
 	end
 	local line = L.HELD_SUMMARY:format(table.concat(words, ", "))
 	ns.Print("|cffffd200" .. line .. "|r" .. (gone > 0 and ("  |cff9d9d9d" .. L.HELD_AND_GONE:format(gone) .. "|r") or ""))
-	if RaidNotice_AddMessage and RaidWarningFrame then
-		RaidNotice_AddMessage(RaidWarningFrame, line, ChatTypeInfo and ChatTypeInfo["RAID_WARNING"] or { r = 1, g = 0.82, b = 0 })
-	end
+	if ns.Toast then ns.Toast(line) end -- (1.3.0: the small window, never raid-warning text)
 	local loudest
 	for _, h in ipairs(list) do
 		if ns.SoundOn(h.kind) and (not loudest or Rank(h.tone, h.kind) > Rank(loudest.tone, loudest.kind)) then loudest = h end
@@ -869,6 +1004,20 @@ function ns.IsKingGuild(guild)
 	return want ~= nil and guild == want
 end
 
+-- 1.3.0: the King's house is two guilds, one for mains and one for alts: <Sylvanistas> and
+-- <Sylvanistas Underground> (ns.ALT_GUILD_NAME, top of this file), each spelled exactly. The alt
+-- branch is of the Sylvanistas from the start (no key, list or block can leave it out), its officers
+-- are of the Crown on its own members' clients as the King's are on his (IsCrownRank), and its
+-- guild master is shown with the King's title. The King's powers stay on his pinned character:
+-- what the Throne, the treasury and the layer hop trust is still the main guild alone.
+ns.ALT_GUILD = { Horde = ns.ALT_GUILD_NAME }
+function ns.IsAltGuild(guild)
+	if type(guild) ~= "string" then return false end
+	local want = ns.ALT_GUILD[ns.faction or "Alliance"]
+	return want ~= nil and guild == want
+end
+function ns.IsHouseGuild(guild) return ns.IsKingGuild(guild) or ns.IsAltGuild(guild) end
+
 -- The King himself, by his character's name, like the Treasurer: sender names are set by the
 -- server, so nobody else can speak as him, and no census vote (anyone on the channel can
 -- vote) can crown someone else or take the Crown from him. The Alliance's is the guild master
@@ -903,6 +1052,28 @@ function ns.IsKingCharacter(name)
 	local realm = KingRealm()
 	return realm == nil or OfGroup(name, realm)
 end
+-- The King's alt (1.3.0, ns.GM_ALT_CHARACTER): the alt branch's guild master, by his pinned name on
+-- his realm group, as the King. Nil while it is a placeholder.
+function ns.KingAltCharacter()
+	local pin = ns.GM_ALT_CHARACTER
+	if ns.faction ~= "Horde" or type(pin) ~= "string" or pin == "" or pin:find("^CHANGEME") then return nil end
+	local realm = KingRealm()
+	if realm and ns.GroupOf(ns.realm or ns.CurrentRealm()) ~= ns.GroupOf(realm) then return nil end
+	return pin
+end
+function ns.IsKingAltCharacter(name)
+	local pin = ns.KingAltCharacter()
+	if pin == nil or type(name) ~= "string" or ns.ShortName(name) ~= pin then return false end
+	local realm = KingRealm()
+	return realm == nil or OfGroup(name, realm)
+end
+-- The alt branch's guild master shown with the King's title: his pinned alt, or, until it is
+-- pinned, whoever leads the guild of that exact name (as the King's own guild before his name).
+function ns.IsKingAltLeader(guild, leader)
+	if not ns.IsAltGuild(guild) then return false end
+	if ns.KingAltCharacter() then return ns.IsKingAltCharacter(leader) end
+	return true
+end
 -- Learned only from a message he sent (King.lua: the sender name is the server's), never from
 -- a name written inside a report, which anyone could forge to lock him out.
 function ns.LearnKingRealm(sender)
@@ -933,6 +1104,65 @@ local function OfListGroup(name, group)
 	end
 	return false
 end
+-- 1.3.0 (the user's call): the Dreadguards (moderators, the signed list) and the house's Dark Rangers
+-- (the officers of <Sylvanistas> and <Sylvanistas Underground>) are equal in authority: either may use
+-- the moderators' tools (net-off, the shared filter, help requests, the Answers button, Ask to
+-- update). A house officer: our own guild's by our roster (the server's word), the other house
+-- guild's by its census (Data.KnownRank: two senders naming them, as the Crown is checked), and that
+-- only once the channel is sealed (ns.rdb.realmKey): on the public channel two made-up characters
+-- could report themselves officers of it.
+function ns.IsHouseOfficer(name)
+	if type(name) ~= "string" or name == "" then return false end
+	local full = ns.FullName(name)
+	local mine = IsInGuild and IsInGuild() and GetGuildInfo("player")
+	if full == ns.me then
+		return ns.IsMember() == true and ns.IsHouseGuild(mine) and (ns.Roster.MyRank() or 99) <= ns.CAPTAIN_RANK
+	end
+	local rank = ns.Roster and ns.Roster.RankOf(full)
+	if rank ~= nil then return ns.IsHouseGuild(mine) and rank <= ns.CAPTAIN_RANK end
+	-- (Only once the channel is sealed: on the public one anyone can send made-up reports.)
+	if not (ns.rdb and ns.rdb.realmKey) then return false end
+	for _, guild in ipairs({ ns.GUILD_NAME, ns.ALT_GUILD_NAME }) do
+		if guild ~= mine then
+			local known = ns.Data and ns.Data.KnownRank and ns.Data.KnownRank(full, guild)
+			if known and known <= ns.CAPTAIN_RANK then return true end
+		end
+	end
+	return false
+end
+-- 1.3.0 (the user's rule): an officer nobody but the Dark Lady may block, mute or take off the
+-- network: the Dark Lady, her Valkyr and Deathstalkers, the Dreadguards, and any Sylvanistas guild's
+-- guild master or Dark Rangers (rank 0-1: our roster; any other guild's report of them once the
+-- channel is sealed).
+function ns.IsProtectedOfficer(name)
+	if type(name) ~= "string" or name == "" then return false end
+	local full = ns.FullName(name)
+	if ns.IsKingCharacter(full) or ns.IsKingAltCharacter(full) or ns.IsHighCouncillor(full) or ns.IsSteward(full) then return true end
+	local K = ns.King
+	if K and not K.missing and type(K.IsHandName) == "function" and K.IsHandName(full) then return true end
+	local rank = ns.Roster and ns.Roster.RankOf(full)
+	if rank ~= nil then return rank <= ns.CAPTAIN_RANK end
+	-- Other guilds' masters and officers by their census reports only once the channel is sealed:
+	-- on the public one anyone could report a made-up guild and make themselves unblockable.
+	if not (ns.rdb and ns.rdb.realmKey) then return false end
+	local short = ns.ShortName(full):lower()
+	for _, g in pairs(ns.rdb and ns.rdb.guilds or {}) do
+		if type(g) == "table" then
+			if type(g.leader) == "string" and ns.ShortName(g.leader):lower() == short then return true end
+			for _, o in ipairs(type(g.officers) == "table" and g.officers or {}) do
+				if type(o.name) == "string" and ns.ShortName(o.name):lower() == short then return true end
+			end
+		end
+	end
+	return false
+end
+-- Our own client: are we the Dark Lady (who alone may silence an officer)?
+function ns.IAmDarkLady() return ns.King ~= nil and not ns.King.missing and ns.King.IsKing() == true end
+
+function ns.HasDreadguardPowers(name)
+	return ns.IsHighCouncillor(name) == true or ns.IsHouseOfficer(name) == true
+end
+
 function ns.IsHighCouncillor(name)
 	local c = ns.rdb and ns.rdb.council
 	if type(name) ~= "string" or type(c) ~= "table" or type(c.names) ~= "table" then return false end
@@ -1176,11 +1406,36 @@ end
 -- members may not hold the list yet, and hear it only over GUILD (Comm.lua, Workshop.RelayGuild).
 function ns.ApprovedOnly()
 	local guild = IsInGuild and IsInGuild() and GetGuildInfo("player")
-	return type(guild) == "string" and ns.IsApprovedGuild(guild) and not ns.IsKingGuild(guild) and not ns.NamedSylvanistas(guild)
+	return type(guild) == "string" and ns.IsApprovedGuild(guild) and not ns.IsHouseGuild(guild) and not ns.NamedSylvanistas(guild)
 end
 
--- Is this character (a sender's name, which the server sets) a Steward of our King?
-function ns.IsSteward(name)
+-- 1.3.0 (the user's call): the Valkyr are the Dark Lady's ambassadors, recruiters only, not
+-- officers: the signed titles list still names them (ns.IsValkyr, their title and the portal for
+-- recruits), but none of the Steward's powers is theirs any more: ns.IsSteward answers no for
+-- everyone, and every tool that asked it (the Throne, the treasury, net-off, the filter, the key's
+-- rotation, the decrees...) goes to the Dark Lady and her Deathstalkers alone.
+function ns.IsSteward(name) return false end
+
+-- 1.3.0 (the user's call, in beta): a Valkyr is a member of any Sylvanistas guild whose guild rank
+-- is named Valkyr (rank 2 in the user's guilds), the game's own rank: ours by
+-- GetGuildInfo, a guildmate's by our roster (another guild's ranks never reach us). The signed
+-- titles list's Valkyr still count (ns.IsValkyr, below).
+local function ValkyrRankName(rank) return type(rank) == "string" and rank:lower():find("valkyr", 1, true) ~= nil end
+function ns.IsValkyrRank(name)
+	if type(name) ~= "string" or name == "" then return false end
+	local mine, rankName = GetGuildInfo("player")
+	if not ns.IsFederation(mine) then return false end
+	local full = ns.FullName(name)
+	if full == ns.me then return ValkyrRankName(rankName) end
+	for _, m in ipairs(ns.Roster and ns.Roster.members or {}) do
+		if m.full == full or ns.FullName(m.name) == full then return ValkyrRankName(m.rank) end
+	end
+	return false
+end
+
+-- Is this character (a sender's name, which the server sets) a Valkyr of our King?
+function ns.IsValkyr(name)
+	if ns.IsValkyrRank(name) then return true end
 	if type(name) ~= "string" or name == "" then return false end
 	local t = ns.CouncilTitles()
 	if not t then return false end
@@ -1281,8 +1536,8 @@ function ns.Holds(query, ...)
 	return false
 end
 
--- The Crown: guild masters of any Sylvanistas guild, and the officers of the King's guild. Those
--- officers only on the clients of the King's guild's own members (1.0.0), where their rank is
+-- The Crown: guild masters of any Sylvanistas guild, and the officers of the King's house (his
+-- guild and, 1.3.0, its alt branch). Those officers only on the clients of their own guild's members (1.0.0), where their rank is
 -- the server's word (our roster: Data.KnownRank and Channels.VerifiedLevel read our own guild
 -- from it, never from the census). Anywhere else the census alone could name them, and three
 -- outsiders' reports were enough to add one of their own: there they are Captains like any
@@ -1293,7 +1548,7 @@ end
 function ns.IsCrownRank(guild, rankIndex)
 	if not guild or not rankIndex then return false end
 	if rankIndex == 0 then return true end
-	return ns.IsKingGuild(guild) and rankIndex <= ns.CAPTAIN_RANK and ns.IsKingGuild(GetGuildInfo("player"))
+	return ns.IsHouseGuild(guild) and rankIndex <= ns.CAPTAIN_RANK and guild == GetGuildInfo("player")
 end
 
 function ns.IsCrown()
@@ -1346,8 +1601,8 @@ end
 
 function ns.IsFederation(guild)
 	if type(guild) ~= "string" or guild == "" then return false end
-	-- The King's own guild is Sylvanistas whatever its name (the Horde's is <Guild>, 0.9.4).
-	if ns.IsKingGuild(guild) then return true end
+	-- The King's own guild is Sylvanistas whatever its name (the Horde's is <Guild>, 0.9.4), and so is its alt branch (1.3.0).
+	if ns.IsHouseGuild(guild) then return true end
 	-- 1.2.2: a guild the release blocks is none of it, never lapsing (unlike /syl netoff).
 	if ns.IsBlockedGuild(guild) then return false end
 	-- A guild the author's signed list approves (1.1), whatever its name.
@@ -1392,6 +1647,7 @@ end
 ---------------------------------------------------------------------------
 
 function ns.SafeCall(where, fn, ...)
+	ns.lastWhere, ns.lastWhereAt = where, GetTime and GetTime() or 0 -- (1.3.0: said when the game blocks us)
 	local ok, err = pcall(fn, ...)
 	if not ok and ns.CaptureError then ns.CaptureError(where, err) end
 	return ok
@@ -1529,7 +1785,6 @@ StandIn("Workshop", { "RollCall", "Approved" })
 StandIn("Vox", { "Prompt", "CloseNow", "SetOff" })
 StandIn("Court", { "Toggle" })
 StandIn("Treasury", {})
-StandIn("Dues", {}) -- (1.1)
 StandIn("Acts", { "WritPrompt" })
 StandIn("Dialog", {})
 StandIn("Bank", {})
@@ -1673,7 +1928,7 @@ end
 ns.RegisterEvent("PLAYER_LOGIN", function()
 	ns.CheckFaction()
 	local missing = {}
-	for _, key in ipairs({ "Who", "Channels", "King", "Hop", "Workshop", "Vox", "Court", "Treasury", "Dues", "Acts", "Dialog", "Bank", "Link", "Borders", "Nameplates", "Backup", "Loot", "Crafters", "Board", "Week", "Consent", "Chronicle", "Filter", "Members", "Moderation", "Alts", "Keys", "ChatWindow", "PlayerMenu", "Versions", "Answers" }) do
+	for _, key in ipairs({ "Who", "Channels", "King", "Hop", "Workshop", "Vox", "Court", "Treasury", "Acts", "Dialog", "Bank", "Link", "Borders", "Nameplates", "Backup", "Loot", "Crafters", "Board", "Week", "Consent", "Chronicle", "Filter", "Members", "Moderation", "Alts", "Keys", "ChatWindow", "PlayerMenu", "Versions", "Answers" }) do
 		if ns[key].missing then missing[#missing + 1] = key .. ".lua" end
 	end
 	if #missing > 0 then
@@ -1997,8 +2252,7 @@ SlashCmdList.SYLVANISTAS = function(input)
 			if on == "on" or on == "off" then
 				ns.Channels.SetChatOn(on == "on")
 			else
-				local v = ns.db.addonChat
-				ns.Print(v == true and L.CHAT_ON_MSG or (v == false and L.CHAT_OFF_MSG or L.CHAT_OFF_UNANSWERED))
+				ns.Print(ns.Channels.ChatOn() and L.CHAT_ON_MSG or L.CHAT_OFF_MSG)
 			end
 		elseif cmd == "officer" then
 			ns.Print(ns.L.OFFICER_FIXED)
@@ -2031,6 +2285,16 @@ SlashCmdList.SYLVANISTAS = function(input)
 			else
 				ns.Comm.SetRealmKey(rest)
 			end
+		elseif cmd == "unblock" then
+			-- 1.3.0: a block taken back (the same name forms /syl block takes).
+			if rest ~= "" then
+				local name = ns.Normal(rest)
+				name = name:gsub("%-([^%-]+)$", function(realm) return "-" .. realm:gsub("[%s%-]", "") end)
+				local key = ns.FullName(name):lower()
+				local had = ns.db.blocked[key]
+				ns.db.blocked[key] = nil
+				ns.Print((had and L.UNBLOCKED_NOW or L.UNBLOCK_NONE):format(key))
+			end
 		elseif cmd == "block" then
 			if rest ~= "" then
 				-- Stored as the sender reaches Comm (ns.FullName(ns.Normal(name)), the realm's
@@ -2038,6 +2302,7 @@ SlashCmdList.SYLVANISTAS = function(input)
 				local name = ns.Normal(rest)
 				name = name:gsub("%-([^%-]+)$", function(realm) return "-" .. realm:gsub("[%s%-]", "") end)
 				local key = ns.FullName(name):lower()
+				if ns.IsProtectedOfficer(ns.FullName(name)) and not ns.IAmDarkLady() then return ns.Print(L.BLOCK_NOT_OFFICER) end
 				ns.db.blocked[key] = true
 				ns.Print(L.BLOCKED_NOW:format(key))
 			end
