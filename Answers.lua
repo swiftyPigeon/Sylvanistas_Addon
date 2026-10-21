@@ -39,7 +39,7 @@ end
 function Answers.Allowed()
 	local W = ns.Workshop
 	if W and W.IsAuthor and (W.IsAuthor() == true or (W.Preview and W.Preview() == true)) then return true end
-	return ns.HasDreadguardPowers(ns.me) == true or ns.IsSteward(ns.me) == true
+	return ns.HasDreadguardPowers(ns.me) == true -- (1.3.0: the Dreadguards; the Steward is retired)
 end
 
 -- The bank's lines holding `q` (a question, the line, the longer answer or the topic, any case),
@@ -274,8 +274,8 @@ Answers.PAGES = {
 	["realm/members:recruits"] = { "feat-mentors" },
 	chat = { "feat-chat-tab", "feat-chat-settings", "feat-channels", "feat-sylvanistas-tab", "feat-chat-off", "feat-block-terms" },
 	decrees = { "feat-decrees", "feat-alert-sounds", "feat-writs", "feat-net-off", "feat-acts-log" },
-	heraldry = { "feat-patrol", "feat-gear-seen", "feat-patrolshare", "feat-untabarded" },
-	throne = { "feat-throne", "feat-agenda", "feat-summon-lords", "feat-hold-court", "feat-royal-inspection", "feat-steward-hands" },
+	heraldry = { "feat-regalia", "feat-patrol", "feat-gear-seen" },
+	throne = { "feat-throne", "feat-agenda", "feat-summon-lords", "feat-hold-court", "feat-steward-hands" },
 	["throne/hands"] = { "feat-steward-hands" },
 	vox = { "feat-vox" },
 	treasury = { "feat-treasury", "feat-guild-bank", "feat-treasury-requests", "feat-sister-banks", "feat-donations", "feat-backup",

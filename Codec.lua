@@ -21,7 +21,8 @@ local ADDON, ns = ...
 -- Hello:   H1~<version>~<realm>    (sent on GUILD so members with the addon find each other;
 --                                    older versions send no realm)
 --          ~<p|s>[~z]              (the channel, public or sealed; z: it shares its zone, 0.9.1)
--- Chat:    M1~tier~guild~id~class~text   (tier A|C|L, id 0-9999 per part, class 2 letters or empty)
+-- Chat:    M1~tier~guild~id~class~text   (tier A|C|L, id 0-9999 per part, class 2 letters or empty;
+--                                          1.3.0: the text may start with the race tag, Codec.LookTag)
 
 local Codec = {}
 ns.Codec = Codec
@@ -356,31 +357,6 @@ end
 
 Codec.DECREE_KINDS = { ARMS = true, MUSTER = true, ROYAL = true, HERALDRY = true, REV = true } -- (REV: the Revenant Call, 1.3.0)
 
--- Wall of Shame (chunked, channel): S1~guild~rankIndex~name:guild,name:guild,...
-Codec.MAX_SHAME = 40
-
-function Codec.EncodeShame(guild, rankIndex, list)
-	local parts = {}
-	for i = 1, math.min(#list, Codec.MAX_SHAME) do
-		parts[#parts + 1] = clean(list[i].name) .. ":" .. clean(list[i].guild or "")
-	end
-	return ("S1~%s~%d~%s"):format(clean(guild), rankIndex or 9, table.concat(parts, ","))
-end
-
-function Codec.DecodeShame(s)
-	local guild, rank, body = s:match("^S1~([^~]*)~(%d+)~(.*)$")
-	if not guild or LongGuild(guild) then return nil end
-	local list = {}
-	for name, g in body:gmatch("([^,:]+):([^,]*)") do
-		if #list >= Codec.MAX_SHAME then break end
-		-- Shown on every screen (the Tabards tab): a character name and a guild name, never
-		-- colour or link codes.
-		name, g = name:gsub("[|%c]", ""), g:gsub("[|%c]", "")
-		if name ~= "" then list[#list + 1] = { name = name:sub(1, 48), guild = g:sub(1, 24) } end
-	end
-	return { guild = guild, rank = tonumber(rank), list = list }
-end
-
 function Codec.EncodeDecree(kind, mapID, x, y, guild, rankIndex, text)
 	local msg = ("D1~%s~%d~%d~%d~%s~%d~"):format(kind, mapID, math.floor(x * 1000 + 0.5), math.floor(y * 1000 + 0.5), clean(guild or ""), rankIndex or 9)
 	return msg .. clean(text or ""):sub(1, 250 - #msg)
@@ -521,9 +497,25 @@ function Codec.Discord(s, code)
 end
 
 -- Room for the text in one message: CHAT_MAX minus "M1~", the tier, 4 separators, a 4 digit id,
--- the guild and the class.
+-- the guild, the class and the race tag.
 function Codec.ChatBudget(guild, class)
-	return Codec.CHAT_MAX - (12 + #clean(guild) + #clean(class))
+	return Codec.CHAT_MAX - (12 + #clean(guild) + #clean(class) + 3)
+end
+
+-- The writer's race and sex (1.3.0, the Chat tab's race icon), three control bytes before a chat
+-- part's text: "\30", 14 + the race id (UnitRace's, 1-11), then "\28" (male) or "\29" (female).
+-- Older clients' SanitizeChat drops control bytes, so they read the line as before, the tag unseen.
+function Codec.LookTag(race, sex)
+	race, sex = tonumber(race), tonumber(sex)
+	if not race or race < 1 or race > 11 or (sex ~= 2 and sex ~= 3) then return "" end
+	return "\30" .. string.char(14 + race) .. (sex == 3 and "\29" or "\28")
+end
+
+-- A part's text without its race tag: race, sex (nil without one), rest.
+function Codec.TakeLook(text)
+	local r, x, rest = tostring(text or ""):match("^\30([\15-\25])([\28\29])(.*)$")
+	if not r then return nil, nil, text end
+	return r:byte() - 14, x == "\29" and 3 or 2, rest
 end
 
 local function IsContinuation(b)
@@ -563,8 +555,8 @@ function Codec.SplitChat(s, budget, maxParts)
 end
 
 -- `text` must already be sanitized and split to fit (Channels.Send does both).
-function Codec.EncodeChat(tier, guild, id, class, text)
-	local msg = ("M1~%s~%s~%d~%s~"):format(tier, clean(guild), id % 10000, clean(class or "")) .. text
+function Codec.EncodeChat(tier, guild, id, class, text, race, sex)
+	local msg = ("M1~%s~%s~%d~%s~"):format(tier, clean(guild), id % 10000, clean(class or "")) .. Codec.LookTag(race, sex) .. text
 	if #msg > 255 then return nil end
 	return msg
 end
@@ -573,9 +565,11 @@ function Codec.DecodeChat(s)
 	if type(s) ~= "string" or #s > 255 then return nil end
 	local tier, guild, id, class, text = s:match("^M1~(%u)~([^~|]+)~(%d%d?%d?%d?)~(%u?%u?)~(.+)$")
 	if not tier or not Codec.CHAT_TIERS[tier] or LongGuild(guild) or guild:find("%c") then return nil end
+	local race, sex
+	race, sex, text = Codec.TakeLook(text)
 	text = Codec.SanitizeChat(text)
 	if text == "" then return nil end
-	return { tier = tier, guild = guild, id = tonumber(id), class = class ~= "" and class or nil, text = text }
+	return { tier = tier, guild = guild, id = tonumber(id), class = class ~= "" and class or nil, race = race, sex = sex, text = text }
 end
 
 function Codec.Chunk(payload, id)

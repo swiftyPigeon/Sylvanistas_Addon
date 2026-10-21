@@ -813,7 +813,7 @@ end
 
 local function AddHistory(tier, e)
 	local list = Store(tier)
-	list[#list + 1] = { t = ns.Now(), sender = e.sender, guild = e.guild, class = e.class, text = e.text, mine = e.mine }
+	list[#list + 1] = { t = ns.Now(), sender = e.sender, guild = e.guild, class = e.class, race = e.race, sex = e.sex, text = e.text, mine = e.mine }
 	while #list > HISTORY do table.remove(list, 1) end
 end
 
@@ -821,14 +821,14 @@ end
 -- guard: into the history the Chat tab shows (CHAT_CHANGED) and, from someone else, already
 -- checked and sanitized, as CHAT_LINE. The mute and the flood guard only decide what this chat
 -- frame shows.
-local function Keep(tier, sender, guild, class, text, mine)
-	AddHistory(tier, { sender = sender, guild = guild, class = class, text = text, mine = mine or nil })
+local function Keep(tier, sender, guild, class, text, mine, race, sex)
+	AddHistory(tier, { sender = sender, guild = guild, class = class, race = race, sex = sex, text = text, mine = mine or nil })
 	ns.Fire("CHAT_CHANGED", tier)
-	if not mine then ns.Fire("CHAT_LINE", tier, sender, text) end
+	if not mine then ns.Fire("CHAT_LINE", tier, sender, text, guild, class) end -- (1.3.0: guild, class for Mentions.lua)
 end
 
-local function Accept(tier, sender, guild, class, text, mine)
-	Keep(tier, sender, guild, class, text, mine)
+local function Accept(tier, sender, guild, class, text, mine, race, sex)
+	Keep(tier, sender, guild, class, text, mine, race, sex)
 	if Muted()[tier] then return false, "muted" end
 	Show(tier, sender, guild, class, text)
 	stats.shown = stats.shown + 1
@@ -917,6 +917,9 @@ function Channels.Send(tier, text, now, keepMute)
 	local class = ns.Roster.ClassCode(UnitClass and select(2, UnitClass("player")))
 	-- Classes without a 2 letter code travel without a class (the decoder only takes 2 letters).
 	if not class:match("^%u%u$") then class = "" end
+	-- 1.3.0: the race and sex too, for the Chat tab's race icon (Codec.LookTag).
+	local race = UnitRace and select(3, UnitRace("player"))
+	local sex = UnitSex and UnitSex("player")
 	local parts, cut = Codec.SplitChat(text, Codec.ChatBudget(guild, class), Codec.CHAT_PARTS)
 	if ns.Comm.ChatRoom() < #parts then
 		ns.Print(L.CHAN_BUSY)
@@ -961,13 +964,13 @@ function Channels.Send(tier, text, now, keepMute)
 			end
 			sentParts = sentParts + 1
 			stats.sent = stats.sent + 1
-			Accept(tier, ns.me, guild, class ~= "" and class or nil, part, true) -- our echo: exactly what the others see
+			Accept(tier, ns.me, guild, class ~= "" and class or nil, part, true, race, sex) -- our echo: exactly what the others see
 		end
 		local id = NextId()
 		-- Kept a while: when this line comes back from the channel it is ours, whatever form
 		-- the server gave our name in (a line shown twice to its author otherwise).
 		mine[id .. "#" .. Codec.SanitizeChat(part)] = now
-		local msg = Codec.EncodeChat(tier, guild, id, class, part)
+		local msg = Codec.EncodeChat(tier, guild, id, class, part, race, sex)
 		if not msg or ns.Comm.SendChat(msg, done, line) == false then
 			done(false)
 			break -- (the parts before it left the lane with it)
@@ -1166,7 +1169,7 @@ function Channels.Receive(dist, sender, text, now)
 	local F = ns.Filter
 	if F and not F.missing and F.Hides(m.text) then
 		stats.filtered = (stats.filtered or 0) + 1
-		Keep(m.tier, sender, m.guild, m.class, m.text, false)
+		Keep(m.tier, sender, m.guild, m.class, m.text, false, m.race, m.sex)
 		return false, "filtered"
 	end
 	-- A muted channel only goes to history, so it takes nothing from the flood guard. A line
@@ -1174,11 +1177,11 @@ function Channels.Receive(dist, sender, text, now)
 	-- whole for everyone, and a companion hears it), and the player is told (Channels.FloodNotice).
 	if not Muted()[m.tier] and Flooded(m.tier, sender, now) then
 		stats.flood = stats.flood + 1
-		Keep(m.tier, sender, m.guild, m.class, m.text, false)
+		Keep(m.tier, sender, m.guild, m.class, m.text, false, m.race, m.sex)
 		Held(m.tier, now)
 		return false, "flood"
 	end
-	return Accept(m.tier, sender, m.guild, m.class, m.text, false)
+	return Accept(m.tier, sender, m.guild, m.class, m.text, false, m.race, m.sex)
 end
 
 -- Our name however the server writes it: lower case, our realm left out (a namesake on a
@@ -1635,7 +1638,7 @@ function Channels.HandlePin(dist, sender, text, now)
 		if crown and (not rank or crown > rank) then rank = crown end
 	end
 	if not rank then
-		ns.Log("pin from %s <%s> (%s) ignored: not the King, his Stewards or Hands, nor our own guild master", sender, guild, dist)
+		ns.Log("pin from %s <%s> (%s) ignored: not the King, their Stewards or Hands, nor our own guild master", sender, guild, dist)
 		return false, "rank"
 	end
 	local current = Current(now)
@@ -1925,10 +1928,31 @@ end)
 -- window on its Chat tab, on that channel (ChatWindow.lua, or Core.lua's stand-in on a client
 -- updated without a restart), else, where this client has no such tab, what to type (Channels.Send
 -- says it).
+-- 1.3.0: one word alone, "open", "close" or "help", is a command (the Chat tab on that channel, the
+-- Sylvanistas window closed, the chat commands); in a longer line they are words like any other.
 local function Slash(tier, where)
 	return function(msg)
 		local W = ns.ChatWindow
-		if tostring(msg or ""):match("^%s*$") and W and type(W.Toggle) == "function" then
+		local word = tostring(msg or ""):match("^%s*(%S*)%s*$")
+		word = word and word:lower()
+		if word == "help" then
+			ns.Print(L.HELP_CHAN_HEAD)
+			print(L.HELP_CHAN_ALL)
+			print(L.HELP_CHAN_CAPTAINS)
+			print(L.HELP_CHAN_LORDS)
+			print(L.HELP_CHAN_WORDS)
+			return
+		end
+		if word == "close" then
+			local host = W and type(W.Window) == "function" and W.Window()
+			if host and host:IsShown() then host:Hide() end
+			return
+		end
+		if word == "open" and W and type(W.Open) == "function" then
+			ns.SafeCall(where, W.Open, tier)
+			return
+		end
+		if word == "" and W and type(W.Toggle) == "function" then
 			ns.SafeCall(where, W.Toggle, tier)
 			return
 		end
@@ -1946,7 +1970,8 @@ SlashCmdList.SYLVANISTASLORDS = Slash("L", "slash /sydc")
 ---------------------------------------------------------------------------
 -- 1.2.21 (from Olympus 1.2.1): the channel's name before a line in the game's chat, [Sylvanistas],
 -- [Dreadguard] or [Darkcallers], is a link, as the game's own [Party] or [Guild] are: a left click
--- opens the game's chat box with /sy, /syd or /sydc in it, ready for the line. Only where this
+-- opens the Sylvanistas window's Chat tab on that channel (1.3.0, the user's call: no longer the
+-- game's chat box, whose opening from addon code taints it; see Board.Whisper). Only where this
 -- client may write in that channel now (Channels.CanWrite); elsewhere the plain name, as before.
 -- At the click it is asked again, and a channel closed since says why instead. Forever's UI hands
 -- links of type "addon" to SetItemRef, which only marks them handled; the click is ours after that,
@@ -1981,7 +2006,7 @@ function Channels.CanWrite(tier, tell)
 end
 
 function Channels.TagLinked(tier)
-	return tagHooked and not ns.GamepadUI() and type(ChatFrame_OpenChat) == "function" and Channels.CanWrite(tier) or false
+	return tagHooked and not ns.GamepadUI() and Channels.CanWrite(tier) or false
 end
 
 -- "[Sylvanistas]", "[Dreadguard]" or "[Darkcallers]" before a line: the link where TagLinked says so.
@@ -1991,30 +2016,36 @@ function Channels.Tag(tier)
 	return "|H" .. TAG_LINK .. tier .. "|h" .. name .. "|h"
 end
 
--- The chat window clicked, when it is one of the game's with its own box; else the game picks one.
-local function BoxFrame(frame)
-	if type(frame) == "table" and type(frame.editBox) == "table" then return frame end
-	return nil
-end
-
 -- A link clicked in the game's chat (after SetItemRef): ours alone, a left click without Shift.
--- Returns true when it opened the chat box.
+-- Returns true when it opened the Chat tab.
 function Channels.TagClick(link, text, button, frame)
 	if ns.GamepadUI() then return false end
 	if type(issecretvalue) == "function" and (issecretvalue(link) == true or issecretvalue(button) == true) then return false end
 	if type(link) ~= "string" or link:sub(1, #TAG_LINK) ~= TAG_LINK then return false end
 	local tier = link:sub(#TAG_LINK + 1)
 	if not TIERS[tier] or button ~= "LeftButton" or (IsShiftKeyDown and IsShiftKeyDown()) then return false end
+	-- (One click may come both ways, below: the second within a moment does nothing.)
+	local now = GetTime and GetTime() or 0
+	if Channels.tagClickAt and now - Channels.tagClickAt < 0.3 then return false end
+	Channels.tagClickAt = now
+	ns.Log("chat tag clicked: %s", tier)
 	if not Channels.CanWrite(tier, true) then return false end
-	if type(ChatFrame_OpenChat) ~= "function" then return false end
-	ChatFrame_OpenChat(TIERS[tier].slash .. " ", BoxFrame(frame))
-	return true
+	return ns.ChatWindow ~= nil and ns.ChatWindow.Open(tier) ~= nil
 end
 
+-- 1.3.0: the newer clients hand "addon" links to EventRegistry's "SetItemRef" (the game's way for
+-- add-ons' links) and may not pass through the global SetItemRef: both ways are listened to.
 ns.On("LOGIN", function()
-	if tagHooked or type(hooksecurefunc) ~= "function" then return end
-	tagHooked = pcall(hooksecurefunc, "SetItemRef", function(link, text, button, frame)
+	if tagHooked then return end
+	local function OnLink(link, text, button, frame)
 		if ns.GamepadUI() then return end
 		ns.SafeCall("chat tag link", Channels.TagClick, link, text, button, frame)
-	end) == true
+	end
+	if type(hooksecurefunc) == "function" then
+		tagHooked = pcall(hooksecurefunc, "SetItemRef", OnLink) == true
+	end
+	if EventRegistry and type(EventRegistry.RegisterCallback) == "function" then
+		local ok = pcall(EventRegistry.RegisterCallback, EventRegistry, "SetItemRef", function(_, ...) OnLink(...) end, Channels)
+		tagHooked = tagHooked or ok == true
+	end
 end)

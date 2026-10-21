@@ -9,22 +9,22 @@ local L = ns.L
 -- of his Hands for the tools he lends them (HAND_MAY). Answers go back to whoever asked,
 -- alone (T2, T3 as whispered addon messages).
 --   T1~S~<id>~<guild>                      Summon the Lords (roll call)
---   T1~I~<id>~<guild>                      Royal Inspection: every addon patrols 2 minutes
 --   T1~A~<id>~<guild>~<minutes>~<zone>~<title>   The King's Agenda (resent every 5 min)
 --   T1~X~<id>~<guild>                      Agenda cancelled
 --   T1~H~<id>~<guild>~<Name-Realm,...>     the Hands of the King (his alone; resent every 5 min)
 --   T1~N~<id>~<guild>~<Name-Realm,...>     a Steward's own Hands (1.0.0: his alone; resent every 5 min)
 --   T2~<id>~<P|B>~<guild>                  a Lord's answer to the roll call
---   T3~<id>~<guild>~<ok>~<none>~<other>~<name:guild,...>   an inspection report
+-- (1.3.0: the Royal Inspection (I, T3) and the untabarded list (U) are gone, the user's call:
+-- other clients ignore those kinds from older versions.)
 -- Other modules add their own kinds (King.Register): Vox Populi (V, E), writs (W), the court
--- (C, Z), the gates (G), pardons (F), the treasury's switches and keepers (T, K: his and his
+-- (C, Z), the gates (G), the treasury's switches and keepers (T, K: his and his
 -- Steward's), the King's week and its signup sheet (D, R, 1.1: Week.lua), the dues' weekly
 -- amount (Y, 1.1: his and his Steward's, Dues.lua).
 -- The King's Steward (1.0.0, ns.IsSteward: the character the author marks in the signed titles
 -- list) has the Throne as the King has it, "acting for the King": he names and removes Hands of
 -- his own beside the King's, the treasury's keepers and its switches, and uses every tool of a
 -- Hand (STEWARD_MAY). Never the King's own list of Hands, his crown on the map and his layer, the
--- court, writs, pardons, the untabarded list, or the King's own book of the treasury and his yes
+-- court, writs, or the King's own book of the treasury and his yes
 -- to share it.
 
 local King = {}
@@ -32,33 +32,19 @@ ns.King = King
 
 King.SUMMON_OPEN = 60        -- the popup stays this long
 King.SUMMON_GAP = 60         -- one roll call a minute at most (sent or accepted)
-King.INSPECT_TIME = 120      -- each addon patrols this long
-King.INSPECT_GAP = 1800      -- one Royal Inspection every 30 minutes at most (0.9.2), whoever calls it
--- The realm's share of the load (0.9.2). An inspect is one request to the server for a player
--- in reach. Budget: INSPECT_BUDGET requests a second across the whole realm. A client on the
--- inspection sends one every INSPECT_PACE seconds at most, so INSPECT_BUDGET * INSPECT_PACE =
--- 100 clients can take part at once; with N addons online (the census counts them) each one
--- takes part with probability 100 / N (all of them while there are 100 or fewer). 3,000 online:
--- 1 in 30, about 20 requests a second for 2 minutes, then nothing for at least 30 minutes.
-King.INSPECT_BUDGET = 20
-King.INSPECT_PACE = 5
 King.AGENDA_RESEND = 300     -- the King's client repeats the agenda for late logins
-King.MAX_NAMES = 6           -- violators per inspection report (message size)
 King.AGENDA_GAP = 60         -- one new agenda a minute at most (each one is a raid warning)
 King.MAX_ANSWERS = 150       -- roll-call answers kept
-King.MAX_REPORTS = 150       -- inspection reports kept
-King.MAX_CHECKS = 60         -- checks one patrol can report in 2 minutes
-King.MAX_SHOWN = 30          -- violators listed on the page
 
 King.MAX_HANDS = 40          -- Hands of the King (the list goes out in pieces when long)
 King.HANDS_EVERY = 300       -- the King's client repeats the list for late logins
 King.HANDS_FRESH = 20 * 60   -- a list the King stopped repeating (he left) ends
 
 King.mode = nil              -- what the tab shows: home or hands (nil: home, the Throne Room)
-local summon, inspect        -- the King's own roll call / inspection in progress
+local summon                 -- the King's own roll call in progress
 local agenda                 -- the agenda everyone sees: { id, title, at, zone, by }
-local lastSummonSeen, lastInspectSeen, inspecting = -math.huge, -math.huge, nil
-local lastSummonSent, lastInspectSent = -math.huge, -math.huge
+local lastSummonSeen = -math.huge
+local lastSummonSent = -math.huge
 local lastAgendaSent, lastAgendaWarn = -math.huge, -math.huge
 
 -- Text other players send that ends up on the King's screen (on stream): only what looks
@@ -175,12 +161,11 @@ local function NewId() return math.random(1, 99999) end
 -- (the Hands page shows the others' lists, to read only).
 ---------------------------------------------------------------------------
 
-King.HAND_MAY = { S = true, I = true, A = true, X = true, V = true, E = true, G = true }
+King.HAND_MAY = { S = true, A = true, X = true, V = true, E = true, G = true }
 -- The Steward's: everything a Hand may, his own list of Hands (N), and the treasury's switches
 -- and keepers (T, K, Treasury.lua), and its dues' amount (Y, 1.1, Dues.lua). Never the King's
--- list of Hands (H), his crown on the map (P, Q), the court (C, Z), writs (W), pardons (F) or the
--- untabarded list (U).
-King.STEWARD_MAY = { S = true, I = true, A = true, X = true, V = true, E = true, G = true, N = true, T = true, K = true, Y = true }
+-- list of Hands (H), his crown on the map (P, Q), the court (C, Z) or writs (W).
+King.STEWARD_MAY = { S = true, A = true, X = true, V = true, E = true, G = true, N = true, T = true, K = true, Y = true }
 -- 1.1: the calls to the army a Hand or a Steward sends (popups, raid warnings, windows, the gates'
 -- news): none shows from a name the moderators took off (net-off, Moderation.lua). Their lists (the
 -- Hands, the treasury's words) are not calls: they still count. The same for the King's week (1.1,
@@ -530,14 +515,6 @@ King.CleanName = function(s) return CleanName(s) end
 King.CleanGuild = function(s) return CleanGuild(s) end
 King.Verified = function(sender, guild) return Verified(sender, guild) end
 
--- Our tabard, checked the way a patrol checks others (level 15+ only: the Sylvanistas rule).
-local function OwnTabard()
-	local level = UnitLevel and UnitLevel("player") or 0
-	if level > 0 and level < (ns.Inspect.MIN_LEVEL or 15) then return nil end
-	local item = GetInventoryItemID and GetInventoryItemID("player", INVSLOT_TABARD or 19)
-	return ns.Inspect.Classify(item, true)
-end
-
 ---------------------------------------------------------------------------
 -- Summon the Lords
 ---------------------------------------------------------------------------
@@ -638,205 +615,13 @@ function King.HandleAnswer(dist, sender, text)
 end
 ns.Comm.Handle("T2", function(...) King.HandleAnswer(...) end)
 
----------------------------------------------------------------------------
--- Royal Inspection
----------------------------------------------------------------------------
-
-function King.Inspect()
-	local now = ns.Now()
-	if King.Preview() then
-		ns.Print(L.THRONE_PREVIEW_NOTE)
-		inspect = { id = 0, t = now, reports = {}, preview = true }
-		King.RunInspection(nil, 0) -- our own patrol only, reported to ourselves
-		return Changed()
-	end
-	if not King.CanCommand() then return end
-	if now - lastInspectSent < King.INSPECT_GAP then
-		ns.Print(L.THRONE_WAIT:format(math.ceil(King.INSPECT_GAP - (now - lastInspectSent))))
-		return Changed()
-	end
-	lastInspectSent = now
-	inspect = { id = NewId(), t = now, reports = {} }
-	ns.Comm.Send("CHANNEL", ("T1~I~%d~%s"):format(inspect.id, GetGuildInfo("player")))
-	ns.Log("throne: inspection %d", inspect.id)
-	King.RunInspection(ns.me, inspect.id) -- the King patrols too
-	Changed()
-end
-
--- Its raid warning, in an instance or on Busy (1.1, ns.Alert): current while the patrols run.
--- own: the King's (or the preview's) own click.
-function King.InspectionHeld(start, id, own)
-	return { what = L.HELD_INSPECTION, key = "inspect" .. tostring(id or 0), own = own or nil,
-		open = function() return ns.Now() - start < King.INSPECT_TIME end }
-end
-
--- Every addon (the King's too): a raid warning, a patrol of INSPECT_TIME, then a report to
--- the King of what it saw (and our own tabard).
-function King.RunInspection(king, id)
-	if inspecting or not ns.IsMember() then return end
-	local start = ns.Now()
-	inspecting = { king = king, id = id, start = start, wasOn = ns.Inspect.IsPatrolling() }
-	Warn(L.THRONE_INSPECT_WARN, true, "throne", King.InspectionHeld(start, id, king == nil or king == ns.me))
-	if not inspecting.wasOn then ns.Inspect.SetPatrol(true) end
-	ns.Inspect.SetPace(King.INSPECT_PACE) -- the realm's budget (INSPECT_BUDGET)
-	ns.After(King.INSPECT_TIME, "royal inspection", function()
-		local run = inspecting
-		inspecting = nil
-		ns.Inspect.SetPace(nil)
-		if not run then return end
-		if not run.wasOn and ns.Inspect.IsPatrolling() then ns.Inspect.SetPatrol(false) end
-		local ok, none, other, names = 0, 0, 0, {}
-		-- A patrol does not re-inspect anyone checked in the last 10 minutes: those count too.
-		-- What another officer of our guild found (1.1, Inspect.lua) is his word, not ours: left out.
-		for name, p in pairs(ns.Inspect.Players()) do
-			if not p.shared and (p.t or 0) >= run.start - 600 then
-				if p.status == "GUILD" then ok = ok + 1
-				elseif p.status == "NONE" or p.status == "OTHER" then
-					if p.status == "NONE" then none = none + 1 else other = other + 1 end
-					if #names < King.MAX_NAMES then names[#names + 1] = (ns.DisplayName(name) or "?") .. ":" .. (p.guild or "?") .. ":" .. (p.status == "NONE" and "N" or "O") end
-				end
-			end
-		end
-		local own = OwnTabard()
-		if own == "GUILD" then ok = ok + 1 elseif own == "NONE" then none = none + 1 elseif own == "OTHER" then other = other + 1 end
-		local guild = GetGuildInfo("player") or ""
-		local msg = ("T3~%d~%s~%d~%d~%d~%s"):format(run.id or 0, guild, ok, none, other, table.concat(names, ","))
-		if run.king == ns.me or not run.king then
-			King.ReceiveReport(ns.me, msg) -- ours (the King's, or the preview's)
-		else
-			ns.Comm.Whisper(run.king, msg:sub(1, 250))
-		end
-	end)
-end
-
--- The addons online the census knows of (fresh reports), at least 1.
+-- The addons online the census knows of (fresh reports), at least 1 (Workshop.lua's roll calls).
 function King.AddonsOnline()
 	local n = 0
 	for _, e in ipairs(ns.Data.Summary().guilds) do
 		if e.fresh then n = n + (tonumber(e.g.users) or 0) end
 	end
 	return math.max(n, 1)
-end
-
--- This client's chance to take part in an inspection (see INSPECT_BUDGET).
-function King.InspectShare()
-	return math.min(1, King.INSPECT_BUDGET * King.INSPECT_PACE / King.AddonsOnline())
-end
-King.random = math.random -- tests
-
-local function OnInspect(king, id)
-	local now = ns.Now()
-	if now - lastInspectSeen < King.INSPECT_GAP then return end
-	lastInspectSeen = now
-	-- Everyone hears the King's call; only a sample of the army patrols (and reports), and never
-	-- a player who said no (/syl inspection off, 0.9.3). 1.1 (request #11): nor one who never
-	-- answered (the first-open page, or /syl inspection on): nil is off.
-	if not (ns.db and ns.db.royalInspection == true) then
-		ns.Log("inspection %d: not taking part (%s)", id or 0, ns.db and ns.db.royalInspection == false and "/syl inspection off" or "not answered")
-		return Warn(L.THRONE_INSPECT_WARN, true, "throne", King.InspectionHeld(now, id))
-	end
-	if King.random() > King.InspectShare() then
-		ns.Log("inspection %d: not in this sample (%.2f)", id or 0, King.InspectShare())
-		return Warn(L.THRONE_INSPECT_WARN, true, "throne", King.InspectionHeld(now, id))
-	end
-	King.RunInspection(king, id)
-end
-
-function King.ReceiveReport(sender, text)
-	if not inspect then return end
-	local id, guild, ok, none, other, names = text:match("^T3~(%d+)~([^~]*)~(%d+)~(%d+)~(%d+)~(.*)$")
-	if not id or tonumber(id) ~= inspect.id or ns.Now() - inspect.t > 900 then return end
-	sender = ns.FullName(sender)
-	if inspect.reports[sender] then return end -- one report each
-	local n = 0
-	for _ in pairs(inspect.reports) do n = n + 1 end
-	if n >= King.MAX_REPORTS then return end
-	guild = CleanGuild(guild)
-	if not guild then return end
-	-- Only from someone we can place in that guild (our own, a confirmed Lord or Captain):
-	-- nobody else writes names or numbers on the King's page.
-	if sender ~= ns.me and not Verified(sender, guild) then return end
-	local list = {}
-	for entry in names:gmatch("[^,]+") do
-		local nm, g, st = entry:match("^([^:]+):([^:]*):([NO])$")
-		nm, g = CleanName(nm), CleanGuild(g)
-		if nm and g and #list < King.MAX_NAMES then list[#list + 1] = { name = nm, guild = g, status = st == "N" and "NONE" or "OTHER" } end
-	end
-	local cap = King.MAX_CHECKS
-	inspect.reports[sender] = { guild = guild, ok = math.min(tonumber(ok) or 0, cap),
-		none = math.min(tonumber(none) or 0, cap), other = math.min(tonumber(other) or 0, cap), names = list }
-	Changed()
-end
-
-function King.HandleReport(dist, sender, text)
-	if dist ~= "WHISPER" or not King.CanCommand() then return end
-	King.ReceiveReport(sender, text)
-end
-ns.Comm.Handle("T3", function(...) King.HandleReport(...) end)
-
--- The violators the inspection found go on the King's own list, then the usual Wall of Shame.
--- The untabarded (Inspect.lua): the King's list, the army's only while he lets it see it.
---   T1~U~<id>~<guild>~1~<name>:<guild>,...   the list, repeated while it is on
---   T1~U~<id>~<guild>~0                      off: it leaves every screen
--- Only the King (not a Hand: "U" is not in HAND_MAY). Older versions ignore the kind.
-King.UNTABARDED_EVERY = 300
-local lastUntabardedSent = -math.huge
-
--- Off for good while ns.WALL_OF_SHAME is false (Core.lua): the list stays hers alone.
-function King.SharingUntabarded() return ns.WALL_OF_SHAME == true and ns.db and ns.db.kingUntabarded == true end
-
--- What the inspection's patrols reported joins his own list.
-local function TakeReports()
-	for _, r in pairs(inspect and inspect.reports or {}) do
-		for _, v in ipairs(r.names) do ns.Inspect.AddReported(v.name, v.guild, v.status) end
-	end
-end
-
-function King.SendUntabarded(force)
-	if not King.IsKing() then return end
-	local now = ns.Now()
-	local on = King.SharingUntabarded()
-	if not force and (not on or now - lastUntabardedSent < King.UNTABARDED_EVERY) then return end
-	lastUntabardedSent = now
-	local guild = GetGuildInfo("player") or ""
-	local msg
-	if on then
-		TakeReports()
-		local body = ns.Codec.EncodeShame(guild, 0, ns.Inspect.ShameList()):match("^S1~[^~]*~%d+~(.*)$") or ""
-		msg = ("T1~U~%d~%s~1~%s"):format(NewId(), guild, body)
-	else
-		msg = ("T1~U~%d~%s~0"):format(NewId(), guild)
-	end
-	if #msg <= 250 then ns.Comm.Send("CHANNEL", msg, "untabarded") else ns.Comm.SendChunked(msg) end
-end
-
-function King.ToggleUntabarded()
-	if ns.WALL_OF_SHAME ~= true then return ns.Print(L.WALL_OFF) end
-	if King.Preview() then return ns.Print(L.THRONE_PREVIEW_NOTE) end
-	if not King.IsKing() then return ns.Print(L.THRONE_ONLY_KING) end
-	ns.db.kingUntabarded = not King.SharingUntabarded()
-	ns.Print(King.SharingUntabarded() and L.UNTABARDED_ON or L.UNTABARDED_OFF)
-	King.SendUntabarded(true)
-	-- 1.1 (#12): his own switch never comes back to him: in his log as he sends it.
-	local on = King.SharingUntabarded()
-	ns.Chronicle.Add("switch", ns.me, on and L.ACTS_UNTABARDED_ON or L.ACTS_UNTABARDED_OFF, { key = "untabarded", value = on and "1" or "0" })
-	Changed()
-end
-
-local function OnUntabarded(sender, rest)
-	if King.IsKing() then return end
-	local on, body = tostring(rest or ""):match("^(%d)~?(.*)$")
-	-- 1.1 (#12): in this client's log of acts when it flips (repeated every 5 minutes while on).
-	if on == "1" or on == "0" then
-		ns.Chronicle.Add("switch", sender, on == "1" and L.ACTS_UNTABARDED_ON or L.ACTS_UNTABARDED_OFF, { key = "untabarded", value = on })
-	end
-	if on == "1" and ns.WALL_OF_SHAME ~= true then on = "0" end -- (no Wall of Shame here: a shared list is dropped)
-	if on == "1" then
-		local s = ns.Codec.DecodeShame("S1~Sylvanistas~0~" .. body)
-		if s then ns.Inspect.ShowShame({ by = ns.KingName(sender), list = s.list, t = ns.Now() }) end
-	elseif on == "0" then
-		ns.Inspect.ShowShame(nil)
-	end
 end
 
 ---------------------------------------------------------------------------
@@ -1104,7 +889,7 @@ function King.HandleCommand(dist, sender, text)
 	if not King.Authorized(kind, sender, guild) then
 		-- Positions come every few seconds: not logged.
 		if kind ~= "P" then
-			ns.Log("throne %s from %s ignored: not the King of %s nor his Hand%s", kind, sender, tostring(guild),
+			ns.Log("throne %s from %s ignored: not the King of %s nor their Hand%s", kind, sender, tostring(guild),
 				ns.KingCharacter() and "" or " (no King named on this side: nobody commands)")
 		end
 		return
@@ -1119,13 +904,11 @@ function King.HandleCommand(dist, sender, text)
 	end
 	-- The King's own client takes his Hands' news (the agenda, the gates, a cancel), not
 	-- their calls to the army: no roll call popup, patrol or poll window for him.
-	if King.IsKing() and (kind == "S" or kind == "I" or kind == "V") and not KingSender(sender, guild) then return end
+	if King.IsKing() and (kind == "S" or kind == "V") and not KingSender(sender, guild) then return end
 	if kind == "S" then OnSummon(sender, id, guild)
 	elseif kind == "H" then OnHands(sender, rest)
 	elseif kind == "N" then OnStewardHands(sender, rest)
 	elseif kinds[kind] then kinds[kind](sender, id, rest, guild)
-	elseif kind == "I" then OnInspect(sender, id)
-	elseif kind == "U" then OnUntabarded(sender, rest)
 	elseif kind == "A" then OnAgenda(sender, id, rest, guild)
 	elseif kind == "P" then OnLocation(sender, rest)
 	elseif kind == "Q" then
@@ -1157,7 +940,6 @@ ns.On("LOGIN", function()
 	ns.Every(60, "king hands", function()
 		King.SendHands()
 		King.SendStewardHands()
-		King.SendUntabarded()
 	end)
 	-- The guild is not always known at login yet: checked when the note is due.
 	ns.After(20, "king location note", function()
@@ -1230,28 +1012,21 @@ local function Line(text, font, extra)
 	return l
 end
 
--- A paragraph in rows short enough for the page (rows are one line each): split at spaces,
--- about `width` letters a row. The last row takes `extra` (gapAfter...).
-King.WRAP = 44
+-- A paragraph, wrapped to the page's width (line.wrap, Views.Render; 1.3.0: no longer cut at a
+-- count of letters). It takes `extra` (gapAfter...).
 local function Para(lines, text, font, extra)
-	local row, rows = "", {}
-	for word in tostring(text or ""):gmatch("%S+") do
-		if row ~= "" and #row + 1 + #word > King.WRAP then
-			rows[#rows + 1] = row
-			row = word
-		else
-			row = row == "" and word or (row .. " " .. word)
-		end
-	end
-	if row ~= "" then rows[#rows + 1] = row end
-	for i, r in ipairs(rows) do lines[#lines + 1] = Line(r, font, i == #rows and extra or nil) end
+	text = tostring(text or ""):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+	if text == "" then return lines end
+	local l = Line(text, font, extra)
+	l.wrap = true
+	lines[#lines + 1] = l
 	return lines
 end
 King.Para = Para
 
 ---------------------------------------------------------------------------
--- Where the King's calls show: the roll call in the Realm tab (next to the Lords it calls),
--- the Royal Inspection in the Tabards tab. Plain rows (not the parchment), for the King and
+-- Where the King's calls show: the roll call in the Realm tab (next to the Lords it calls).
+-- Plain rows (not the parchment), for the King and
 -- his Hands (and the author's Dark Lady view).
 ---------------------------------------------------------------------------
 
@@ -1340,65 +1115,6 @@ function King.RollCallLines()
 			end
 		end
 		lines[#lines + 1] = { indent = 1, text = Gold("> " .. L.ROLL_AGAIN), onClick = function() King.Summon() end }
-	end
-	lines[#lines].gapAfter = true
-	return lines
-end
-
--- The Royal Inspection on top of the Tabards tab: call one, then what the patrols reported.
-function King.InspectionLines()
-	if not King.CanCall() then return {} end
-	local lines = {}
-	local ok, bad, reporters, byGuild, names = 0, 0, 0, {}, {}
-	for _, r in pairs(inspect and inspect.reports or {}) do
-		reporters = reporters + 1
-		ok, bad = ok + r.ok, bad + r.none + r.other
-		local g = byGuild[r.guild] or { ok = 0, bad = 0 }
-		g.ok, g.bad = g.ok + r.ok, g.bad + r.none + r.other
-		byGuild[r.guild] = g
-		for _, v in ipairs(r.names) do names[#names + 1] = v end
-	end
-	local total = ok + bad
-	local pct = total > 0 and math.floor(ok * 100 / total + 0.5) or 0
-	lines[1] = {
-		header = true, text = "|TInterface\\Icons\\INV_Shirt_GuildTabard_01:14:14|t " .. L.THRONE_INSPECT_TITLE,
-		right = inspect and Grey(L.INSPECTION_SHORT:format(pct, total) .. "  " .. ns.Ago(inspect.t)) or Gold(L.INSPECTION_CALL),
-		onClick = not inspect and function() King.Inspect() end or nil,
-		tooltip = function(tt)
-			tt:AddLine(L.THRONE_INSPECT_TITLE, 1, 0.82, 0)
-			tt:AddLine(L.THRONE_INSPECT_TIP, 1, 1, 1, true)
-		end,
-	}
-	if inspect then
-		local left = inspect.t + King.INSPECT_TIME + 10 - ns.Now()
-		if left > 0 then lines[#lines + 1] = { indent = 1, text = Gold(L.THRONE_INSPECT_RUNNING:format(math.ceil(left))) } end
-		lines[#lines + 1] = { indent = 1, text = L.THRONE_INSPECT_SUMMARY:format(reporters, total, pct) }
-		local guilds = {}
-		for guild, g in pairs(byGuild) do guilds[#guilds + 1] = { name = guild, ok = g.ok, n = g.ok + g.bad } end
-		table.sort(guilds, function(a, b) return a.n > b.n end)
-		for _, g in ipairs(guilds) do
-			lines[#lines + 1] = { indent = 2, text = Green("<" .. g.name .. ">"),
-				right = ("%d%%  (%d/%d)"):format(g.n > 0 and math.floor(g.ok * 100 / g.n + 0.5) or 0, g.ok, g.n) }
-		end
-		if #names > 0 then
-			lines[#lines + 1] = { indent = 1, text = "|cffff4040" .. L.THRONE_VIOLATORS:format(#names) .. "|r" }
-			for i, v in ipairs(names) do
-				if i > 10 then
-					lines[#lines + 1] = { indent = 2, text = Grey(L.AND_MORE:format(#names - 10)) }
-					break
-				end
-				lines[#lines + 1] = { indent = 2, text = ("%s  %s"):format(v.name, Grey("<" .. v.guild .. ">")),
-					right = v.status == "NONE" and L.TABARD_NONE or L.TABARD_OTHER }
-			end
-		end
-		lines[#lines + 1] = { indent = 1, text = Gold("> " .. L.INSPECTION_AGAIN), onClick = function() King.Inspect() end }
-	end
-	-- The untabarded list is the King's: he alone lets the army see it (not a Hand), and can
-	-- take it back at any time, inspection or not.
-	if ns.WALL_OF_SHAME == true and (King.IsKing() or King.Preview()) then
-		lines[#lines + 1] = { indent = 1, text = Gold("> " .. (King.SharingUntabarded() and L.UNTABARDED_STOP or L.UNTABARDED_SHARE)),
-			onClick = function() King.ToggleUntabarded() end,
-			tooltip = function(tt) tt:AddLine(L.UNTABARDED_TIP, 1, 1, 1, true) end }
 	end
 	lines[#lines].gapAfter = true
 	return lines
@@ -1501,7 +1217,7 @@ function King.CancelAgendaButton()
 	ns.Print(L.THRONE_AGENDA_CANCELLED)
 end
 
-function King.State() return { summon = summon, inspect = inspect, agenda = agenda, inspecting = inspecting } end
+function King.State() return { summon = summon, agenda = agenda } end
 
 -- /syl status (1.0.0): the King's Steward as this client knows him (the signed titles list), and
 -- the lists of Hands it holds, each its owner's: how many, and whether it still lasts here.
@@ -1545,14 +1261,13 @@ function King.SetDevView(on)
 	Changed()
 end
 function King.Reset()
-	summon, inspect, agenda, inspecting, kingAt, crownAt = nil, nil, nil, nil, nil, nil
+	summon, agenda, kingAt, crownAt = nil, nil, nil, nil
 	hands, handsOrder, handsAt, lastHandsSent, handsKing, handsSendPending = {}, {}, -math.huge, -math.huge, nil, false
 	wipe(myHands)
 	wipe(stewardHands); wipe(myStewardHands)
 	lastStewardSent = -math.huge
 	lastLocation = { t = -math.huge }
-	lastSummonSeen, lastInspectSeen, lastSummonSent, lastInspectSent = -math.huge, -math.huge, -math.huge, -math.huge
-	lastUntabardedSent = -math.huge
+	lastSummonSeen, lastSummonSent = -math.huge, -math.huge
 	lastAgendaSent, lastAgendaWarn, changePending = -math.huge, -math.huge, false
 	King.mode, rollOpen = nil, false
 end

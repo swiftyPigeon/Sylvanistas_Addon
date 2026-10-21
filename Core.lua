@@ -18,11 +18,10 @@ ns.REALM_GROUP = "ClassicBetaPvE"              -- the author's and Treasurer's r
 ns.TREASURER_CHARACTER = "CHANGEME_Treasurer"  -- the Treasurer (in the main guild)
 ns.TREASURER_MAIL_CHARACTER = "CHANGEME_TreasurerMail" -- where dues and treasury mail go (any guild)
 ns.TREASURY_OFF = true                        -- true turns the Treasury and Bank off (1.3.0: off in beta; on at launch, the Treasurer a guild rank)
-ns.WALL_OF_SHAME = false                       -- true lets the Dark Lady show the untabarded list to every member (the "Wall of Shame")
 ns.REQUIRE_KEY = false                        -- true: a guild without the channel key (/syl key, from the Dark Lady) gets no network, only its own roster. Seal the channel first.
+ns.PVP_REALM = nil                            -- true: a PvP realm (the Board offers PvP flags); false: not; nil: guessed from the realm's name ("...PvP...")
 ns.BLOCKED_GUILDS = {                          -- guilds cut off for good, whatever their name: exact names, e.g. ["Sylvanistas Whatever"] = true (never the Dark Lady's)
 }
-ns.TABARD_MODE = "casual"                      -- "casual": Forsaken Regalia (who wears it, never who doesn't); "strict": the tabard inspection as before 1.2.2
 
 ns.NAME = "Sylvanistas"
 ns.VERSION = "1.3.0"
@@ -71,10 +70,6 @@ function ns.IsBlockedGuild(guild)
 	return type(guild) == "string" and type(ns.BLOCKED_GUILDS) == "table" and ns.BLOCKED_GUILDS[guild] == true
 		and not ns.IsHouseGuild(guild)
 end
-
--- 1.2.2: Forsaken Regalia (ns.TABARD_MODE): casual counts who wears the tabard and never lists who
--- doesn't; strict keeps the inspection, the untabarded list and its alerts.
-function ns.Casual() return ns.TABARD_MODE ~= "strict" end
 
 -- 1.2.2: "1 guild", not "1 guilds": the line for one, else the line for many, filled with the rest.
 function ns.Plural(n, one, many, ...)
@@ -508,13 +503,14 @@ end
 -- switch for them all made players silence the Call to Arms with the chimes they did not want.
 -- ns.db.sound stays the switch for every kind, as in 0.9 and 1.0 (their saves keep working);
 -- ns.db.soundOff[kind] = true silences one kind. Local only: nothing is sent.
---   arms, muster, royal   the decrees (royal: the Royal decree and the Tabard inspection)
+--   arms, muster, royal   the decrees (royal: the Banshee Scream and Assemble the Loyal)
 --   court, vox, agenda    the King's court, Vox Populi, the King's Agenda
---   throne                the King's other calls: the roll call, the Royal Inspection, writs, a Hand or Steward named
+--   throne                the King's other calls: the roll call, writs, a Hand or Steward named
 --   help                  a High Councillor's help requests, the author's bug reports
---   hop, treasury, patrol a layer hop, a donation, a patrol's player without the tabard
+--   hop, treasury         a layer hop, a donation
 --   update                the author's update notice
-ns.SOUND_KINDS = { "arms", "muster", "royal", "court", "vox", "agenda", "throne", "help", "hop", "treasury", "patrol", "update" }
+--   mention               a chat line naming one of our characters (Mentions.lua, 1.3.0)
+ns.SOUND_KINDS = { "arms", "muster", "royal", "court", "vox", "agenda", "throne", "help", "hop", "treasury", "update", "mention" } -- (1.3.0: no "patrol": nobody is called out for a tabard)
 -- Sylvanistas names for the kinds (typed and shown); the kinds themselves stay as saved.
 ns.SOUND_ALIAS = { rise = "arms", gather = "muster", banshee = "royal", conclave = "court", audience = "court", voice = "vox", sanctum = "throne" }
 ns.SOUND_NAME = { arms = "rise", muster = "gather", royal = "banshee", court = "conclave", vox = "voice", throne = "sanctum" }
@@ -732,6 +728,11 @@ local function ToastFrame()
 	close:SetSize(24, 24)
 	close:SetPoint("TOPRIGHT", 0, 0)
 	close:SetScript("OnClick", function() f:Hide() end)
+	-- (A call that asks something: its button under the words, ns.Toast's opts.button.)
+	f.btn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+	f.btn:SetSize(96, 22)
+	f.btn:SetPoint("BOTTOMRIGHT", -12, 8)
+	f.btn:Hide()
 	f:SetMovable(true)
 	f:EnableMouse(true)
 	f:RegisterForDrag("LeftButton")
@@ -748,7 +749,10 @@ local function ToastFrame()
 	toast = f
 	return f
 end
-function ns.Toast(text, icon)
+-- opts (1.3.0, the Party Scream): button = { label, onClick } (a click closes the toast too),
+-- seconds = how long it stays instead of TOAST_SECONDS.
+function ns.Toast(text, icon, opts)
+	opts = type(opts) == "table" and opts or {}
 	local f = ToastFrame()
 	f:ClearAllPoints()
 	local p = ns.db and ns.db.toastPos
@@ -756,8 +760,23 @@ function ns.Toast(text, icon)
 	else f:SetPoint("TOP", UIParent, "TOP", 0, -160) end
 	f.icon:SetTexture(icon or ns.ICON)
 	f.text:SetText(text or "")
-	f:SetHeight(math.max(58, (f.text:GetStringHeight() or 0) + 26))
-	f.until_ = GetTime() + ns.TOAST_SECONDS
+	local b = opts.button
+	f.text:ClearAllPoints()
+	f.text:SetPoint("LEFT", f.icon, "RIGHT", 10, 0)
+	f.text:SetPoint("RIGHT", -28, 0)
+	if type(b) == "table" then
+		f.btn:SetText(b.label or OKAY or "OK")
+		f.btn:SetScript("OnClick", function() f:Hide() if b.onClick then ns.SafeCall("toast button", b.onClick) end end)
+		f.btn:Show()
+		f.text:ClearAllPoints()
+		f.text:SetPoint("TOPLEFT", f.icon, "TOPRIGHT", 10, 0)
+		f.text:SetPoint("RIGHT", -28, 0)
+		f:SetHeight(math.max(70, (f.text:GetStringHeight() or 0) + 52))
+	else
+		f.btn:Hide()
+		f:SetHeight(math.max(58, (f.text:GetStringHeight() or 0) + 26))
+	end
+	f.until_ = GetTime() + (tonumber(opts.seconds) or ns.TOAST_SECONDS)
 	f:Show()
 end
 
@@ -1081,7 +1100,7 @@ function ns.LearnKingRealm(sender)
 	local realm = ns.RealmOf(ns.FullName(sender))
 	if not realm then return end
 	ns.rdb.kingRealmHorde = realm
-	ns.Log("the Horde's King is on %s (learned from his first message)", realm)
+	ns.Log("the Horde's King is on %s (learned from their first message)", realm)
 end
 
 -- The High Council: the Sylvanistas moderators, shown with their mark and their colour in the Sylvanistas
@@ -1993,9 +2012,7 @@ local function Help()
 	print(L.HELP_SOUND)
 	print(L.HELP_ALERTS)
 	print(L.HELP_CMD_PATROL)
-	print(L.HELP_CMD_MARK)
 	print(L.HELP_GEAR)
-	print(L.HELP_PATROLSHARE)
 	print(L.HELP_APPROVED)
 	print(L.HELP_LOOT)
 	print(L.HELP_CRAFT)
@@ -2014,6 +2031,7 @@ local function Help()
 	print(L.HELP_PRIVACY_PAGE)
 	print(L.HELP_CHAT)
 	print(L.HELP_LOG)
+	print(L.HELP_MENTIONS)
 	print(L.HELP_FILTER)
 	print(L.HELP_TREASURER)
 	print(L.HELP_BANK)
@@ -2024,7 +2042,6 @@ local function Help()
 	print(L.HELP_MAINKEY)
 	print(L.HELP_MUSTERS)
 	print(L.HELP_BRIEF)
-	print(L.HELP_INSPECTION)
 	print(L.HELP_BORDERS)
 	print(L.HELP_NAMEPLATES)
 	print(L.HELP_ISSUE)
@@ -2079,6 +2096,11 @@ SlashCmdList.SYLVANISTAS = function(input)
 		cmd = ({ voice = "vox", rise = "arms", gather = "muster", dreadguard = "council", screams = "decrees", scream = "decrees" })[cmd] or cmd
 		if cmd == "" then
 			ns.UI.Toggle()
+		elseif cmd == "open" then
+			-- 1.3.0: open or close, never the other way round (/syl alone toggles).
+			if not ns.UI.IsShown() then ns.UI.Toggle() end
+		elseif cmd == "close" then
+			if ns.UI.IsShown() then ns.UI.Toggle() end
 		elseif cmd == "inspect" or cmd == "tabard" or cmd == "heraldry" then
 			ns.UI.SelectTab("heraldry")
 		elseif cmd == "sound" then
@@ -2087,8 +2109,6 @@ SlashCmdList.SYLVANISTAS = function(input)
 			ns.AlertsSlash(rest)
 		elseif cmd == "patrol" then
 			ns.Inspect.SetPatrol(not ns.Inspect.IsPatrolling())
-		elseif cmd == "mark" then
-			ns.Inspect.MarkTarget(rest)
 		elseif cmd == "gear" then
 			-- 1.1 (request #28): officers keep the gear of the player they target, in range.
 			ns.Inspect.InspectGear()
@@ -2109,11 +2129,6 @@ SlashCmdList.SYLVANISTAS = function(input)
 		elseif cmd == "approved" then
 			-- 1.1: the guilds the author's signed list makes Sylvanistas guilds; "paste" to paste that list.
 			ns.Workshop.Approved(rest)
-		elseif cmd == "patrolshare" then
-			-- 1.1 (request #29): officers pass their patrols' findings to their guild's officers.
-			local word, on = rest:lower(), nil
-			if word == "on" then on = true elseif word == "off" then on = false end
-			ns.Inspect.SetSharing(on)
 		elseif cmd == "map" then
 			ns.Map.SetEnabled(not ns.db.showMap)
 		elseif cmd == "hotkey" then
@@ -2191,13 +2206,6 @@ SlashCmdList.SYLVANISTAS = function(input)
 			local how = rest:lower()
 			local hide = (how == "hide" or how == "off") and true or ((how == "show" or how == "on") and false or not ns.UI.IssueReporterHidden())
 			ns.UI.SetIssueReporterHidden(hide)
-		elseif cmd == "inspection" then
-			-- Taking part in the King's Royal Inspection (a patrol of 2 minutes that reports to him).
-			local on = rest:lower()
-			if on == "on" or on == "off" then ns.db.royalInspection = on == "on" end
-			-- (1.1: never answered is off, and says so.)
-			local v = ns.db.royalInspection
-			ns.Print(v == true and L.INSPECTION_OPT_ON or (v == false and L.INSPECTION_OPT_OFF or L.INSPECTION_OPT_UNANSWERED))
 		elseif cmd == "nameplates" then
 			-- The marks left of the names on friendly players' nameplates (Nameplates.lua), alone: on or off.
 			local on = rest:lower()
@@ -2240,6 +2248,9 @@ SlashCmdList.SYLVANISTAS = function(input)
 		elseif cmd == "filter" or cmd == "filtro" then
 			-- 1.1 (request #31): block terms, the player's own and the shared list (Filter.lua).
 			ns.Filter.Slash(rest)
+		elseif cmd == "mentions" or cmd == "mention" then
+			-- 1.3.0: the chat lines that named us (Mentions.lua): the Chat tab's view, on, off, clear.
+			ns.Mentions.Slash(rest)
 		elseif cmd == "log" then
 			-- 1.1 (request #12): the acts this client saw (Chronicle.lua): [n], a word, copy, clear.
 			ns.Chronicle.Slash(rest)

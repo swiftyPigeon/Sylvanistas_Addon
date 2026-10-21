@@ -32,23 +32,15 @@ local function Grey(s) return "|cff9d9d9d" .. s .. "|r" end
 local function Red(s) return "|cffff4040" .. s .. "|r" end
 local function Gold(s) return "|cffffd200" .. s .. "|r" end
 Views.Green, Views.Grey, Views.Red, Views.Gold = Green, Grey, Red, Gold
--- Sylvanistas: a grey info line in rows short enough for the page (rows are one line each and
--- don't wrap): split at spaces, about WRAP letters a row. `opts` goes on every row (indent,
--- onClick, tooltip), but gapAfter only on the last.
-Views.WRAP = 56
+-- Sylvanistas: a grey info line, wrapped to the page's width (line.wrap, Views.Render; 1.3.0: no
+-- longer cut at a count of letters, which left a word or two alone on a row). `opts` goes on the
+-- line (indent, onClick, tooltip, gapAfter).
 function Views.GreyRows(lines, text, opts)
-	opts = opts or {}
-	local rows, row = {}, ""
-	for word in tostring(text or ""):gmatch("%S+") do
-		if row ~= "" and #row + 1 + #word > Views.WRAP then rows[#rows + 1] = row; row = word
-		else row = row == "" and word or (row .. " " .. word) end
-	end
-	if row ~= "" then rows[#rows + 1] = row end
-	for i, r in ipairs(rows) do
-		local l = { text = Grey(r) }
-		for k, v in pairs(opts) do if k ~= "gapAfter" or i == #rows then l[k] = v end end
-		lines[#lines + 1] = l
-	end
+	text = tostring(text or ""):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+	if text == "" then return lines end
+	local l = { text = Grey(text), wrap = true }
+	for k, v in pairs(opts or {}) do l[k] = v end
+	lines[#lines + 1] = l
 	return lines
 end
 
@@ -116,23 +108,14 @@ Views.COLUMNS = {
 		{ key = "COL_ONLINE", sort = "online", x = 0.55, w = 0.13, justify = "RIGHT" },
 		{ key = "COL_LORD", sort = "lord", x = 0.68, w = 0.32 },
 	},
+	-- Regalia lists Fellow Forsaken: name, level, where, when.
 	heraldry = {
-		{ key = "COL_NAME", x = 0.00, w = 0.30 },
-		{ key = "COL_GUILD", x = 0.30, w = 0.32 },
-		{ key = "COL_TABARD", x = 0.63, w = 0.24 },
-		{ key = "COL_WHEN", x = 0.87, w = 0.13, justify = "RIGHT" },
-	},
-}
--- 1.2.2: Forsaken Regalia (casual) lists Fellow Forsaken: name, level, where, when.
-if ns.Casual() then
-	Views.COLUMNS.heraldry = {
 		{ key = "COL_NAME", x = 0.00, w = 0.40 },
 		{ key = "COL_LEVEL", x = 0.40, w = 0.14, justify = "RIGHT" },
 		{ key = "COL_WHERE", x = 0.56, w = 0.31 },
 		{ key = "COL_WHEN", x = 0.87, w = 0.13, justify = "RIGHT" },
-	}
-end
-
+	},
+}
 ---------------------------------------------------------------------------
 -- Renderer
 ---------------------------------------------------------------------------
@@ -298,7 +281,8 @@ local function ItemButton(r, k)
 			return ns.SafeCall("view item", line.onItem, it)
 		end
 		-- Shift-click: the link into the chat box, as in a bag (not with the gamepad UI: its
-		-- chat box would be blocked, see Dialog.lua).
+		-- chat box would be blocked, see Dialog.lua). ChatEdit_InsertLink only adds it to a box the
+		-- player opened; it never opens one (what tainted the chat box was opening it: Board.Whisper).
 		if not it or not IsShiftKeyDown or not IsShiftKeyDown() or ns.GamepadUI() or not ChatEdit_InsertLink then return end
 		local link = it.link
 		if not link and GetItemInfo then local okInfo, _, l = pcall(GetItemInfo, it.id); if okInfo then link = l end end
@@ -547,6 +531,48 @@ local function PlaceInput(content, r)
 	eb:Show()
 end
 
+-- The row's word buttons (line.actions), right to left from its end; hides the ones not used.
+-- Returns what the right text sits left of: the last button, or the row itself (its end).
+function Views.RowActions(r, actions, rowH)
+	r.acts = r.acts or {}
+	for _, b in ipairs(r.acts) do b:Hide() end
+	if type(actions) ~= "table" or #actions == 0 then return r end
+	local prev
+	for k = #actions, 1, -1 do
+		local a = actions[k]
+		local b = r.acts[k]
+		if not b then
+			b = CreateFrame("Button", nil, r)
+			b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+			b.label:SetPoint("CENTER")
+			b:SetScript("OnEnter", function(self)
+				self.label:SetTextColor(1, 1, 1)
+				if self.tip then
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					GameTooltip:AddLine(self.label:GetText() or "", 1, 0.82, 0)
+					GameTooltip:AddLine(self.tip, 1, 1, 1, true)
+					GameTooltip:Show()
+				end
+			end)
+			b:SetScript("OnLeave", function(self) self.label:SetTextColor(1, 0.82, 0) GameTooltip:Hide() end)
+			r.acts[k] = b
+		end
+		b.label:SetText(a.text or "")
+		b.label:SetTextColor(1, 0.82, 0)
+		b.tip = a.tooltip
+		b:SetSize(math.ceil(b.label:GetStringWidth() or 30) + 8, rowH)
+		b:SetScript("OnClick", function()
+			if a.onClick then ns.SafeCall("row action", a.onClick) end
+			if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+		end)
+		b:ClearAllPoints()
+		if prev then b:SetPoint("RIGHT", prev, "LEFT", -4, 0) else b:SetPoint("RIGHT", r, "RIGHT", -2, 0) end
+		b:Show()
+		prev = b
+	end
+	return prev
+end
+
 function Views.Render(content, lines, layout)
 	local width = content:GetWidth()
 	local hd = content.style == "hd"
@@ -626,15 +652,21 @@ function Views.Render(content, lines, layout)
 			end
 			r.left:SetText(line.text or "")
 			r.right:SetText(line.right or "")
+			-- 1.3.0: line.actions = { { text, onClick, tooltip }, ... }: small word buttons at the
+			-- row's end (the Screams log's Collapse, Copy, Clear), the right text before them.
+			r.right:ClearAllPoints()
+			local edge = Views.RowActions(r, line.actions, rowH)
+			if edge == r then r.right:SetPoint("RIGHT", -2, 0) else r.right:SetPoint("RIGHT", edge, "LEFT", -8, 0) end
 			-- 1.2.2: nothing ends cut off unless its tooltip shows it whole. A plain line (no
 			-- tooltip, no click, no heading) wraps over as many rows as it needs; a line with a
 			-- tooltip stays one row, ends with the "i" mark, and its tooltip starts with it whole.
+			-- 1.3.0: a paragraph (line.wrap: Views.GreyRows) wraps, click and tooltip or not.
 			r.cut = nil
 			r.info:Hide()
 			r.left:SetWordWrap(false)
 			if not inputRow or inputRow ~= r then
 				local truncated = r.left.IsTruncated and r.left:IsTruncated()
-				if truncated and not line.tooltip and not line.onClick and not line.header then
+				if truncated and not line.header and (line.wrap or (not line.tooltip and not line.onClick)) then
 					r.left:SetWordWrap(true)
 					local h = r.left:GetStringHeight()
 					if type(h) == "number" and h > rowH then height = math.ceil(h) + 4 end
@@ -648,6 +680,7 @@ function Views.Render(content, lines, layout)
 			end
 		end
 		if not line.items then for k = 1, #(r.items or {}) do r.items[k]:Hide() end end
+		if line.cols or line.items then Views.RowActions(r, nil, rowH) end
 		r:SetHeight(height)
 		r:EnableMouse(line.onClick ~= nil or line.tooltip ~= nil or r.cut == true)
 		if hd then
@@ -2136,7 +2169,10 @@ local function RealmDetail(s)
 			inactive = inactive + (e.g.inactive30 or 0)
 		end
 	end
-	return L.TAB_REALM, L.REALM_DETAIL:format(lords, captains, ns.FormatNumber(inactive)) .. "\n" .. Grey(L.CLICK_EXPAND)
+	-- 1.3.0: the hint names what opens (a guild's row in the list, not this box), and only on the
+	-- Guilds page: the other pages' rows don't open and close.
+	local guilds = not boardShown and not pageShown and not (ns.Members and ns.Members.Shown and ns.Members.Shown())
+	return L.TAB_REALM, L.REALM_DETAIL:format(lords, captains, ns.FormatNumber(inactive)) .. (guilds and ("\n" .. Grey(L.CLICK_GUILD_EXPAND)) or "")
 end
 
 -- (While a search is typed, the guilds it opened close and open with them.)
@@ -2193,15 +2229,6 @@ local function DecreeLines()
 	end
 
 	return lines
-end
-
-local function DecreeHelp(lines)
-	lines[#lines + 1] = { header = true, text = L.DECREE_HELP_TITLE }
-	for _, k in ipairs({ "ARMS", "MUSTER", "ROYAL", "HERALDRY" }) do
-		local who = ns.Decree.CROWN_ONLY[k] and L.WHO_CROWN or (k == "ARMS" and L.WHO_ANYONE) or L.WHO_CAPTAINS
-		lines[#lines + 1] = { text = Gold(L["HELP_" .. k .. "_NAME"]) .. "  " .. Grey("(" .. who .. ")") }
-		lines[#lines + 1] = { indent = 1, text = Grey(L["HELP_" .. k]) }
-	end
 end
 
 -- The alerts' settings (1.1), at the bottom of the Decrees tab: held in an instance or on Busy,
@@ -2261,22 +2288,13 @@ local function DecreeDetail()
 end
 
 ---------------------------------------------------------------------------
--- Heraldry (tabard inspection + Wall of Shame)
+-- Regalia (1.3.0: the original's tabard inspection and Wall of Shame are gone, the user's call)
 ---------------------------------------------------------------------------
-
-local STATUS_TEXT = {
-	GUILD = function() return Green(L.TABARD_OK) end,
-	NONE = function() return Red(L.TABARD_NONE) end,
-	OTHER = function() return Gold(L.TABARD_OTHER) end,
-	UNKNOWN = function() return Grey(L.TABARD_UNKNOWN) end,
-	UNCHECKED = function() return Grey(L.TABARD_UNCHECKED) end,
-	YOUNG = function() return Grey(L.TABARD_YOUNG) end,
-}
 
 Views.RACE_MAX, Views.RACE_PAGE = 100, 25 -- the level race: its top 100, 25 at a time
 Views.RECRUIT_SHOWN = 5 -- guilds with room shown in the Realm's Recruiting, the rest on a click (1.1)
 Views.raceShown = Views.RACE_PAGE
-Views.INSPECT_ROWS = 200 -- inspected players listed on the Tabards page
+Views.INSPECT_ROWS = 200 -- Fellow Forsaken listed on the Regalia page
 
 -- 1.1 (request #28): the gear an officer's click kept (Inspect.InspectGear), newest first, the
 -- players whose name or guild holds `q`: a click shows or hides the items, in their slots, each
@@ -2332,121 +2350,7 @@ local function GearLines(lines, q)
 end
 function Views.CloseGear() wipe(gearOpen) end -- (tests)
 
--- `q`, the search (Views.Query): the untabarded and the inspected players whose name or guild
--- holds it, each list under its header, a page as ever; "No match" for none. Nothing else.
-local RegaliaLines -- (1.2.2, below: the casual tab)
-local function HeraldryLines(q)
-	if ns.Casual() then return RegaliaLines(q) end
-	local s = ns.Inspect.Summary()
-	-- The King (and his Hands): the Royal Inspection, and what the patrols reported (King.lua).
-	local lines = {}
-	for _, l in ipairs(not q and ns.King and ns.King.InspectionLines and ns.King.InspectionLines() or {}) do lines[#lines + 1] = l end
-	-- The untabarded: the King sees his own list (and whether the army sees it); everyone else
-	-- sees it only while he shares it.
-	local king = ns.King and (ns.King.IsKing() or ns.King.Preview())
-	local shame = ns.Inspect.Shame()
-	if king then
-		shame = { list = ns.Inspect.ShameList(), mine = true }
-	end
-	local players = s.players
-	if q then
-		local list = {}
-		for _, p in ipairs(ns.Inspect.ShameOpen() and shame and shame.list or {}) do
-			if ns.Holds(q, p.name, p.guild) then list[#list + 1] = p end
-		end
-		-- (Only a list with someone found in it, headed as ever.)
-		shame = #list > 0 and { list = list, mine = shame.mine, by = shame.by, t = shame.t } or nil
-		players = {}
-		for _, p in ipairs(s.players) do
-			if ns.Holds(q, ns.ShortName(p.name), p.guild) then players[#players + 1] = p end
-		end
-		if not shame and #players == 0 and not GearLines({}, q) then return { NoMatch() } end
-	end
-	if q and not shame then
-		-- (The search found none of the untabarded: their header goes too.)
-	elseif not ns.Inspect.ShameOpen() then
-		-- Closed until the tabard rule is in force (Inspect.lua): a countdown.
-		local left = ns.Inspect.ShameOpensIn()
-		local wait = ("%dh %02dm"):format(math.floor(left / 3600), math.floor(left % 3600 / 60))
-		lines[#lines + 1] = { header = true, text = Red(L.WALL_OF_SHAME), right = Grey(L.SHAME_OPENS:format(wait)) }
-		lines[#lines].gapAfter = true
-	elseif not (shame and #shame.list > 0) then
-		lines[#lines + 1] = { header = true, text = Red(L.WALL_OF_SHAME), right = Grey(king and L.SHAME_EMPTY or L.UNTABARDED_NOT_SHARED) }
-		lines[#lines].gapAfter = true
-	else
-		local right = shame.mine and (ns.King.SharingUntabarded() and L.UNTABARDED_SHARED or L.UNTABARDED_ONLY_KING)
-			or L.PUBLISHED_BY:format(shame.by, ns.Ago(shame.t))
-		lines[#lines + 1] = { header = true, text = Red(L.WALL_OF_SHAME), right = Grey(right) }
-		-- The King pardons with a click (Acts.lua); anyone else opens the person.
-		for i = 1, math.min(12, #shame.list) do
-			local p = shame.list[i]
-			local pardon = king and ns.King.CleanName(p.name) ~= nil
-			lines[#lines + 1] = { indent = 1, key = p.name, text = p.name .. "  " .. Grey("<" .. (p.guild or "?") .. ">"),
-				onClick = pardon and function() ns.ShowDialog("SYLVANISTAS_PARDON", p.name, nil, p.name) end
-					or function() ns.UI.ShowPerson({ name = p.name, guild = p.guild }) end,
-				tooltip = pardon and function(tt)
-					tt:AddLine(p.name, 1, 0.82, 0)
-					tt:AddLine(L.PARDON_TIP, 1, 1, 1, true)
-				end or nil }
-		end
-		if #shame.list > 12 then lines[#lines + 1] = { indent = 1, text = Grey(L.AND_MORE:format(#shame.list - 12)) } end
-		lines[#lines].gapAfter = true
-	end
-	if not q then
-		lines[#lines + 1] = { header = true, text = L.GUILDS }
-		for i = 1, math.min(8, #s.guilds) do
-			local g = s.guilds[i]
-			lines[#lines + 1] = {
-				text = (g.marked and Red("! ") or "") .. Green("<" .. g.name .. ">"),
-				right = L.GUILD_BAD:format(g.bad, g.total),
-				onClick = function() ns.Inspect.ToggleGuildMark(g.name) end,
-				tooltip = function(tt) tt:AddLine("<" .. g.name .. ">", 0.25, 1, 0.25); tt:AddLine(L.CLICK_MARK_GUILD, 0.8, 0.8, 0.8) end,
-			}
-		end
-		if #s.guilds == 0 then lines[#lines + 1] = { text = Grey(L.INSPECT_EMPTY) } end
-		lines[#lines].gapAfter = true
-	end
-	-- 1.1: the gear officers' clicks kept.
-	GearLines(lines, q)
-	if q and #players == 0 then return lines end
-	lines[#lines + 1] = { header = true, text = L.INSPECTED_PLAYERS }
-	-- A line (and a frame) each: the first INSPECT_ROWS, marked and caught players first
-	-- (Inspect.Summary), the rest counted.
-	local rows = math.min(#players, Views.INSPECT_ROWS)
-	for i = 1, rows do
-		local p = players[i]
-		lines[#lines + 1] = {
-			key = p.name,
-			cols = {
-				(p.marked and Red("! ") or "") .. ClassColored(ns.ShortName(p.name), p.class),
-				Grey(p.guild and ("<" .. p.guild .. ">") or ""),
-				(STATUS_TEXT[p.status or "UNKNOWN"] or STATUS_TEXT.UNKNOWN)(),
-				Grey(ns.Ago(p.t)),
-			},
-			onClick = function()
-				local code = ns.Roster.ClassCode(p.class)
-				ns.UI.ShowPerson({
-					name = ns.ShortName(p.name), realm = ns.RealmOf(p.name), class = code ~= "" and code or nil, level = p.level, guild = p.guild,
-					tabard = (STATUS_TEXT[p.status or "UNKNOWN"] or STATUS_TEXT.UNKNOWN)(), note = p.note,
-					onMark = function() ns.Inspect.ToggleMark(p.name) end,
-				})
-			end,
-			tooltip = function(tt)
-				tt:AddLine(ClassColored(p.name, p.class))
-				tt:AddLine("<" .. (p.guild or "?") .. ">" .. (p.level and ("  lvl " .. p.level) or ""), 0.25, 1, 0.25)
-				if p.note then tt:AddLine('"' .. p.note .. '"', 1, 0.5, 0.5, true) end
-				-- 1.1 (request #29): another officer of our guild found it.
-				if p.shared and p.by then tt:AddLine(L.PATROLSHARE_BY:format(p.by), 0.6, 0.8, 1, true) end
-				tt:AddLine(L.CLICK_MARK_PLAYER, 0.6, 0.6, 0.6)
-			end,
-		}
-	end
-	if #players > rows then lines[#lines + 1] = { text = Grey(L.AND_MORE:format(#players - rows)) } end
-	return lines
-end
-
--- 1.2.2: Forsaken Regalia, the casual Tabards tab (ns.TABARD_MODE): who wears it, who could use a
--- hand, who is around. Never who doesn't wear it.
+-- 1.2.2: Forsaken Regalia, the Regalia tab: who wears it, who is around. Never who doesn't wear it.
 local REGALIA = "|TInterface\\Icons\\INV_Shirt_GuildTabard_01:12:12|t"
 local function PersonOf(p)
 	local code = ns.Roster.ClassCode and ns.Roster.ClassCode(p.class)
@@ -2457,7 +2361,7 @@ local function RegaliaName(p)
 	local I = ns.Inspect
 	return (I.IsLoyalist(p.name) and I.LOYAL_MARK or "") .. ClassColored(ns.ShortName(p.name), p.class)
 end
-function RegaliaLines(q)
+local function RegaliaLines(q)
 	local I = ns.Inspect
 	local r = I.Regalia()
 	local lines = {}
@@ -2555,7 +2459,9 @@ function RegaliaLines(q)
 		end
 		lines[#lines].gapAfter = true
 	end
-	if q and #fellows == 0 and #loyal == 0 then return { NoMatch() } end
+	-- The gear an officer kept (/syl gear), when there is any (review 13 decides its future).
+	local gear = GearLines(lines, q)
+	if q and #fellows == 0 and #loyal == 0 and not gear then return { NoMatch() } end
 	return lines
 end
 
@@ -2564,17 +2470,6 @@ local function RegaliaDetail()
 	local r = I.Regalia()
 	local text = I.IsPatrolling() and Green(L.FELLOW_ON) or Grey(L.REGALIA_HINT)
 	return L.REGALIA_COUNTS:format(r.seen, r.inRegalia, #r.loyalists), text
-end
-
-local function HeraldryDetail()
-	if ns.Casual() then return RegaliaDetail() end
-	local s = ns.Inspect.Summary()
-	local c = s.counts
-	local text = ns.Inspect.IsPatrolling() and Green(L.PATROL_ON) or Grey(L.PATROL_HINT)
-	-- 1.1 (request #29): how many on the list our guild's other officers found.
-	local shared = ns.Inspect.SharedCount and ns.Inspect.SharedCount() or 0
-	if shared > 0 then text = text .. "\n" .. Grey(L.PATROLSHARE_COUNT:format(shared)) end
-	return L.INSPECT_COUNTS:format(s.total, c.GUILD, c.NONE, c.OTHER), text
 end
 
 ---------------------------------------------------------------------------
@@ -2738,14 +2633,24 @@ local function SettingsWindow()
 		function(on) ns.SoundSlash(on and "on" or "off") end)
 	for i, kind in ipairs(ns.SOUND_KINDS) do
 		Check(2 + i, ns.SoundLabel(kind), L.SOUND_KIND_TIP:format(kind), function() return ns.SoundKindOn(kind) end,
-			function(on) ns.SoundSlash(kind .. (on and " on" or " off")) end, 18)
+			function(on) ns.SoundSlash(kind .. (on and " on" or " off")) end, 18).soundKind = true
+	end
+	-- (Parties' switches, from the Board: the party buttons live on this tab.)
+	local P = ns.Party
+	if P and not P.missing then
+		Check(#f.checks + 1, L.PARTY_INVITES_BOX, L.PARTY_TOGGLE_TIP, function() return P.On() end,
+			function(on) P.Set(on) end)
+		Check(#f.checks + 1, L.PARTY_AUTO_BOX, L.PARTY_AUTO_TIP, function() return P.Auto() end,
+			function(on) P.SetAuto(on) end, 18).partyAuto = true
 	end
 	f:SetHeight(44 + (#f.checks) * 22)
 	function f:Sync()
 		local all = ns.db.sound and true or false
-		for i, b in ipairs(self.checks) do
+		local party = P and not P.missing and P.On()
+		for _, b in ipairs(self.checks) do
 			b:SetChecked(b.get() and true or false)
-			if i > 2 then b.label:SetTextColor(all and 1 or 0.5, all and 1 or 0.5, all and 1 or 0.5) end
+			if b.soundKind then b.label:SetTextColor(all and 1 or 0.5, all and 1 or 0.5, all and 1 or 0.5) end
+			if b.partyAuto then b.label:SetTextColor(party and 1 or 0.5, party and 1 or 0.5, party and 1 or 0.5) end
 		end
 	end
 	f:SetScript("OnShow", function(self) self:Sync() end)
@@ -2872,7 +2777,7 @@ local BUILD = {
 		local lines = DecreeLines()
 		-- 1.1 (#12): this client's log of the acts it saw, its box searching it alone.
 		if ns.Chronicle and not ns.Chronicle.missing then ns.Chronicle.AddLines(lines, Views.Query("decrees")) end
-		DecreeHelp(lines)
+		-- (1.3.0: no "How screams work" list: the Calls and Parties titles above the buttons say it.)
 		-- (1.3.0: the alert settings live in their own window, behind the cog: Views.ToggleAlertSettings.)
 		local cog = SCREAM_COG
 		-- (The moderators, and anyone while somebody is off: the skull beside the cog.)
@@ -2881,8 +2786,8 @@ local BUILD = {
 		return Searched(lines, "decrees", "LOG", cog), title, text
 	end,
 	heraldry = function()
-		local title, text = HeraldryDetail()
-		return Searched(HeraldryLines(Views.Query("heraldry")), "heraldry", "HERALDRY"), title, text
+		local title, text = RegaliaDetail()
+		return Searched(RegaliaLines(Views.Query("heraldry")), "heraldry", "HERALDRY"), title, text
 	end,
 	throne = function(s)
 		if not (ns.King and ns.King.Build) then return {}, nil, nil end

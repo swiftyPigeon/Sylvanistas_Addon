@@ -32,7 +32,7 @@ Start with **Part 1** whatever your rank, then read your own part.
    - **Share my zone and layer**
    - **Layer help** (lets others ask you for an invite to your layer)
    - **Chats**, if you want the guild chats
-   - **Party invites** (and **Auto-join parties**), if you'd like guildmates to pull you into parties
+   - **Party invites** is already on; **Auto-join parties** if you'd like to join without the popup
 4. **Open the window:** type `/syl`, click the minimap button, or press **Shift-J** (Shift + your guild
    key; pick your own in the game's Key Bindings, under AddOns).
 5. **Check it works:** `/syl status`. You should see your guild, the channel, and your layer
@@ -52,9 +52,9 @@ Start with **Part 1** whatever your rank, then read your own part.
 ## Part 2: The Forsaken (every member)
 
 ### Layer hop
-- **Join the Dark Lady's layer:** go to her zone, then click the **swirling portal** next to the search box on the
+- **Join the Dark Lady's layer:** go to their zone, then click the **swirling portal** next to the search box on the
   **Shadows** tab (or type `/syl hop`).
-- **What happens:** a member on her layer gets your request and invites you, the game moves you to their layer,
+- **What happens:** a member on their layer gets your request and invites you, the game moves you to their layer,
   and the addon takes you out of the group.
 - **Help others:** in Sylvanistas and Sylvanistas Underground, helping is **on**: your add-on invites members of
   either guild on its own when they ask (`/syl layerhelp off` stops it). Players of other guilds get a window to click.
@@ -64,28 +64,29 @@ Start with **Part 1** whatever your rank, then read your own part.
 **Needs version 1.2.0 or newer**, for the leader and for everyone invited. Older copies don't see
 it and can't be invited by it.
 
-Party invites are **off until you say yes**: on the privacy page the first time you open the
-addon, on the **Board**, or with a command. The **Board** opens with `/syl lfg`, or from
-**Shadows** tab; its **Parties** section holds every button below.
+Party invites are **on by default** (since 1.3.0); Auto-join stays off until you turn it on. Both
+switches are behind the **cog** on the **Screams** tab, on the privacy page, and in commands. The
+three party buttons sit on the **Screams** tab, next to Revenant Call and Gathering.
 
 | Want to… | Do |
 |---|---|
-| Let guildmates invite you when you're solo | `/syl party on` (off: `/syl party off`) |
-| Join those invites without the popup | `/syl partyauto on` (off: `/syl partyauto off`) |
-| Gather a party (up to 5) of solo guildmates in your zone | **Board** → **Gather a party**, or `/syl party gather` |
-| Tell solo guildmates here you're forming a party | **Board** → **Party Scream**, or `/syl party scream <note>`. They get a **Join** button. |
+| Stop (or allow) guildmates inviting you when you're solo | Screams → cog → **Party invites from guildmates**, or `/syl party off` / `on` |
+| Join those invites without the popup | Screams → cog → **Auto-join those invites**, or `/syl partyauto on` |
+| Gather a party (up to 5) of solo guildmates in your zone | **Screams** → **Gather a party**, or `/syl party gather` |
+| Tell solo guildmates here you're forming a party | **Screams** → **Party Scream**, or `/syl party scream <note>`. They get a small window with a **Join** button. |
 
-- The **Board** shows **Party invites: On/Off** and **Auto-join: On/Off**: one click flips each.
+- **You see what happens.** Each click shows a small silver window (and a chat line): who is being
+  invited, how many can answer your Scream, or why nobody can. Then one for each answer: joined,
+  declined, already in a group, or wants to join from your Scream.
+- The buttons show their state: **Scream 1:42** while you wait for the next one,
+  **Inviting (2)** while invites are out. Hover a button to see how many guildmates in your zone
+  take invites right now.
 - Invites go one at a time: same layer first, then closest level, with a healer kept in. Joining
   a party also moves you to the leader's layer.
 - Nobody is invited (or auto-joins) **in a dungeon, in combat, while Busy** (`/dnd`), or when already grouped.
 - Party invites are shared over **guild chat only**.
 - A **Party Scream** can be sent once every 2 minutes. Only guildmates who are **solo, in the same
-  zone, and have party invites on** get its **Join** button.
-- **"Nobody solo in <zone> takes party invites"** means no one there has it on (or everyone is
-  grouped, in a dungeon or Busy). Ask them to type `/syl party on`.
-- **The Forever beta forgets addon settings at login,** so the privacy page asks about party
-  invites again each session. Answer it again, or type `/syl party on`.
+  zone, and have party invites on** get its **Join** window (it stays 30 seconds).
 
 ### The Crypt
 - **Hover the minimap button** for the totals and how many guildmates are online with the addon.
@@ -95,7 +96,7 @@ addon, on the **Board**, or with a command. The **Board** opens with `/syl lfg`,
 - **Column titles** sort the list; the sorted one stays lit with ▲ or ▼, and a second click reverses it.
 - A line that ends with an **i** has more to say: hover it.
 
-### Forsaken Regalia (the tabard tab)
+### Regalia (the tabard tab)
 It celebrates who wears the Sylvanistas tabard; nobody is ever listed for not wearing it.
 | Want to… | Do |
 |---|---|
@@ -114,17 +115,38 @@ come in your tabard.
 |---|---|
 | `/sy <text>` | every Sylvanistas member with the addon |
 | `/sy` alone | opens the **Chat** tab |
-| Click **[Sylvanistas]**, **[Dark Rangers]** or **[Darkcallers]** before a line | opens the chat box to write in that channel, like [Party] (only channels you may write in) |
+| Click **[Sylvanistas]**, **[Dark Rangers]** or **[Darkcallers]** before a line | opens the Sylvanistas window's Chat tab on that channel (only channels you may write in) |
 | `/syl mute sylvanistas` | hides that channel from your chat window |
 
 These chats are **not private**: never type passwords or secrets there.
+
+The **Chat** tab reads like a messenger: your lines on the right in the channel's colour, everyone
+else's on the left with their class icon and name, the time inside each bubble, **Today** /
+**Yesterday** between days, and a red **New messages** line over what came since you last looked.
+Type in the box at the bottom and press **Enter** or **Send**. Scrolled up while lines arrive? The
+**"N new"** button takes you back down.
+
+**Mentions.** Write `@` and the start of a name in the Chat tab's box: guildmates' names are offered
+(click one, or **Tab** for the first). When a line names **you** (or your main or an alt), with `@` or
+without:
+- a small card slides out **beside the minimap** (who, which channel, what they said) with a soft
+  sound; several roll up one after another, three at most on screen, "+N more" for the rest.
+  Hover to pause them, click one to open it in the Chat tab, **Dismiss all** to clear the bunch;
+- in a dungeon or while Busy they **wait**, and play when you're out;
+- the minimap button shows a **red count** until you've read them, and the line has a **gold edge**
+  in the chat;
+- the **@** button on the Chat tab's top row lists all your mentions from every channel (your last
+  50); click one to see it in its channel.
+
+Your own add-on spots your names; nothing extra is sent. Turn the cards off in the Chat tab's cog
+(**Mentions beside the minimap**) or with `/syl mentions off`; the sound alone in the Screams cog.
 
 ### Screams (map calls)
 Officers and the Dark Lady send **Screams**. You'll see a message, hear a sound and see a map marker:
 - **Revenant Call:** any member targets a **rare** (or tougher) enemy and calls (`/syl rise`, or the Screams tab). Everyone sees a **skull** on the map; members in that zone or the next one over get an alert window. The skull goes when the target dies, or after 5 minutes.
 - **Gathering:** meet here (dungeon run, raid, guild event). Lasts 30 minutes.
 - **Banshee Scream:** an announcement from the Dark Lady or the Dark Rangers.
-- **Assemble the Loyal:** tabards on, gather here (Forsaken Regalia).
+- **Assemble the Loyal:** tabards on, gather here (Regalia tab).
 
 All current Screams are on the **Screams** tab (`/syl screams`).
 
@@ -133,10 +155,10 @@ All current Screams are on the **Screams** tab (`/syl screams`).
 
 ### When the Dark Lady asks something
 - **Voice of the Forsaken** (polls): a window pops up, so tick your answer. Prefer chat only? `/syl voice off`.
-- **Conclave:** when she holds a conclave, a line appears if you're in her zone. Click it to ask to speak with her.
-  When she calls you, she may add a short note: it stays in your log (`/syl log`).
+- **Conclave:** when the Dark Lady holds a conclave, a line appears if you're in their zone. Click it to ask to speak with them.
+  When they call you, they may add a short note: it stays in your log (`/syl log`).
 - **Summon the Darkcallers:** a roll call for Darkcallers and Dark Rangers; answer **Present, my Lady** or **Busy**.
-- **Covenants:** her formal letters. Click **As you command** to acknowledge.
+- **Covenants:** the Dark Lady's formal letters. Click **As you command** to acknowledge.
 
 ### Groups, crafting and more
 | Want to… | Do |
@@ -167,7 +189,7 @@ All current Screams are on the **Screams** tab (`/syl screams`).
 | You see | It means |
 |---|---|
 | *"Sylvanistas is on version X (you are on Y). Please update on CurseForge."* | two or more guildmates run a newer version: update, then restart the game |
-| *"Sylvanistas is locked: ask your guild master…"* | your guild doesn't have the Dark Lady's key yet (only if she switched that on) |
+| *"Sylvanistas is locked: ask your guild master…"* | your guild doesn't have the Dark Lady's key yet (only if they switched that on) |
 | *"Rebuilding the census…"* | normal for a few minutes after login |
 | A line ending in an **i** | hover it for the rest |
 
@@ -201,7 +223,7 @@ Until it's sealed, anyone who joins the hidden channel by name can read the cens
 ### Officers' chat and tools
 | Want to… | Do |
 |---|---|
-| Invite every solo guildmate in the zone who takes party invites | **Board** → **Gather the zone**, or `/syl party zone`. Past five, you're asked to turn the group into a raid. |
+| Invite every solo guildmate in the zone who takes party invites | **Screams** → **Gather the zone**, or `/syl party zone`. Past five, you're asked to turn the group into a raid. |
 | Talk to officers and Darkcallers | `/syd <text>` (Dark Ranger channel) |
 | See who's been away | `/syl inactive 7` (or 14, 30). Removing someone takes a confirm, one per click. |
 | Call a quiet muster to your zone for your own guild (20 minutes, no alert or map pin) | **Shadows** → **Officer musters** → **Call a muster**, or `/syl musters`. **End my muster** stops it early. |
@@ -215,7 +237,7 @@ Until it's sealed, anyone who joins the hidden channel by name can read the cens
 
 ## Part 4: Deathstalkers
 
-The Dark Lady names you on her **Sanctum** tab. You then see the **Sanctum** tab and can, for her:
+The Dark Lady names you on their **Sanctum** tab. You then see the **Sanctum** tab and can, for them:
 
 | Tool | Where |
 |---|---|
@@ -223,18 +245,17 @@ The Dark Lady names you on her **Sanctum** tab. You then see the **Sanctum** tab
 | **Voice of the Forsaken** (polls) | **Voice of the Forsaken** tab |
 | **Agenda** (events on the guild's week) | **Agenda** button on the **Sanctum**, e.g. `Sat 20:00 Raid night` |
 | **Officer musters** for every Sylvanistas guild | **Shadows** → **Officer musters**, or `/syl musters` |
-| **Banshee Inspection** (tabard check, strict mode only) | **Forsaken Regalia** tab |
 | **Portal** (pins a guild on top for recruits, 2 hours) | **Shadows** tab, recruiting |
 | **Pin a line** for every member, 2 hours | `/syl pin <text>`; `/syl pin off` |
 | **Hide a player** from all addon screens | `/syl netoff <name>: <reason>`; `/syl neton <name>` |
-| **Gather the zone** (party, then raid) | **Board** → **Gather the zone**, or `/syl party zone` |
+| **Gather the zone** (party, then raid) | **Screams** → **Gather the zone**, or `/syl party zone` |
 
 ---
 
 ## Part 5: The Dark Lady (guild master)
 
-Everything above, plus tools only she has. Her character is **Testiana Paladina**; the addon
-calls her **Dark Lady** and puts her **crown** on the map.
+Everything above, plus tools only they have. Their character is **Testiana Paladina**; the addon
+calls them **Dark Lady** and puts their **crown** on the map.
 
 ### First steps
 1. **Seal the channel** with the Dark Rangers (Part 3).
@@ -243,7 +264,7 @@ calls her **Dark Lady** and puts her **crown** on the map.
    On your layer and not in a group? The addon may offer to **invite people who want to join your layer**:
    say yes to let it handle that.
 
-### Her tools
+### The Dark Lady's tools
 | Tool | What it does |
 |---|---|
 | **Hold Conclave** (**Sanctum**) | members in your zone queue to speak with you; you call them one by one |
@@ -251,20 +272,17 @@ calls her **Dark Lady** and puts her **crown** on the map.
 | **Voice of the Forsaken** | quick polls, 2 to 6 answers |
 | **Agenda / the week** | dated events with signups (raid night, etc.) |
 | **Banshee Scream** | a free-text announcement shown to every member |
-| **Gather the zone** (**Board**, or `/syl party zone`) | invites every guildmate solo in your zone who takes party invites; past five, you're asked to turn the group into a raid |
+| **Gather the zone** (**Screams**, or `/syl party zone`) | invites every guildmate solo in your zone who takes party invites; past five, you're asked to turn the group into a raid |
 | **Call with a note** (**Sanctum**, while holding Conclave) | calls someone with a short line that stays in their log |
-| **Officer musters** (`/syl musters`) | a quiet 20-minute call to your zone for every Sylvanistas guild (her Deathstalkers too) |
-| **Thank the Loyal** (Forsaken Regalia) | names your Loyalists in guild chat, with thanks for wearing the colors |
-| **Banshee Inspection** (strict mode only) | members who opted in check tabards around them for 2 minutes |
-| **Absolution** (strict mode only) | clears a name from your untabarded list for a week |
+| **Officer musters** (`/syl musters`) | a quiet 20-minute call to your zone for every Sylvanistas guild (the Deathstalkers too) |
+| **Thank the Loyal** (Regalia) | names your Loyalists in guild chat, with thanks for wearing the colors |
 | **Portal** | sends new recruits to a guild for 2 hours |
 | **Treasury** (**Treasury** tab) | give a member of Sylvanistas the guild rank **Treasurer**: their add-on keeps the treasury's book (gold and items given to them by trade or mail are donations) and the bank snapshot. You choose what members see: the balance, the donor ranking, the book |
 | **Add-on versions** (**Sanctum**) | who in your guild is up to date and who is behind; click one to ask them to update, or ask everyone behind |
 | **Key rotation** | **Sanctum** (or `/syl key rotate`): a new channel key nobody sees |
 
-The addon ships in **casual** mode: Forsaken Regalia, and no untabarded list at all. If you ever want
-the tabard inspection back (**strict** mode), ask the addon keeper for a release with it; even then the
-**untabarded list** stays yours alone, and there is no Wall of Shame.
+The **Regalia** tab only celebrates the tabard: who wears it, never who doesn't. There is no tabard
+inspection and no list of players caught without it.
 
 ### Safeguards against a toxic branch guild
 Both are off until you need them; the addon keeper switches them on in a release:
@@ -332,6 +350,6 @@ that player alone. Only the keeper, the Dark Lady and the moderators can ask.
 | `/syl bug` | all | copy a bug report |
 | `/syl letters` (or `/syl whatsnew`) | all | what's new in each version |
 | `/syl brief` | all | your week, in five lines (the Board has the week's numbers) |
-| `/syl musters` | all | officer musters (officers, the Dark Lady and her Deathstalkers call them) |
+| `/syl musters` | all | officer musters (officers, the Dark Lady and the Deathstalkers call them) |
 | `/syl hotkey on/off` | all | the Shift-J shortcut |
 | `/syl help` | all | every command, in chat |

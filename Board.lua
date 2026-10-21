@@ -21,6 +21,9 @@ local L = ns.L
 --       note   the poster's own words, NOTE_MAX bytes at most, the last field: sent with the
 --              logged API (the server keeps them, so abuse can be reported); one sent without
 --              it, where this client has both, shows without its words (as a decree's)
+--       x, y   1.3.0, a camp only, after the note: its spot on its zone's map, 0-1000 each (where
+--              the player stood, or lit the campfire); older clients read up to the note and
+--              keep the zone badge, newer ones put a campfire there on the world map and minimap
 --   G0~<id>   lowered by its poster; also sent for the old flag when a new one takes its place
 --             (1.1 review), so every Board lets the new one in at once
 --   GQ~       a client opened the Board: flag holders answer it alone, by whisper, with their
@@ -33,7 +36,7 @@ local L = ns.L
 local Board = {}
 ns.Board = Board
 
-Board.FLAGS = { "D", "R", "P", "L" } -- in the order the page offers them
+Board.FLAGS = { "D", "R", "P", "L" } -- in the order the flag window offers them (Board.Offered)
 Board.LABEL = { D = "BOARD_FLAG_D", R = "BOARD_FLAG_R", P = "BOARD_FLAG_P", L = "BOARD_FLAG_L" }
 Board.MAX = 150              -- flags kept on the Board; past it, the one ending soonest goes
 Board.RAISE_GAP = 30         -- seconds between two raises
@@ -60,6 +63,9 @@ Board.CAMP_GAP = 10 * 60     -- one new camp every 10 minutes per character
 Board.CAMP_MAX = 60          -- camps kept on the Board
 Board.CAMP_BADGE = 18        -- a camp badge on the world map
 Board.CAMP_ICON = "Interface\\Icons\\Spell_Fire_Fire"
+Board.CAMP_PIN = 16          -- a camp's campfire at its spot on the world map (1.3.0)
+Board.CAMP_PIN_MINI = 14     -- and on the minimap
+Board.CAMPFIRE_SPELL = 818   -- Basic Campfire: lighting one offers to drop a camp there (1.3.0)
 
 -- Swappable in tests.
 Board.after = function(seconds, where, fn) ns.After(seconds, where, fn) end
@@ -80,6 +86,22 @@ local function Grey(s) return "|cff9d9d9d" .. s .. "|r" end
 local function Green(s) return "|cff40ff40" .. s .. "|r" end
 
 local function Label(flag) return L[Board.LABEL[flag] or ("BOARD_FLAG_" .. tostring(flag))] end
+
+-- 1.3.0 (the user's call): the kinds the flag window offers. PvP only on a PvP realm (ns.PVP_REALM,
+-- Core.lua; unset, a realm named "...PvP..."): a PvP flag from elsewhere (/syl lfg pvp, an older
+-- client) still shows on the Board.
+function Board.PvPRealm()
+	if ns.PVP_REALM ~= nil then return ns.PVP_REALM == true end
+	return tostring(ns.CurrentRealm and ns.CurrentRealm() or ""):lower():find("pvp", 1, true) ~= nil
+end
+function Board.Offered()
+	local out = {}
+	for _, flag in ipairs(Board.FLAGS) do
+		if flag ~= "P" or Board.PvPRealm() then out[#out + 1] = flag end
+	end
+	return out
+end
+function Board.MyFlag() return own.flag end
 Board.Label = Label
 
 -- The page and the tree's link redraw at most once a second, whatever arrives.
@@ -139,6 +161,7 @@ function Board.Encode(e)
 	local zone = tonumber(e.zone) and tostring(math.floor(e.zone)) or ""
 	return ("G1~%s~%s~%s~%d~%s~%d~%d~%s~%s"):format(e.id, CleanGuild(e.guild), e.flag, math.floor(tonumber(e.level) or 1),
 		tostring(e.class or ""), e.every, math.max(0, math.floor(tonumber(e.age) or 0)), zone, Board.CleanNote(e.note))
+		.. ((e.flag == "C" and tonumber(e.x) and tonumber(e.y)) and ("~%d~%d"):format(e.x, e.y) or "")
 end
 
 -- The G1 as a table, or nil for anything malformed. Fields past the note are left for later versions.
@@ -153,8 +176,15 @@ function Board.Decode(s)
 	if class ~= "" and not class:find("^%u%u$") then return nil end
 	if zone ~= "" and not zone:find("^%d%d?%d?%d?%d?%d?$") then return nil end
 	if flag == "C" and zone == "" then return nil end -- (a camp is its zone)
+	-- 1.3.0: a camp's spot, after the note (both or neither, each 0-1000).
+	local x, y
+	if flag == "C" then
+		x, y = rest:match("^[^~]*~(%d%d?%d?%d?)~(%d%d?%d?%d?)")
+		x, y = tonumber(x), tonumber(y)
+		if not x or not y or x > 1000 or y > 1000 then x, y = nil, nil end
+	end
 	return { id = id, guild = guild, flag = flag, level = level, class = class, every = every, age = age,
-		zone = tonumber(zone), note = Board.CleanNote(rest:match("^[^~]*")) }
+		zone = tonumber(zone), x = x, y = y, note = Board.CleanNote(rest:match("^[^~]*")) }
 end
 
 ---------------------------------------------------------------------------
@@ -272,6 +302,7 @@ function Board.HandlePost(dist, sender, text)
 	local raisedAt = now - e.age * 60
 	if old and old.id == e.id then
 		old.guild, old.flag, old.level, old.class, old.every, old.zone, old.note = e.guild, e.flag, e.level, e.class, e.every, e.zone, e.note
+		old.x, old.y = e.x, e.y
 		old.raisedAt, old.heardAt = math.min(old.raisedAt, raisedAt), now
 		return Changed()
 	end
@@ -341,7 +372,7 @@ end
 local function Message(p, now)
 	if p.flag ~= "C" then p.zone = SharedZone() end
 	return Board.Encode({ id = p.id, guild = GetGuildInfo("player"), flag = p.flag, level = MyLevel(), class = MyClass(),
-		every = p.every, age = math.floor((now - p.raisedAt) / 60), zone = p.zone, note = p.note })
+		every = p.every, age = math.floor((now - p.raisedAt) / 60), zone = p.zone, x = p.x, y = p.y, note = p.note })
 end
 
 -- Our posts are kept for a /reload (per character, SavedVariables): still up on everyone's
@@ -352,7 +383,7 @@ local function Save()
 	local all = type(ns.rdb.board) == "table" and ns.rdb.board or {}
 	local copy = {}
 	for slot, p in pairs(own) do
-		copy[slot] = { id = p.id, flag = p.flag, note = p.note, zone = p.zone, raisedAt = p.raisedAt, sentAt = p.sentAt, every = p.every }
+		copy[slot] = { id = p.id, flag = p.flag, note = p.note, zone = p.zone, x = p.x, y = p.y, raisedAt = p.raisedAt, sentAt = p.sentAt, every = p.every }
 	end
 	all[ns.me or "?"] = next(copy) and copy or nil
 	ns.rdb.board = next(all) and all or nil
@@ -367,8 +398,10 @@ function Board.Restore(now)
 		local fine = type(p) == "table" and type(p.id) == "string" and p.id:find("^[0-9a-z][0-9a-z]?$") and Board.KINDS[p.flag]
 			and SlotOf(p.flag) == slot and tonumber(p.raisedAt) and tonumber(p.sentAt) and tonumber(p.every)
 		if fine and not own[slot] and now - p.raisedAt < Life(p.flag) and now < p.sentAt + (2 * p.every + 1) * 60 then
-			own[slot] = { id = p.id, flag = p.flag, note = Board.CleanNote(p.note), zone = tonumber(p.zone), raisedAt = p.raisedAt,
-				sentAt = p.sentAt, every = p.every }
+			local x, y = tonumber(p.x), tonumber(p.y)
+			if not (x and y and x >= 0 and x <= 1000 and y >= 0 and y <= 1000) then x, y = nil, nil end
+			own[slot] = { id = p.id, flag = p.flag, note = Board.CleanNote(p.note), zone = tonumber(p.zone), x = x, y = y,
+				raisedAt = p.raisedAt, sentAt = p.sentAt, every = p.every }
 			usedIds[p.id] = now
 		end
 	end
@@ -466,14 +499,29 @@ function Board.Lower(quiet)
 	return true
 end
 
--- A camp (request #25), dropped where we stand: its zone and nothing finer, only while we share
--- our location (/syl location on: the zone is the point of it), one every CAMP_GAP, ending by
--- itself after CAMP_LIFE. It takes the place of our last one.
+-- A camp (request #25), dropped where we stand: its zone and (1.3.0, the user's call) its spot,
+-- where we stand as it is dropped (a campfire's, lit just before), fixed from then on: never
+-- where we go after. Only while we share our location (/syl location on), one every CAMP_GAP,
+-- ending by itself after CAMP_LIFE. It takes the place of our last one.
 function Board.CampZone()
 	if not (ns.Layers and ns.Layers.Sharing and ns.Layers.Sharing()) then return nil, "private" end
 	local zone = SharedZone()
 	if not zone then return nil, "zone" end
 	return zone
+end
+
+-- Where we stand on `zone`'s map, 0-1000 each, or nil (an instance, a map without positions).
+function Board.SpotIn(zone)
+	local pos = zone and C_Map and C_Map.GetPlayerMapPosition and C_Map.GetPlayerMapPosition(zone, "player")
+	if not pos then return nil end
+	local x, y = pos:GetXY()
+	if not x or not y or (x == 0 and y == 0) or x < 0 or x > 1 or y < 0 or y > 1 then return nil end
+	return math.floor(x * 1000 + 0.5), math.floor(y * 1000 + 0.5)
+end
+
+-- Seconds before another camp may go up (0: now).
+function Board.CampWait(now)
+	return math.max(0, Board.CAMP_GAP - ((now or ns.Now()) - lastCamp))
 end
 
 function Board.DropCamp(note)
@@ -494,7 +542,8 @@ function Board.DropCamp(note)
 		return false, "full"
 	end
 	lastCamp = now
-	own.camp = { id = NewId(now), flag = "C", note = Board.CleanNote(note), zone = zone, raisedAt = now }
+	local x, y = Board.SpotIn(zone)
+	own.camp = { id = NewId(now), flag = "C", note = Board.CleanNote(note), zone = zone, x = x, y = y, raisedAt = now }
 	Send(own.camp, now)
 	ns.Print(L.BOARD_CAMP_DROPPED:format(ns.Zones.NameForKey("m" .. zone)))
 	Changed()
@@ -633,11 +682,11 @@ function Board.ZoneText(zone)
 	return Grey(L.BOARD_ZONE_HIDDEN)
 end
 
--- The whisper is the player's own (the game's chat box; Sylvanistas's window with the gamepad UI).
+-- The whisper is the player's own, in Sylvanistas's whisper window (1.3.0, the user's call: never
+-- the game's chat box, whose opening from addon code taints LAST_ACTIVE_CHAT_EDIT_BOX and gets the
+-- player's own /cast or /target blocked afterwards).
 function Board.Whisper(name)
-	local tell = ns.TellName(name) or name
-	if ns.GamepadUI() then return ns.UI.WhisperWindow(tell) end
-	if ChatFrame_SendTell then ChatFrame_SendTell(tell) end
+	return ns.UI.WhisperWindow(ns.TellName(name) or name)
 end
 
 local function Colored(name, class)
@@ -678,47 +727,136 @@ function Board.PrivacyText(zoneTaken)
 	return (zone and L.BOARD_ASK_ZONE:format(zone) or L.BOARD_ASK_NO_ZONE) .. "\n" .. ns.Comm.Audience()
 end
 
--- The flag's dialog: its note (optional), and what goes out with it. Raised on its button or Enter.
+---------------------------------------------------------------------------
+-- The flag window (1.3.0, the user's call: one "Raise a flag" button in place of a row per kind):
+-- the kind (a button each, Board.Offered), a short note (optional), what goes out with it. Raised
+-- with Raise or Enter in the note, once a kind is picked. Sylvanistas's own window (no game popup:
+-- the same with the gamepad UI and a guild window open).
+---------------------------------------------------------------------------
+
+local picker
+
+local function Text(parent, font)
+	local fs = parent:CreateFontString(nil, "ARTWORK", font or "GameFontNormalSmall")
+	fs:SetJustifyH("LEFT")
+	return fs
+end
+
+local function MakePicker()
+	local ok, f = pcall(CreateFrame, "Frame", "SylvanistasFlagFrame", UIParent, "BasicFrameTemplateWithInset")
+	if not ok or not f then f = CreateFrame("Frame", "SylvanistasFlagFrame", UIParent) end
+	f:SetSize(360, 240)
+	f:SetPoint("CENTER", 0, 60)
+	f:SetFrameStrata("DIALOG")
+	f:SetToplevel(true)
+	f:EnableMouse(true)
+	f:SetMovable(true)
+	f:RegisterForDrag("LeftButton")
+	f:SetScript("OnDragStart", f.StartMoving)
+	f:SetScript("OnDragStop", f.StopMovingOrSizing)
+	if f.TitleText then
+		f.TitleText:SetText(L.BOARD_PICK_TITLE)
+	else
+		local t = Text(f, "GameFontNormal")
+		t:SetText(L.BOARD_PICK_TITLE)
+		t:SetPoint("TOP", 0, -6)
+	end
+	local k = Text(f)
+	k:SetText(L.BOARD_PICK_KIND)
+	k:SetPoint("TOPLEFT", 18, -34)
+	f.kinds = {}
+	for i, flag in ipairs(Board.FLAGS) do
+		local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+		b:SetHeight(24)
+		b:SetText(Label(flag))
+		b.flag = flag
+		b:SetScript("OnClick", function() f.flag = flag; ns.SafeCall("board flag window", Board.RefreshPicker) end)
+		f.kinds[i] = b
+	end
+	f.info = Text(f, "GameFontHighlightSmall")
+	f.info:SetPoint("TOPLEFT", 18, -82)
+	f.info:SetWidth(324)
+	f.info:SetWordWrap(true)
+	f.info:SetTextColor(0.75, 0.75, 0.75)
+	f.noteLabel = Text(f)
+	f.noteLabel:SetText(L.BOARD_PICK_NOTE)
+	f.noteLabel:SetPoint("TOPLEFT", f.info, "BOTTOMLEFT", 0, -12)
+	local okb, eb = pcall(CreateFrame, "EditBox", nil, f, "InputBoxTemplate")
+	if not okb or not eb then eb = CreateFrame("EditBox", nil, f) end
+	eb:SetSize(318, 20)
+	eb:SetAutoFocus(false)
+	eb:SetMaxLetters(Board.NOTE_MAX)
+	if eb.SetMaxBytes then eb:SetMaxBytes(Board.NOTE_MAX + 1) end -- (NOTE_MAX bytes and the end)
+	eb:SetFontObject("ChatFontNormal")
+	eb:SetPoint("TOPLEFT", f.noteLabel, "BOTTOMLEFT", 6, -4)
+	eb.sylvanistasBox = true
+	eb:SetScript("OnEnterPressed", function() ns.SafeCall("board raise", Board.RaiseFromPicker) end)
+	eb:SetScript("OnEscapePressed", function() f:Hide() end)
+	f.note = eb
+	f.raise = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+	f.raise:SetSize(110, 24)
+	f.raise:SetPoint("BOTTOMRIGHT", -18, 14)
+	f.raise:SetText(L.BOARD_RAISE_BTN)
+	f.raise:SetScript("OnClick", function() ns.SafeCall("board raise", Board.RaiseFromPicker) end)
+	f.cancel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+	f.cancel:SetSize(90, 24)
+	f.cancel:SetPoint("RIGHT", f.raise, "LEFT", -8, 0)
+	f.cancel:SetText(CANCEL or "Cancel")
+	f.cancel:SetScript("OnClick", function() f:Hide() end)
+	f:SetScript("OnHide", function() f.note:ClearFocus() end)
+	ns.EscapeCloses("SylvanistasFlagFrame")
+	return f
+end
+
+-- The kinds offered (PvP on a PvP realm alone), the one picked lit, Raise only with one picked,
+-- and the window as tall as its words.
+function Board.RefreshPicker()
+	local f = picker
+	if not f then return end
+	local offered = {}
+	for _, flag in ipairs(Board.Offered()) do offered[flag] = true end
+	-- (A kind no longer offered, from /syl lfg pvp on a PvE realm, stays while it is the one picked.)
+	if f.flag then offered[f.flag] = true end
+	local shown = {}
+	for _, b in ipairs(f.kinds) do
+		b:SetShown(offered[b.flag] == true)
+		if offered[b.flag] then shown[#shown + 1] = b end
+		if b.flag == f.flag then b:LockHighlight() else b:UnlockHighlight() end
+	end
+	local gap = 8
+	local w = math.floor((324 - gap * (#shown - 1)) / math.max(1, #shown))
+	for i, b in ipairs(shown) do
+		b:SetWidth(w)
+		b:ClearAllPoints()
+		b:SetPoint("TOPLEFT", 18 + (i - 1) * (w + gap), -50)
+	end
+	f.info:SetText((f.flag and (L.BOARD_PICK_CHOSEN:format(Label(f.flag)) .. "\n\n") or "")
+		.. Board.PrivacyText(SharedZone()) .. "\n\n" .. L.BOARD_PICK_INFO)
+	f.raise:SetEnabled(f.flag ~= nil)
+	local infoH = f.info:GetStringHeight() or 60
+	f:SetHeight(math.ceil(82 + infoH + 12 + 14 + 4 + 20 + 50))
+end
+
+-- The flag window, its kind already picked when one is named (/syl lfg dungeon), the note as given.
 function Board.Prompt(flag, note)
-	if not Board.LABEL[flag] then return end
-	return ns.ShowDialog("SYLVANISTAS_BOARD_RAISE", Label(flag), Board.PrivacyText(SharedZone()), { flag = flag, note = Board.CleanNote(note) })
+	if flag ~= nil and not Board.LABEL[flag] then return end
+	picker = picker or MakePicker()
+	picker.flag = flag
+	picker.note:SetText(Board.CleanNote(note) or "")
+	picker:Show()
+	Board.RefreshPicker()
+	ns.Focus(picker.note)
+	return picker
 end
 
--- The dialog's answer, once (Enter and the button both come here).
-function Board.Confirm(data, note)
-	if type(data) ~= "table" or data.answered then return end
-	data.answered = true
-	return Board.Raise(data.flag, note)
+-- Raise or Enter: the flag goes up and the window closes; refused (a wait, the hourly limit, the
+-- Board full: Board.Raise said why), it stays for another try.
+function Board.RaiseFromPicker()
+	local f = picker
+	if not f or not f:IsShown() or not f.flag then return end
+	if Board.Raise(f.flag, f.note:GetText()) then f:Hide() end
 end
-
-StaticPopupDialogs["SYLVANISTAS_BOARD_RAISE"] = {
-	text = L.BOARD_RAISE_ASK,
-	button1 = L.BOARD_RAISE_BTN,
-	button2 = CANCEL or "Cancel",
-	hasEditBox = true,
-	editBoxWidth = 260,
-	maxLetters = Board.NOTE_MAX,
-	maxBytes = Board.NOTE_MAX + 1, -- (NOTE_MAX bytes and the end)
-	OnShow = function(self, data)
-		local eb = self.editBox or self.EditBox
-		data = data or self.data
-		if eb then eb:SetText(type(data) == "table" and data.note or "") eb:SetFocus() end
-	end,
-	OnAccept = function(self, data)
-		local eb = self.editBox or self.EditBox
-		ns.SafeCall("board raise", Board.Confirm, data or self.data, eb and eb:GetText())
-	end,
-	EditBoxOnEnterPressed = function(self)
-		local parent = self:GetParent()
-		ns.SafeCall("board raise", Board.Confirm, parent.data, self:GetText())
-		parent:Hide()
-	end,
-	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
-	timeout = 0,
-	whileDead = true,
-	hideOnEscape = true,
-	preferredIndex = 3,
-}
+function Board.Picker() return picker end -- (tests)
 
 -- Does a card hold the search `q` (Views.Query), as its row shows it?
 local function Hit(q, e)
@@ -730,20 +868,9 @@ Board.Hit = Hit
 
 -- The page's lines: the way back, our flag (or the flags to raise), the Board's flags, then the
 -- camps (Board.CampLines). `q`: the Realm tab's search, over the cards.
--- Sylvanistas: the Board's grey info lines in rows short enough for the page (rows are one line
--- each and don't wrap): split at spaces, about WRAP letters a row.
-Board.WRAP = 56
+-- The Board's grey info lines, wrapped to the page's width (Views.GreyRows; 1.3.0).
 local function GreyRows(lines, text, indent)
-	local row = ""
-	for word in tostring(text or ""):gmatch("%S+") do
-		if row ~= "" and #row + 1 + #word > Board.WRAP then
-			lines[#lines + 1] = { indent = indent, text = Grey(row) }
-			row = word
-		else
-			row = row == "" and word or (row .. " " .. word)
-		end
-	end
-	if row ~= "" then lines[#lines + 1] = { indent = indent, text = Grey(row) } end
+	ns.Views.GreyRows(lines, text, { indent = indent })
 end
 
 function Board.Lines(q)
@@ -752,8 +879,7 @@ function Board.Lines(q)
 	if not q and ns.WeeklyBrief and ns.WeeklyBrief.Link then lines[#lines + 1] = ns.WeeklyBrief.Link() end
 	-- The King's week first (Week.lua, 1.1): what the army has on, by day.
 	if ns.Week and ns.Week.Section then ns.Week.Section(lines, q) end
-	-- Sylvanistas: party invites (Party.lua).
-	if ns.Party and not ns.Party.missing and ns.Party.Section then ns.Party.Section(lines, q) end
+	-- (1.3.0: Parties moved to the Screams tab's buttons; their switches to its cog.)
 	if not q then
 		lines[#lines + 1] = { header = true, text = L.BOARD_YOURS,
 			tooltip = function(tt) tt:AddLine(L.BOARD_YOURS, 1, 0.82, 0); tt:AddLine(L.BOARD_YOURS_TIP, 1, 1, 1, true) end }
@@ -765,11 +891,8 @@ function Board.Lines(q)
 				onClick = function() Board.Lower() end,
 				tooltip = function(tt) tt:AddLine(L.BOARD_MINE:format(Label(mine.flag)), 1, 0.82, 0); tt:AddLine(L.BOARD_MINE_TIP, 1, 1, 1, true) end }
 		else
-			for _, flag in ipairs(Board.FLAGS) do
-				lines[#lines + 1] = { indent = 1, text = Gold("> " .. L.BOARD_RAISE:format(Label(flag))),
-					onClick = function() Board.Prompt(flag) end,
-					tooltip = function(tt) tt:AddLine(L.BOARD_RAISE:format(Label(flag)), 1, 0.82, 0); tt:AddLine(L.BOARD_RAISE_TIP, 1, 1, 1, true) end }
-			end
+			-- (1.3.0: the "Raise a flag" button below opens the flag window, Board.Prompt.)
+			GreyRows(lines, L.BOARD_NONE_YET, 1)
 		end
 		GreyRows(lines, SharedZone() and L.BOARD_ZONE_SHARED or L.BOARD_ZONE_PRIVATE, 1)
 		lines[#lines].gapAfter = true
@@ -813,9 +936,8 @@ function Board.CampLines(lines, q)
 				onClick = function() Board.LowerCamp() end,
 				tooltip = function(tt) tt:AddLine(L.BOARD_CAMP_MINE:format(Board.ZoneText(camp.zone)), 1, 0.82, 0); tt:AddLine(L.BOARD_CAMP_MINE_TIP, 1, 1, 1, true) end }
 		elseif zone then
-			lines[#lines + 1] = { indent = 1, text = Gold("> " .. L.BOARD_CAMP_DROP:format(Board.ZoneText(zone))),
-				onClick = function() Board.PromptCamp() end,
-				tooltip = function(tt) tt:AddLine(L.BOARD_CAMP_DROP:format(Board.ZoneText(zone)), 1, 0.82, 0); tt:AddLine(L.BOARD_CAMP_DROP_TIP, 1, 1, 1, true) end }
+			-- (1.3.0: the "Drop a camp" button below, or a campfire lit, opens the camp's dialog.)
+			GreyRows(lines, L.BOARD_CAMP_NONE_YET, 1)
 		else
 			lines[#lines + 1] = { indent = 1, text = Grey(no == "private" and L.BOARD_CAMP_NEEDS_LOCATION or L.BOARD_CAMP_NO_ZONE) }
 		end
@@ -878,7 +1000,11 @@ StaticPopupDialogs["SYLVANISTAS_BOARD_CAMP"] = {
 -- The camps on the world map: one badge per zone beside its circle (Map.Badge), with how many
 -- camps are up there; its tooltip lists them. Mouse and keyboard only (ns.WorldMapIcons: none
 -- on the gamepad UI's world map), and only while ns.db.showCamps is on (/syl camps, the map's
--- Sylvanistas menu). Nothing on the minimap.
+-- Sylvanistas menu).
+-- 1.3.0 (the user's call): a camp that carries its spot (Board.Decode's x, y) is a campfire there
+-- instead, on the world map and on the minimap (the minimap with the gamepad UI too: it has no
+-- world map icons, Fellows.lua's tabards do the same); ours too. A camp from an older client (its
+-- zone alone) keeps the zone's badge.
 ---------------------------------------------------------------------------
 
 local campBadges, spareBadges = {}, {} -- [mapID] = the badge's anchor; anchors to reuse
@@ -908,14 +1034,88 @@ local function NewBadge()
 	return a
 end
 
+local campPins, sparePins = {}, {} -- [post key] = { world, mini, e }; pins to reuse
+
+local function PinTip(self)
+	local e = self.camp
+	if not e then return end
+	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+	GameTooltip:AddLine(L.BOARD_CAMP_PIN:format(Board.ZoneText(e.zone)), 1, 0.55, 0.15)
+	local who = e.mine and (ns.DisplayName(ns.me) or "?") or (ns.DisplayName(e.sender) or "?")
+	local note = e.mine and (e.note or "") or Board.NoteShown(e)
+	GameTooltip:AddLine(("%s <%s>%s"):format(who, ns.Codec.Plain(e.guild or GetGuildInfo("player") or "?"), note ~= "" and ('  "' .. note .. '"') or ""), 1, 1, 1, true)
+	local left = math.max(1, math.ceil((e.raisedAt + Board.CAMP_LIFE - ns.Now()) / 60))
+	GameTooltip:AddLine(L.BOARD_CAMP_LEFT:format(left), 0.6, 0.6, 0.6)
+	GameTooltip:AddLine(e.mine and L.BOARD_CAMP_PIN_MINE_TIP or L.BOARD_CAMP_MAP_TIP, 0.6, 0.6, 0.6, true)
+	GameTooltip:Show()
+end
+
+local function CampIcon(size)
+	local f = CreateFrame("Frame", nil, UIParent)
+	f.sylvanistas = true -- (ours: photo mode leaves it shown, UI.TogglePhoto)
+	f:SetSize(size, size)
+	f.tex = f:CreateTexture(nil, "ARTWORK")
+	f.tex:SetAllPoints()
+	f.tex:SetTexture(Board.CAMP_ICON)
+	if ns.Map and ns.Map.RoundIcon then ns.Map.RoundIcon(f.tex, Board.CAMP_ICON) end
+	f:EnableMouse(true)
+	f:SetScript("OnEnter", PinTip)
+	f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	return f
+end
+
+-- The camps with a spot: a campfire on the world map and the minimap each.
+local function RefreshPins(Pins, world)
+	local want = {}
+	if ns.db.showCamps ~= false and ns.IsMember() then
+		for _, e in ipairs(Board.List("camp")) do
+			if e.zone and e.x and e.y then want[Key(e.sender, "camp")] = e end
+		end
+		local c = own.camp
+		if c and c.zone and c.x and c.y then
+			want["|mine"] = { mine = true, zone = c.zone, x = c.x, y = c.y, note = c.note, raisedAt = c.raisedAt }
+		end
+	end
+	for key, p in pairs(campPins) do
+		local e = want[key]
+		if not e or e.zone ~= p.zone or e.x ~= p.x or e.y ~= p.y then
+			if world or p.onWorld then Pins:RemoveWorldMapIcon(Board, p.world) end
+			Pins:RemoveMinimapIcon(Board, p.mini)
+			p.world:Hide()
+			p.mini:Hide()
+			campPins[key] = nil
+			sparePins[#sparePins + 1] = p
+		end
+	end
+	for key, e in pairs(want) do
+		local p = campPins[key]
+		if not p then
+			p = table.remove(sparePins) or { world = CampIcon(Board.CAMP_PIN), mini = CampIcon(Board.CAMP_PIN_MINI) }
+			p.zone, p.x, p.y, p.onWorld = e.zone, e.x, e.y, world
+			if world then Pins:AddWorldMapIconMap(Board, p.world, e.zone, e.x / 1000, e.y / 1000, HBD_PINS_WORLDMAP_SHOW_CONTINENT or 2) end
+			Pins:AddMinimapIconMap(Board, p.mini, e.zone, e.x / 1000, e.y / 1000, true, false)
+			campPins[key] = p
+		elseif world and not p.onWorld then
+			-- (Back from the gamepad UI, which took every world map icon off: ns.WorldMapIcons.)
+			Pins:AddWorldMapIconMap(Board, p.world, e.zone, e.x / 1000, e.y / 1000, HBD_PINS_WORLDMAP_SHOW_CONTINENT or 2)
+			p.onWorld = true
+		elseif not world then
+			p.onWorld = false
+		end
+		p.world.camp, p.mini.camp = e, e
+	end
+end
+function Board.CampPins() return campPins end -- (tests)
+
 function Board.RefreshCamps()
 	local Pins = ns.Pins()
 	if not Pins or not (ns.Map and ns.Map.Badge) then return end
 	local world = ns.WorldMapIcons(Pins, Board)
+	ns.SafeCall("board camp pins", RefreshPins, Pins, world)
 	local want, newest = {}, {}
 	if world and ns.db.showCamps ~= false and ns.IsMember() then
 		for _, e in ipairs(Board.List("camp")) do
-			if e.zone then
+			if e.zone and not (e.x and e.y) then
 				want[e.zone] = (want[e.zone] or 0) + 1
 				newest[e.zone] = math.max(newest[e.zone] or 0, e.raisedAt)
 			end
@@ -984,6 +1184,12 @@ function Board.Slash(cmd, rest)
 	-- /syl camp [note | off]: a camp's dialog, or ours taken down. /syl camps on|off: the map's badges.
 	if cmd == "camps" then
 		if word == "on" or word == "off" then return Board.SetCampsShown(word == "on") end
+		-- /syl camps ask on|off (1.3.0): the question when we light a campfire.
+		if word == "ask" then
+			local w = ns.Fold(note or "")
+			if w == "on" or w == "off" then return Board.SetCampfireAsk(w == "on") end
+			return ns.Print(ns.db.campfireAsk ~= false and L.CAMPFIRE_ASK_ON or L.CAMPFIRE_ASK_OFF)
+		end
 		return ns.Print(ns.db.showCamps ~= false and L.BOARD_CAMPS_MAP_ON or L.BOARD_CAMPS_MAP_OFF)
 	end
 	if cmd == "camp" then
@@ -1003,13 +1209,25 @@ function Board.Slash(cmd, rest)
 	Board.Prompt(flag, note)
 end
 
+-- 1.3.0: the player's last casts, as the game reports them (/syl bug), to learn the campfire kits' ids.
+local casts = { n = 0 }
+function Board.SawCast(name, id)
+	casts.n = casts.n + 1
+	table.insert(casts, 1, ("%s (%s)"):format(tostring(name or "?"), tostring(id)))
+	casts[6] = nil
+end
+local function CastsText()
+	if casts.n == 0 then return "none seen" end
+	return ("%d seen, last: %s"):format(casts.n, table.concat(casts, ", "))
+end
+
 -- /syl status: what this client holds, what it sends.
 function Board.StatusLine()
 	local mine, camp = own.flag, own.camp
 	local mineText = mine and ("%s %s, every %d min"):format(mine.flag, ns.Ago(mine.raisedAt), mine.every or 0) or "none"
-	return ("flags %d  |  camps %d  |  mine: %s  |  my camp: %s  |  asked: %s  |  answers sent %d  |  camps on map: %s"):format(
+	return ("flags %d  |  camps %d  |  mine: %s  |  my camp: %s  |  asked: %s  |  answers sent %d  |  camps on map: %s  |  your casts: %s"):format(
 		(Board.Count("flag")), (Board.Count("camp")), mineText, camp and ("m" .. tostring(camp.zone) .. " " .. ns.Ago(camp.raisedAt)) or "none",
-		askAt and ns.Ago(askAt) or (askSent and "gave up" or "not yet"), answersGiven, tostring(ns.db.showCamps ~= false))
+		askAt and ns.Ago(askAt) or (askSent and "gave up" or "not yet"), answersGiven, tostring(ns.db.showCamps ~= false), CastsText())
 end
 
 -- Tests start from nothing.
@@ -1032,7 +1250,140 @@ ns.On("BOARD_CHANGED", function()
 	ns.SafeCall("board camps", Board.RefreshCamps)
 end)
 
+---------------------------------------------------------------------------
+-- A campfire lit (1.3.0, the user's call): Basic Campfire cast by us offers to put a camp on the
+-- Board right there (the camp's dialog, the fire's zone and spot). Asked only when it could go
+-- up: a member, sharing the location (else one line a session saying so), outside an instance,
+-- no camp of ours up, CAMP_GAP passed. "Never ask" turns it off; /syl camps ask on brings it back.
+---------------------------------------------------------------------------
+
+local toldPrivate = false
+function Board.SetCampfireAsk(on)
+	ns.db.campfireAsk = on and true or false
+	ns.Print(on and L.CAMPFIRE_ASK_ON or L.CAMPFIRE_ASK_OFF)
+end
+
+-- 1.3.0: a kit's cast may only start the fire's placement (a ground cursor, then a second cast): the
+-- pop-up waits until the player is neither placing nor casting for CAMPFIRE_SETTLE seconds, so it
+-- never takes the click or the keyboard from the placement. Another fire cast meanwhile starts the
+-- wait again; after CAMPFIRE_GIVEUP seconds it is not asked.
+Board.CAMPFIRE_SETTLE = 1.5
+Board.CAMPFIRE_GIVEUP = 60
+local fireWait
+local function Busy()
+	if type(SpellIsTargeting) == "function" and SpellIsTargeting() then return true end
+	if type(UnitCastingInfo) == "function" and UnitCastingInfo("player") then return true end
+	if type(UnitChannelInfo) == "function" and UnitChannelInfo("player") then return true end
+	return false
+end
+function Board.CampfireSoon()
+	local now = GetTime()
+	if fireWait then
+		fireWait.since, fireWait.quietAt = now, nil
+		return
+	end
+	fireWait = { since = now }
+	local ticker
+	ticker = C_Timer.NewTicker(0.25, function()
+		ns.SafeCall("board campfire", function()
+			local w, t = fireWait, GetTime()
+			if not w then return ticker:Cancel() end
+			if t - w.since > Board.CAMPFIRE_GIVEUP then
+				fireWait = nil
+				return ticker:Cancel()
+			end
+			if Busy() then
+				w.quietAt = nil
+				return
+			end
+			w.quietAt = w.quietAt or t
+			if t - w.quietAt < Board.CAMPFIRE_SETTLE then return end
+			fireWait = nil
+			ticker:Cancel()
+			Board.CampfireLit()
+		end)
+	end)
+end
+
+function Board.CampfireLit()
+	if ns.db.campfireAsk == false or not ns.IsMember() or own.camp then return end
+	if Board.CampWait() > 0 then return end
+	local zone, no = Board.CampZone()
+	if not zone then
+		if no == "private" and not toldPrivate then
+			toldPrivate = true
+			ns.Print(L.CAMPFIRE_PRIVATE)
+		end
+		return
+	end
+	return ns.ShowDialog("SYLVANISTAS_BOARD_CAMPFIRE", Board.ZoneText(zone), ns.Comm.Audience(), { camp = true, note = "" })
+end
+
+StaticPopupDialogs["SYLVANISTAS_BOARD_CAMPFIRE"] = {
+	text = L.CAMPFIRE_ASK,
+	button1 = L.CAMPFIRE_SHARE,
+	button2 = L.CAMPFIRE_NOT_NOW,
+	button3 = L.CAMPFIRE_NEVER,
+	hasEditBox = true,
+	editBoxWidth = 260,
+	maxLetters = Board.NOTE_MAX,
+	maxBytes = Board.NOTE_MAX + 1,
+	OnShow = function(self)
+		local eb = self.editBox or self.EditBox
+		if eb then eb:SetText("") end
+	end,
+	OnAccept = function(self, data)
+		local eb = self.editBox or self.EditBox
+		ns.SafeCall("board campfire", Board.ConfirmCamp, data or self.data, eb and eb:GetText())
+	end,
+	OnAlt = function() ns.SafeCall("board campfire", Board.SetCampfireAsk, false) end,
+	EditBoxOnEnterPressed = function(self)
+		local parent = self:GetParent()
+		ns.SafeCall("board campfire", Board.ConfirmCamp, parent.data, self:GetText())
+		parent:Hide()
+	end,
+	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
+
+-- A spell's name: C_Spell.GetSpellName on the newer clients (Forever's has no GetSpellInfo), else
+-- GetSpellInfo; nil when neither knows it.
+local function SpellName(id)
+	if type(id) ~= "number" then return nil end
+	local name
+	if C_Spell and type(C_Spell.GetSpellName) == "function" then
+		local ok, n = pcall(C_Spell.GetSpellName, id)
+		if ok then name = n end
+	end
+	if name == nil and type(GetSpellInfo) == "function" then
+		local ok, n = pcall(GetSpellInfo, id)
+		if ok then name = n end
+	end
+	return type(name) == "string" and name ~= "" and name or nil
+end
+Board.SpellName = SpellName
+
 ns.On("LOGIN", function()
+	-- (The campfire's spell id, or its name on a client that gives none.)
+	local fireName = SpellName(Board.CAMPFIRE_SPELL)
+	ns.RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", function(unit, _, spellID)
+		if unit ~= "player" then return end
+		if type(issecretvalue) == "function" and issecretvalue(spellID) == true then return end
+		-- 1.3.0: Forever's campfire kits aren't Classic's spell 818: any cast of ours named like a fire or a
+		-- camp goes in the log (/syl bug) with its id, to learn the kits' ids (NEXT-STEPS, camps plan).
+		local castName = SpellName(spellID)
+		Board.SawCast(castName, spellID)
+		local low = castName and castName:lower() or ""
+		if low:find("fire", 1, true) or low:find("camp", 1, true) then
+			ns.Log("campfire? you cast %s (spell %s)%s", castName, tostring(spellID),
+				(ns.Crafters and ns.Crafters.WindowShown and ns.Crafters.WindowShown()) and ", profession window open" or "")
+		end
+		if spellID ~= Board.CAMPFIRE_SPELL and not (fireName and castName == fireName) then return end
+		Board.CampfireSoon()
+	end)
 	Board.Restore()
 	ns.Every(30, "board", function() Board.Tick() end)
 end)

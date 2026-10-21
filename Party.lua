@@ -31,6 +31,7 @@ Party.MAX_PARTY = 5
 Party.MAX_RAID = 40
 Party.PENDING_FOR = 60      -- an invite not answered counts as a place this long
 Party.WAIT_RAID_FOR = 90    -- a zone gather waits this long for someone to accept before it gives up
+Party.SCREAM_TOAST_FOR = 30 -- the Join window stays this long (the Scream itself counts SCREAM_FOR)
 local HEALERS = { PRIEST = true, DRUID = true, SHAMAN = true, PALADIN = true }
 
 local avail = {}     -- [Name-Realm] = { mapID, zoneUID, level, class, t }
@@ -44,18 +45,29 @@ local sentState, sentAt = nil, -math.huge
 local lastScream = -math.huge
 local myScream       -- { id, t, mapID }
 local answered = {}  -- [scream id] = true: asked or shown once
+local watch = {}     -- [Name-Realm] = t: invited by us, waiting to hear whether they join (1.3.0)
 
 local function Gold(s) return "|cffffd200" .. s .. "|r" end
 local function Grey(s) return "|cff9d9d9d" .. s .. "|r" end
 local function Green(s) return "|cff40ff40" .. s .. "|r" end
 
-local function Changed() ns.Fire("BOARD_CHANGED") end
+local Names
+local function Changed() ns.Fire("BOARD_CHANGED") ns.Fire("PARTY_CHANGED") end
+
+-- 1.3.0: the one who sends it sees it (the user's call): each click, each answer, in the chat and
+-- in the small silver window (ns.Toast).
+local ICON = "Interface\\Icons\\Spell_Holy_PrayerOfFortitude"
+local function Tell(text)
+	ns.Print(text)
+	if ns.Toast then ns.Toast(text, (not GetFileIDFromPath or GetFileIDFromPath(ICON)) and ICON or nil) end
+end
 
 ---------------------------------------------------------------------------
--- Settings: off until the player says yes (the privacy page, /syl party, the Board)
+-- Settings: on until the player says no (the Screams tab's cog, the privacy page, /syl party)
 ---------------------------------------------------------------------------
 
-function Party.On() return ns.db ~= nil and ns.db.partyInvites == true end
+-- (1.3.0: on unless the player turned it off, the user's call; auto-join stays off until asked.)
+function Party.On() return ns.db ~= nil and ns.db.partyInvites ~= false end
 function Party.Auto() return Party.On() and ns.db.partyAuto == true end
 
 function Party.Set(on, quiet)
@@ -119,6 +131,24 @@ end
 local function Available() return not Grouped() and not InInstance() and not Busy() end
 
 local function Guildmate(name) return ns.Roster and ns.Roster.RankOf and ns.Roster.RankOf(name) ~= nil end
+
+-- Guildmates online in our zone (the game's guild roster), us aside: what "nobody here" means.
+local function GuildHere()
+	local zone = GetRealZoneText and GetRealZoneText()
+	if not (zone and zone ~= "" and GetNumGuildMembers and GetGuildRosterInfo) then return 0 end
+	local n = 0
+	for i = 1, (GetNumGuildMembers()) or 0 do
+		local name, _, _, _, _, z, _, _, online = GetGuildRosterInfo(i)
+		if online and z == zone and name and ns.FullName(name) ~= ns.me then n = n + 1 end
+	end
+	return n
+end
+
+local function Nobody(mapID)
+	local here = GuildHere()
+	if here == 0 then return Tell(L.PARTY_NOBODY_GUILD:format(ZoneName(mapID))) end
+	Tell(L.PARTY_NOBODY_OFF:format(ZoneName(mapID), here))
+end
 
 ---------------------------------------------------------------------------
 -- Telling the guild we are free (only while the switch is on)
@@ -222,13 +252,14 @@ end
 
 local function InviteNow(name)
 	pending[name] = ns.Now()
+	watch[name] = ns.Now()
 	local target = ns.TellName(name)
 	if C_PartyInfo and C_PartyInfo.InviteUnit then C_PartyInfo.InviteUnit(target) elseif InviteUnit then InviteUnit(target) end
 	ns.Log("party: invited %s", tostring(name))
 end
 
 local function Pump()
-	if #queue == 0 then running = false return end
+	if #queue == 0 then running = false Changed() return end
 	local n, lead = Room()
 	if not lead then queue = {} running = false return end
 	if n + Pending() >= Max() then
@@ -252,6 +283,7 @@ local function Pump()
 		return
 	end
 	local name = table.remove(queue, 1)
+	pending[name] = ns.Now() -- (a place already, while the notice goes out)
 	local id = math.random(100000, 999999)
 	-- The notice first, so their addon knows this invite is ours; the invite once it has left.
 	local sentOnce = false
@@ -261,6 +293,15 @@ local function Pump()
 		ns.After(0.5, "party invite", function() InviteNow(name) end)
 	end)
 	ns.After(Party.INVITE_GAP + 1, "party next", Pump)
+end
+
+-- "Bob, Ann and 3 more", for the toast.
+function Names(names)
+	local shown = {}
+	for i = 1, math.min(3, #names) do shown[i] = ns.DisplayName(names[i]) or names[i] end
+	local s = table.concat(shown, ", ")
+	if #names > 3 then s = s .. L.PARTY_AND_MORE:format(#names - 3) end
+	return s
 end
 
 local function Start(names, zoneWide)
@@ -285,21 +326,22 @@ function Party.Gather()
 	local n = Room()
 	local slots = Max() - n - Pending() - #queue
 	local list = KeepHealer(Party.Candidates(mapID), slots)
-	if #list == 0 then return ns.Print(L.PARTY_NOBODY:format(ZoneName(mapID))) end
+	if slots < 1 then return Tell(L.PARTY_FULL) end
+	if #list == 0 then return Nobody(mapID) end
 	local names = {}
 	for i = 1, math.min(slots, #list) do names[#names + 1] = list[i].name end
-	if #names == 0 then return ns.Print(L.PARTY_FULL) end
-	ns.Print(L.PARTY_INVITING:format(#names, ZoneName(mapID)))
+	Tell(L.PARTY_INVITING_WHO:format(Names(names), ZoneName(mapID)))
 	Start(names, false)
 end
 
--- The whole zone: officers (Dreadguard), the Dark Lady and her Dark Rangers. Past a party of
+-- The whole zone: rank 1 (Dreadguards in the house, Dark Rangers elsewhere), the Dark Lady and her
+-- Deathstalkers. Past a party of
 -- five, the leader is asked (a click) to turn the group into a raid, then it goes on.
 function Party.CanZone()
 	if not ns.IsMember() then return false end
 	if ns.Roster and ns.Roster.MyRank and (ns.Roster.MyRank() or 99) <= ns.CAPTAIN_RANK then return true end
 	local K = ns.King
-	return K ~= nil and not K.missing and ((K.IsKing and K.IsKing()) or (K.IsHand and K.IsHand()) or (K.IsSteward and K.IsSteward())) and true or false
+	return K ~= nil and not K.missing and ((K.IsKing and K.IsKing()) or (K.IsHand and K.IsHand())) and true or false
 end
 
 function Party.GatherZone()
@@ -307,10 +349,10 @@ function Party.GatherZone()
 	if not CanGather() then return end
 	local mapID = MapID()
 	local list = Party.Candidates(mapID)
-	if #list == 0 then return ns.Print(L.PARTY_NOBODY:format(ZoneName(mapID))) end
+	if #list == 0 then return Nobody(mapID) end
 	local names = {}
 	for i = 1, math.min(#list, Party.MAX_RAID - 1) do names[i] = list[i].name end
-	ns.Print(L.PARTY_INVITING:format(#names, ZoneName(mapID)))
+	Tell(L.PARTY_INVITING_WHO:format(Names(names), ZoneName(mapID)))
 	Start(names, true)
 end
 
@@ -367,16 +409,22 @@ function Party.Scream(note)
 	if not (ns.IsMember() and CanGather()) then return end
 	local now = ns.Now()
 	if now - lastScream < Party.SCREAM_GAP then
-		return ns.Print(L.PARTY_SCREAM_WAIT:format(math.ceil(Party.SCREAM_GAP - (now - lastScream))))
+		return Tell(L.PARTY_SCREAM_WAIT:format(math.ceil(Party.SCREAM_GAP - (now - lastScream))))
 	end
 	local n = Room()
-	if n >= Max() then return ns.Print(L.PARTY_FULL) end
+	if n >= Max() then return Tell(L.PARTY_FULL) end
 	note = tostring(note or ""):gsub("[~|\n]", ""):sub(1, 60)
 	local mapID = MapID()
 	local id = math.random(100000, 999999)
 	lastScream, myScream = now, { id = id, t = now, mapID = mapID }
 	ns.Comm.Send("GUILD", ("PS~%d~%d~%s"):format(id, mapID, note), nil, nil, true)
-	ns.Print(L.PARTY_SCREAM_SENT:format(ZoneName(mapID)))
+	local free = #Party.Candidates(mapID)
+	if free > 0 then Tell(L.PARTY_SCREAM_SENT_N:format(ZoneName(mapID), free))
+	else
+		local here = GuildHere()
+		Tell(here > 0 and L.PARTY_SCREAM_SENT_OFF:format(ZoneName(mapID), here) or L.PARTY_SCREAM_SENT_NONE:format(ZoneName(mapID)))
+	end
+	Changed()
 end
 
 ns.Comm.Handle("PS", function(dist, sender, text)
@@ -391,19 +439,29 @@ ns.Comm.Handle("PS", function(dist, sender, text)
 	local where = ZoneName(mapID)
 	ns.Print(L.PARTY_SCREAM_LINE:format(who, where) .. (note ~= "" and (' "' .. note .. '"') or ""))
 	if ns.PlayAlert then ns.PlayAlert("soft", "muster") end
-	ns.ShowDialog("SYLVANISTAS_PARTY_SCREAM", who, where, { sender = sender, id = id })
+	-- (1.3.0: the small silver window with a Join button, not the game's popup: the user's call.)
+	local data = { sender = sender, id = id }
+	if ns.Toast then
+		ns.Toast(L.PARTY_SCREAM_LINE:format(who, where) .. (note ~= "" and ('\n"' .. note .. '"') or ""),
+			(not GetFileIDFromPath or GetFileIDFromPath(ICON)) and ICON or nil,
+			{ seconds = Party.SCREAM_TOAST_FOR, button = { label = L.PARTY_JOIN, onClick = function() Party.Join(data) end } })
+	else
+		ns.ShowDialog("SYLVANISTAS_PARTY_SCREAM", who, where, data)
+	end
 end)
+
+function Party.Join(data)
+	if type(data) == "table" and data.sender and data.id and Party.Free() then
+		ns.Comm.Whisper(data.sender, "PQ~" .. data.id, nil, true)
+		ns.Print(L.PARTY_JOIN_ASKED:format(ns.DisplayName(data.sender) or "?"))
+	end
+end
 
 StaticPopupDialogs["SYLVANISTAS_PARTY_SCREAM"] = {
 	text = L.PARTY_SCREAM_ASK,
 	button1 = L.PARTY_JOIN,
 	button2 = NO or "No",
-	OnAccept = function(self, data)
-		data = data or (self and self.data)
-		if type(data) == "table" and data.sender and data.id and Party.Free() then
-			ns.Comm.Whisper(data.sender, "PQ~" .. data.id, nil, true)
-		end
-	end,
+	OnAccept = function(self, data) Party.Join(data or (self and self.data)) end,
 	timeout = Party.SCREAM_FOR,
 	whileDead = true,
 	hideOnEscape = true,
@@ -416,7 +474,9 @@ ns.Comm.Handle("PQ", function(dist, sender, text)
 	if not (id and myScream and myScream.id == id and ns.Now() - myScream.t <= Party.SCREAM_FOR) then return end
 	local n, lead = Room()
 	if not lead then return end
-	if n + Pending() + #queue >= Max() then return ns.Print(L.PARTY_FULL) end
+	local who = ns.DisplayName(sender) or "?"
+	if n + Pending() + #queue >= Max() then return Tell(L.PARTY_ASKED_FULL:format(who)) end
+	Tell(L.PARTY_ASKED:format(who))
 	Start({ sender }, false)
 end)
 
@@ -448,46 +508,46 @@ function Party.SlashAuto(rest)
 end
 
 -- The Board's section (Board.Lines): the switches, then the leader's buttons.
-function Party.Section(lines, q)
-	if q or not ns.IsMember() then return end
-	lines[#lines + 1] = { header = true, text = L.PARTY_HEADER,
-		tooltip = function(tt) tt:AddLine(L.PARTY_HEADER, 1, 0.82, 0); tt:AddLine(L.PARTY_HEADER_TIP, 1, 1, 1, true) end }
-	local on = Party.On()
-	lines[#lines + 1] = { indent = 1, text = (on and Green or Grey)(L.PARTY_TOGGLE:format(on and L.PARTY_WORD_ON or L.PARTY_WORD_OFF)),
-		onClick = function() Party.Set(not Party.On()) end,
-		tooltip = function(tt) tt:AddLine(L.PARTY_TOGGLE_TIP, 1, 1, 1, true) end }
-	if on then
-		local auto = Party.Auto()
-		lines[#lines + 1] = { indent = 2, text = (auto and Green or Grey)(L.PARTY_AUTO_TOGGLE:format(auto and L.PARTY_WORD_ON or L.PARTY_WORD_OFF)),
-			onClick = function() Party.SetAuto(not Party.Auto()) end,
-			tooltip = function(tt) tt:AddLine(L.PARTY_AUTO_TIP, 1, 1, 1, true) end }
+-- 1.3.0: the Screams tab's buttons (UI.lua): their words show what is going on.
+local function Clock(sec)
+	sec = math.max(0, math.ceil(sec))
+	return ("%d:%02d"):format(math.floor(sec / 60), sec % 60)
+end
+
+function Party.ScreamLabel()
+	local left = Party.SCREAM_GAP - (ns.Now() - lastScream)
+	if left > 0 then return L.PARTY_SCREAM_BTN_WAIT:format(Clock(left)) end
+	return L.PARTY_SCREAM_BTN
+end
+
+function Party.GatherLabel(zoneWide)
+	if running and (queueZone and true or false) == zoneWide then
+		return L.PARTY_BTN_INVITING:format(#queue + Pending())
 	end
+	return zoneWide and L.PARTY_ZONE_BTN or L.PARTY_GATHER_BTN
+end
+
+function Party.Tooltip(tt, which)
 	local mapID = MapID()
 	local free = mapID and #Party.Candidates(mapID) or 0
-	lines[#lines + 1] = { indent = 1, text = Gold("> " .. L.PARTY_GATHER), right = Grey(L.PARTY_FREE_HERE:format(free)),
-		onClick = function() Party.Gather() end,
-		tooltip = function(tt) tt:AddLine(L.PARTY_GATHER, 1, 0.82, 0); tt:AddLine(L.PARTY_GATHER_TIP, 1, 1, 1, true) end }
-	lines[#lines + 1] = { indent = 1, text = Gold("> " .. L.PARTY_SCREAM),
-		onClick = function() Party.Scream("") end,
-		tooltip = function(tt) tt:AddLine(L.PARTY_SCREAM, 1, 0.82, 0); tt:AddLine(L.PARTY_SCREAM_TIP, 1, 1, 1, true) end }
-	if Party.CanZone() then
-		lines[#lines + 1] = { indent = 1, text = Gold("> " .. L.PARTY_ZONE),
-			onClick = function() Party.GatherZone() end,
-			tooltip = function(tt) tt:AddLine(L.PARTY_ZONE, 1, 0.82, 0); tt:AddLine(L.PARTY_ZONE_TIP, 1, 1, 1, true) end }
-	end
-	lines[#lines].gapAfter = true
+	local title = which == "scream" and L.PARTY_SCREAM or which == "zone" and L.PARTY_ZONE or L.PARTY_GATHER
+	local tip = which == "scream" and L.PARTY_SCREAM_TIP or which == "zone" and L.PARTY_ZONE_TIP or L.PARTY_GATHER_TIP
+	tt:AddLine(title, 1, 0.82, 0)
+	tt:AddLine(tip, 1, 1, 1, true)
+	tt:AddLine(" ")
+	tt:AddLine(L.PARTY_FREE_TIP:format(free, mapID and ZoneName(mapID) or "?", GuildHere()), 0.6, 0.8, 1, true)
+	if not Party.On() then tt:AddLine(L.PARTY_OFF_TIP, 1, 0.5, 0.3, true) end
 end
 
 if ns.Consent and not ns.Consent.missing and ns.Consent.Register then
 	ns.Consent.Register({ key = "party", label = "PARTY_CONSENT", text = "PARTY_CONSENT_TEXT",
 		shown = function() return ns.IsMember() end,
-		get = function() return ns.db and ns.db.partyInvites end,
+		get = function() return Party.On() end,
 		set = function(on) Party.Set(on, true) end })
 	ns.Consent.Register({ key = "partyauto", label = "PARTY_AUTO_CONSENT", text = "PARTY_AUTO_CONSENT_TEXT",
 		shown = function() return ns.IsMember() and Party.On() end,
-		get = function() return ns.db and ns.db.partyAuto end,
-		set = function(on) Party.SetAuto(on, true) end,
-		pending = function() return ns.IsMember() and Party.On() and ns.db and ns.db.partyAuto == nil end })
+		get = function() return Party.Auto() end,
+		set = function(on) Party.SetAuto(on, true) end })
 end
 
 ---------------------------------------------------------------------------
@@ -500,11 +560,65 @@ function Party.Tick()
 	local now = ns.Now()
 	for name, t in pairs(notices) do if now - t > Party.NOTICE_FOR then notices[name] = nil end end
 	for name, a in pairs(avail) do if now - a.t > Party.FRESH then avail[name] = nil end end
+	for name, t in pairs(watch) do
+		if now - t > Party.PENDING_FOR then
+			watch[name] = nil
+			ns.Print(L.PARTY_NO_ANSWER:format(ns.DisplayName(name) or "?"))
+		end
+	end
+end
+
+-- 1.3.0: who joined, who said no, for the one who invited (only those our addon invited).
+function Party.CheckJoined()
+	for name in pairs(watch) do
+		if InMyGroup(name) then
+			watch[name] = nil
+			Tell(L.PARTY_JOINED_YOU:format(ns.DisplayName(name) or "?"))
+		end
+	end
+	Changed()
+end
+
+local function Pattern(fmt)
+	if type(fmt) ~= "string" then return nil end
+	return "^" .. fmt:gsub("[%(%)%.%+%-%*%?%[%]%^%$]", "%%%0"):gsub("%%s", "(.+)") .. "$"
+end
+local NO_PATTERNS -- { pattern, text } for the game's answers to an invite
+function Party.SystemMessage(text)
+	if type(text) ~= "string" or not next(watch) then return end
+	NO_PATTERNS = NO_PATTERNS or {
+		{ Pattern(ERR_DECLINE_GROUP_S or "%s declines your group invitation."), L.PARTY_DECLINED },
+		{ Pattern(ERR_ALREADY_IN_GROUP_S or "%s is already in a group."), L.PARTY_ALREADY_GROUPED },
+	}
+	for _, p in ipairs(NO_PATTERNS) do
+		local who = p[1] and text:match(p[1])
+		if who then
+			who = ns.Normal and ns.Normal(who) or who
+			for name in pairs(watch) do
+				if ns.ShortName(name) == ns.ShortName(who) then
+					watch[name], pending[name] = nil, nil
+					Tell(p[2]:format(ns.DisplayName(name) or who))
+					Changed()
+					return
+				end
+			end
+		end
+	end
+end
+
+-- Once a second while a button has a state to show (the Scream's wait, a gather under way).
+local function Relabel()
+	if running or ns.Now() - lastScream <= Party.SCREAM_GAP + 1 then ns.Fire("PARTY_CHANGED") end
 end
 
 ns.RegisterEvent("PARTY_INVITE_REQUEST", function(name) Party.OnInvite(name) end)
 ns.On("LOGIN", function()
 	ns.Every(15, "party", Party.Tick)
-	ns.RegisterEvent("GROUP_ROSTER_UPDATE", function() ns.SafeCall("party announce", Party.Announce, false) end)
+	ns.RegisterEvent("GROUP_ROSTER_UPDATE", function()
+		ns.SafeCall("party announce", Party.Announce, false)
+		ns.SafeCall("party joined", Party.CheckJoined)
+	end)
+	ns.RegisterEvent("CHAT_MSG_SYSTEM", function(text) ns.SafeCall("party answers", Party.SystemMessage, text) end)
+	ns.Every(1, "party buttons", Relabel)
 	ns.RegisterEvent("ZONE_CHANGED_NEW_AREA", function() ns.After(3, "party zone", function() Party.Announce(false) end) end)
 end)
