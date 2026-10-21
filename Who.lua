@@ -88,6 +88,7 @@ local guildSeen -- one guild's players, found by its own search (Who.SearchGuild
 local owed      -- the id of a search given up that may still be answered (see Release)
 local lastId = 0
 local sending   -- true while we call SendWho ourselves
+local sendingQuiet -- 1.3.0: and that call is a quiet one (Who.Sending)
 local hookedOn  -- the C_FriendList table our SendWho hook is on
 local listeners = {}
 
@@ -291,9 +292,9 @@ function Who.Search(quiet, guild, name)
 	ns.After(Who.TIMEOUT, "who timeout", function()
 		if pending and pending.id == id and not pending.answered then Release("no answer", true) end
 	end)
-	sending = true
+	sending, sendingQuiet = true, quiet and true or false
 	local ok, err = pcall(SendToUi, query)
-	sending = false
+	sending, sendingQuiet = false, false
 	if not ok then
 		Release("send failed")
 		error(err, 0)
@@ -370,7 +371,20 @@ function Who.WantName(name)
 end
 function Who.WantedNames() return wantedNames end
 
+-- 1.3.0: the game sometimes refuses the quiet search a click runs (Forever 1.60, ADDON_ACTION_BLOCKED
+-- on SendWho from Who.Auto, a few times a week, no taint found). Harmless (that search just doesn't
+-- go), but said in red each time: once refused, the quiet round stops for the session; the player's
+-- own searches (Refresh, the Join screen's Find) still go. Diagnostics.lua asks Who.Sending.
+Who.autoOff = false
+function Who.Sending() return sending == true and sendingQuiet == true end
+function Who.Refused()
+	if Who.autoOff then return end
+	Who.autoOff = true
+	ns.Log("who: the game refused our quiet search; no more quiet /who this session (Refresh still searches)")
+end
+
 function Who.Auto()
+	if Who.autoOff then return false end
 	if not ((C_FriendList and C_FriendList.SendWho) or SendWho) then return false end
 	if ns.GamepadUI() then return false end -- quiet: not with the gamepad UI (see the top)
 	local now = GetTime()

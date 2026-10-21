@@ -25,8 +25,6 @@ anywhere else it stays idle.
 | `ns.AUTHOR_CHARACTER` | `Riztosin Psalmpalm` (Workshop tab, roll calls, bug reports) |
 | `ns.TREASURER_CHARACTER`, `ns.TREASURER_MAIL_CHARACTER` | `CHANGEME_…` (no treasurer yet) |
 | `ns.TREASURY_OFF` | `true` (Treasury and Bank hidden until launch) |
-| `ns.WALL_OF_SHAME` | `false` (the untabarded list stays private) |
-| `ns.TABARD_MODE` | `"casual"` (Forsaken Regalia: who wears the tabard, never who doesn't); `"strict"`: the tabard inspection |
 | `ns.REQUIRE_KEY` | `false`; `true`: guilds without the channel key get no network (seal the channel first) |
 | `ns.BLOCKED_GUILDS` | `{}`: guilds cut off for good, by exact name (never the main guild) |
 
@@ -37,14 +35,14 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
 |---|---|
 | **the Dark Lady** | the guild master |
 | **Valkyr** | the recruiters: the guild rank Valkyr, in any Sylvanistas guild |
-| **Deathstalkers** | helpers she names in game |
+| **Deathstalkers** | helpers the Dark Lady names in game |
 | **Dark Rangers** | officers (rank 0-1) of every Sylvanistas guild |
 | **Dreadguards** | the moderators (signed list) |
 | **Darkcallers** | guild masters of the other Sylvanistas guilds (the Dark Lady leads <Sylvanistas> and its alt branch <Sylvanistas Underground>) |
 | **the Forsaken** | everyone |
 | **Sanctum** | the Dark Lady's tab |
 | **Screams** | map calls: **Banshee Scream** (hers), **Revenant Call** (a rare enemy, skull on the map), **Gathering** (meeting point) |
-| **Covenants**, **Conclave**, **Absolution**, **Portal**, **Voice of the Forsaken** | her letters, conclaves, clearing a name, recruiting pin, polls |
+| **Covenants**, **Conclave**, **Portal**, **Voice of the Forsaken** | the Dark Lady's letters, conclaves, recruiting pin, polls |
 
 ## Commands
 | Command | What it does |
@@ -57,7 +55,8 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
 | `/syl screams`, `/syl rise`, `/syl gather` | screams; Revenant Call; Gathering |
 | `/syl voice` | polls |
 | `/syl party on/off`, `/syl partyauto on/off` | take party invites when solo; join them without the popup |
-| `/syl party gather`, `scream`, `zone` | gather a party, Party Scream, gather the whole zone (officers) |
+| `/syl party gather`, `scream`, `zone` | gather a party, Party Scream, gather the whole zone (Dreadguards, Dark Rangers); also buttons on the Screams tab |
+| `/syl mentions [on/off/clear]` | the chat lines that named you (the Chat tab's @), the cards beside the minimap |
 | `/syl inspect` | the Regalia tab |
 | `/syl key <secret>` | seal the guild channel (Dark Rangers) |
 | `/syl key rotate` | new channel key nobody sees (the Dark Lady) |
@@ -69,7 +68,7 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
 
 ## Limits
 - **Layer hop** works between members running the addon who said yes to layer help; the Dark
-  Lady never sends invites herself. Layers are read from nearby NPCs.
+  Lady never sends invites themself. Layers are read from nearby NPCs.
 - **Seal the channel** with `/syl key` once several Dark Rangers hold the same secret: until then
   anyone who joins `SylvanistasNetH` by name can read the census.
 - **Signed lists** (Valkyrs, Dreadguards, approved guilds) and **Discord Link** need

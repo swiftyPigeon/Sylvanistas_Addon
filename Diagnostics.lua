@@ -270,6 +270,12 @@ for _, event in ipairs({ "ADDON_ACTION_BLOCKED", "ADDON_ACTION_FORBIDDEN" }) do
 			ns.Log("%s: %s tried %s (%d this session)", event, tostring(addon), tostring(func), blocked)
 		end
 		RecordBlocked(event, tostring(func))
+		-- 1.3.0: our quiet /who refused (Who.Refused): recorded, not said; the quiet round stops.
+		local W = ns.Who
+		if W and W.Sending and W.Sending() then
+			if W.Refused then W.Refused() end
+			return
+		end
 		-- 1.3.0: said in chat, the first times a session: which game call was blocked, our line
 		-- that made it (the first of our files on the stack, past this one and Core.lua), what
 		-- we were doing last (ns.SafeCall's label) and whether the player was in combat.
@@ -471,14 +477,6 @@ function ns.StatusText()
 		if ns.faction == "Horde" then
 			add("Horde Dark Lady: %s, realm %s", tostring(ns.KING_CHARACTER.Horde), tostring(ns.KingRealm and ns.KingRealm() or "?"))
 		end
-		-- (1.1, request #11: each off until answered, on the first-open page or its command.)
-		local ri = ns.db.royalInspection
-		add("royal inspection: %s (/syl inspection on|off)", ri == true and "taking part when sampled" or (ri == false and "not taking part" or "not chosen (not taking part)"))
-		-- 1.1 (request #29): an officer's findings shared with his guild's officers.
-		if ns.Inspect.MayShare then
-			add("patrol share: %s (/syl patrolshare on|off), %d of our officers' findings held", not ns.Inspect.Sharing() and "off"
-				or (ns.Inspect.MayShare() and "on" or "on, not an officer"), ns.Inspect.SharedCount())
-		end
 		-- 1.1: the switch for all alert sounds, and the kinds silenced on their own.
 		add("alerts: %s", ns.AlertStatus and ns.AlertStatus() or "?")
 		add("author's roll call: %s (/syl rollcall on|off)", ns.Workshop and ns.Workshop.AnswerState and ns.Workshop.AnswerState() or "?")
@@ -500,6 +498,20 @@ function ns.StatusText()
 		add("discord link: %s", ns.Link and ns.Link.StatusLine and ns.Link.StatusLine() or "not loaded")
 		-- The Board (1.1): what this client holds and sends (the ch:G1, ch:G0, ch:GQ counts above).
 		add("board: %s", ns.Board and ns.Board.StatusLine and ns.Board.StatusLine() or "not loaded")
+		add("crafters: %s", ns.Crafters and ns.Crafters.StatusLine and ns.Crafters.StatusLine() or "not loaded")
+		-- 1.3.0: the game's windows open now (their names), to place buttons on a client's own windows.
+		do
+			local open = {}
+			if type(EnumerateFrames) == "function" then
+				local f = EnumerateFrames()
+				while f and #open < 40 do
+					local n = f.GetName and f:GetName()
+					if n and f:IsShown() and f:GetParent() == UIParent and not n:find("^Sylvanistas") then open[#open + 1] = n end
+					f = EnumerateFrames(f)
+				end
+			end
+			add("windows open: %s", #open > 0 and table.concat(open, ", ") or "none")
+		end
 		add("the Dark Lady's week: %s", ns.Week and ns.Week.StatusLine and ns.Week.StatusLine() or "not loaded")
 	end
 	local n = 0
@@ -603,6 +615,17 @@ function ns.BuildBugReport()
 	out[#out + 1] = "```"
 	-- (1.2.20) The log and the errors name the sealed channel too: scrubbed with the status.
 	return Scrub(table.concat(out, "\n"))
+end
+
+-- 1.3.0: the bug report's Clear report (UI.ClearBugReport): the errors kept, every error of this
+-- session, the calls the game blocked and the log, emptied in place (the same tables stay saved).
+function ns.ClearDiagnostics()
+	local db = ns.db
+	if not db then return end
+	for _, t in ipairs({ db.errors, db.actionsBlocked, ns.allErrors, db.log }) do
+		if type(t) == "table" then wipe(t) end
+	end
+	ns.Log("bug report cleared by the player")
 end
 
 function ns.PrintLayer()

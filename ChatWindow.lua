@@ -60,11 +60,16 @@ local ARROW_W = 12                                    -- the switch's arrow
 local MENU_ROW, MENU_PAD = 20, 4                      -- the switch's list of channels
 local INDENT = 12                                     -- a setting under its heading
 local PAD = 8                                         -- inside a bubble
-local HEADER_H = 16
 local EDGE = 8                                        -- a bubble from the box's side
 local SHARE = 0.82                                    -- a bubble's width, at most, of the box's
 local BUBBLE_MIN = 180
 local GAP_IN, GAP_OUT = 3, 10                         -- between bubbles of one writer, between writers
+-- 1.3.0, the IM look (the user's call): a race portrait beside each writer's group with their class
+-- icon on its corner, the name above it, the time inside each bubble.
+local AVATAR = 24
+local BADGE = 13
+local NAME_H = 14
+local TIME_H = 11
 local GROUP_TIME = 300                                -- a pause this long starts a new header
 local STICK_SLACK = 2
 local THROTTLE, DATA_GAP = 0.2, 5
@@ -102,6 +107,9 @@ local pointer                -- the Sylvanistas tab awaited: Sylvanistas's own p
 local watching = false       -- ... and the game's chat windows read until it is there
 local sent = false           -- ... the click having sent the channels there already (Chattynator)
 local settings = false       -- the settings (the gear) shown in place of the lines
+local mentionsView = false   -- 1.3.0: the lines that named us, from every channel (Mentions.lua), in place of one channel's
+local focus                  -- 1.3.0: a mention to bring into view once its channel is drawn (ChatWindow.ShowMention)
+local divider = {}           -- 1.3.0: tier -> the newest line seen before this look at it ("New messages" under it)
 local keyButton              -- Sylvanistas's own button the "Open chat" key clicks (made when first bound)
 local boundKeys              -- the keys our override binding holds now (nil: none)
 local keysLater = false      -- a binding change asked in combat, made when the fight ends
@@ -387,16 +395,24 @@ local function NewBubble()
 		b.bg:SetAllPoints()
 	end
 	b:EnableMouse(true)
-	-- The header: the name is a button (a whisper), the time on the right.
+	-- The writer's name above the group's first bubble (a button: a whisper), outside the bubble.
 	b.header = CreateFrame("Button", nil, b)
-	b.header:SetHeight(HEADER_H)
-	b.header:SetPoint("TOPLEFT", b, "TOPLEFT", PAD, -PAD)
+	b.header:SetHeight(NAME_H)
+	b.header:SetPoint("BOTTOMLEFT", b, "TOPLEFT", 2, 1)
 	b.who = b.header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	b.who:SetPoint("LEFT", b.header, "LEFT", 0, 0)
 	b.who:SetJustifyH("LEFT")
 	b.who:SetWordWrap(false)
-	b.time = b.header:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	b.time:SetPoint("RIGHT", b.header, "RIGHT", 0, 0)
+	-- The writer's race portrait, left of the group's first bubble, their class icon on its corner.
+	b.avatar = b:CreateTexture(nil, "ARTWORK")
+	b.avatar:SetSize(AVATAR, AVATAR)
+	b.avatar:SetPoint("TOPRIGHT", b, "TOPLEFT", -5, 0)
+	b.badge = b:CreateTexture(nil, "OVERLAY")
+	b.badge:SetSize(BADGE, BADGE)
+	b.badge:SetPoint("CENTER", b.avatar, "BOTTOMRIGHT", -2, 2)
+	-- The time, small, in the bubble's bottom corner.
+	b.time = b:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	b.time:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -PAD, PAD - 3)
 	b.header:SetScript("OnClick", function(self)
 		if self.whisper then ns.SafeCall("chat tab whisper", ns.UI.WhisperWindow, self.whisper) end
 	end)
@@ -427,6 +443,9 @@ local function NewBubble()
 		if self.hidden and self.entry then
 			revealed[self.entry] = true
 			ns.SafeCall("chat tab", Render)
+		elseif mentionsView and self.entry and self.entry.tier then
+			-- 1.3.0: in the Mentions view, a click shows the line in its channel.
+			ns.SafeCall("chat mention", ChatWindow.ShowMention, self.entry)
 		end
 	end)
 	return b
@@ -471,6 +490,116 @@ local function Hint()
 	eb.hint:SetShown(empty and not focused)
 end
 
+-- 1.3.0: "@" and the start of a name in the box: up to SUGGEST_MAX names above it (guildmates
+-- online first, then whoever wrote in a channel we read), a click or Tab puts the whole name in.
+local SUGGEST_MAX = 5
+local function AtWord(eb)
+	local text = eb:GetText() or ""
+	local cursor = eb.GetCursorPosition and eb:GetCursorPosition() or #text
+	local before = text:sub(1, cursor)
+	local at, word = before:match("()@([^%s@]*)$")
+	if not at then return nil end
+	return at, word, cursor, text
+end
+
+local function Candidates(word)
+	local low, out, seen = word:lower(), {}, {}
+	local function Try(name)
+		if type(name) ~= "string" or name == "" then return end
+		local short = ns.Codec.Plain(ns.DisplayName(name) or name)
+		local key = short:lower()
+		if seen[key] or #out >= SUGGEST_MAX or ns.Channels.IsMe(name) then return end
+		if key:sub(1, #low) == low then
+			seen[key] = true
+			out[#out + 1] = short
+		end
+	end
+	if GetNumGuildMembers and GetGuildRosterInfo then
+		for i = 1, (GetNumGuildMembers()) or 0 do
+			local name, _, _, _, _, _, _, _, online = GetGuildRosterInfo(i)
+			if online then Try(name) end
+		end
+	end
+	local C = ns.Channels
+	for _, t in ipairs(Readable()) do
+		local list = C.History(t)
+		for i = #list, 1, -1 do Try(list[i].sender) end
+	end
+	return out
+end
+
+local function HideSuggest()
+	if frame and frame.suggest then frame.suggest:Hide() end
+end
+
+local function Complete(name)
+	local eb = frame and frame.input
+	if not eb then return end
+	local at, _, cursor, text = AtWord(eb)
+	if not at then return HideSuggest() end
+	local put = "@" .. name .. " "
+	eb:SetText(text:sub(1, at - 1) .. put .. text:sub(cursor + 1))
+	if eb.SetCursorPosition then eb:SetCursorPosition(at - 1 + #put) end
+	HideSuggest()
+end
+
+local function Suggest()
+	if not frame or not frame.suggest then return end
+	local eb, box = frame.input, frame.suggest
+	local at, word = AtWord(eb)
+	local focused = eb.HasFocus and eb:HasFocus()
+	local names = (at and focused and #word >= 1) and Candidates(word) or {}
+	if #names == 0 then return box:Hide() end
+	for i = 1, SUGGEST_MAX do
+		local r = box.rows[i]
+		if names[i] then
+			r.name = names[i]
+			r.text:SetText((i == 1 and "|cffffd200" or "|cffffffff") .. "@" .. names[i] .. "|r")
+			r:Show()
+		else
+			r:Hide()
+		end
+	end
+	box:SetHeight(#names * 18 + 8)
+	box:ClearAllPoints()
+	box:SetPoint("BOTTOMLEFT", eb, "TOPLEFT", -6, 6)
+	box:Show()
+end
+
+local function MakeSuggest(p)
+	local box = CreateFrame("Frame", nil, p, BackdropTemplateMixin and "BackdropTemplate" or nil)
+	box:SetSize(200, 20)
+	box:SetFrameStrata("DIALOG")
+	if box.SetBackdrop then
+		box:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+			edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+		box:SetBackdropColor(0.05, 0.03, 0.08, 0.95)
+		box:SetBackdropBorderColor(0.78, 0.8, 0.84, 1)
+	end
+	box.rows = {}
+	for i = 1, SUGGEST_MAX do
+		local r = CreateFrame("Button", nil, box)
+		r:SetHeight(18)
+		r:SetPoint("TOPLEFT", 6, -4 - (i - 1) * 18)
+		r:SetPoint("TOPRIGHT", -6, -4 - (i - 1) * 18)
+		r.text = r:CreateFontString(nil, "OVERLAY", "ChatFontNormal")
+		r.text:SetPoint("LEFT", 2, 0)
+		r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+		r:SetScript("OnClick", function(self) ns.SafeCall("chat tab complete", Complete, self.name) end)
+		box.rows[i] = r
+	end
+	box:Hide()
+	p.suggest = box
+end
+
+local NextTier -- (below, with the switch)
+-- Tab: the first name offered, if any; else the next channel (as before).
+local function TabPressed()
+	local box = frame and frame.suggest
+	if box and box:IsShown() and box.rows[1]:IsShown() then return Complete(box.rows[1].name) end
+	NextTier()
+end
+
 -- A line that was not sent, back in the box (the keyboard stays where it is: no focus). Only into
 -- an empty box: what the player is writing is never replaced; the note stays, and he is told.
 local function PutBack(t, note)
@@ -499,7 +628,64 @@ local function Own(e)
 	return e.mine and ns.Channels.IsMe(e.sender) and true or false
 end
 
--- One line of the history in its bubble. Returns its height.
+-- The class icon for a writer's class code (Roster.ClassCode's), or the game's question mark.
+local CLASS_ART = "Interface\\Glues\\CharacterCreate\\UI-CharacterCreate-Classes"
+local function ClassIcon(tex, class)
+	local file = class and ns.CLASS_FILES and ns.CLASS_FILES[class]
+	local coords = file and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[file]
+	if coords then
+		tex:SetTexture(CLASS_ART)
+		tex:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+	else
+		tex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+		tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	end
+end
+
+-- The race portrait's atlas for UnitRace's race id and UnitSex's sex (Codec.LookTag), where this
+-- client has it (the names Olympus's arena portraits use), else nil.
+local RACE_ATLAS = { [1] = "human", [2] = "orc", [3] = "dwarf", [4] = "nightelf", [5] = "undead", [6] = "tauren",
+	[7] = "gnome", [8] = "troll", [10] = "bloodelf", [11] = "draenei" }
+local raceAtlas = {}
+local function RaceAtlas(race, sex)
+	local name = RACE_ATLAS[tonumber(race) or 0]
+	if not name or (sex ~= 2 and sex ~= 3) then return nil end
+	local key = race * 10 + sex
+	if raceAtlas[key] == nil then
+		raceAtlas[key] = false
+		local info = C_Texture and C_Texture.GetAtlasInfo
+		local gender = sex == 3 and "female" or "male"
+		for _, form in ipairs({ "raceicon128-%s-%s", "raceicon-%s-%s" }) do
+			local atlas = form:format(name, gender)
+			local ok, found = false, nil
+			if type(info) == "function" then ok, found = pcall(info, atlas) end
+			if ok and found then raceAtlas[key] = atlas break end
+		end
+	end
+	return raceAtlas[key] or nil
+end
+
+-- A writer's portrait: their race with their class icon on its corner; from a client before 1.3.0
+-- (no race in its lines), or where this client lacks the race art, the class icon alone.
+local function Avatar(tex, badge, e)
+	local atlas = RaceAtlas(e.race, e.sex)
+	if atlas and pcall(tex.SetAtlas, tex, atlas) then
+		tex:SetTexCoord(0, 1, 0, 1)
+		if e.class and ns.CLASS_FILES and ns.CLASS_FILES[e.class] then
+			ClassIcon(badge, e.class)
+			badge:Show()
+		else
+			badge:Hide()
+		end
+	else
+		ClassIcon(tex, e.class)
+		badge:Hide()
+	end
+end
+
+-- One line of the history in its bubble. Returns its height (with the name above it, at a
+-- group's start). 1.3.0, the IM look: ours on the right, filled in the channel's colour; others'
+-- on the left, dark, the writer's class icon and name at the group's start; the time inside.
 local function Bubble(i, e, start, y, maxInner, hides)
 	local bubbles = frame.bubbles
 	local b = bubbles[i] or NewBubble()
@@ -509,54 +695,64 @@ local function Bubble(i, e, start, y, maxInner, hides)
 	-- tab's chats page marked them) and its border still grey.
 	local veiled = not mine and hides ~= nil and hides(e.text or "") or false
 	local hidden = veiled and not revealed[e]
-	b.entry, b.hidden, b.mine, b.y = e, hidden, mine, y
-	local c = Colour(tier)
-	local r, g, bl, a = 0.09, 0.09, 0.11, 0.92
-	if mine then r, g, bl, a = c[1] * 0.28, c[2] * 0.28, c[3] * 0.28, 0.95 end
+	b.entry, b.hidden, b.mine = e, hidden, mine
+	local c = Colour(e.tier or tier)
+	local r, g, bl, a = 0.13, 0.13, 0.15, 0.95
+	local er, eg, eb = 0.32, 0.32, 0.36
+	if mine then
+		r, g, bl, a = c[1] * 0.45, c[2] * 0.45, c[3] * 0.45, 0.97
+		er, eg, eb = c[1] * 0.7, c[2] * 0.7, c[3] * 0.7
+	end
+	-- 1.3.0: a line that names us (Mentions.lua): a gold edge, a warmer inside.
+	local M = ns.Mentions
+	local named = not mine and not hidden and M ~= nil and not M.missing and M.Matches(e.text)
+	if named then r, g, bl, er, eg, eb = 0.20, 0.15, 0.04, 1, 0.82, 0 end
+	if veiled then er, eg, eb = 0.5, 0.5, 0.5 end
 	if b.SetBackdropColor then
 		b:SetBackdropColor(r, g, bl, a)
-		if veiled then b:SetBackdropBorderColor(0.5, 0.5, 0.5, 1) else b:SetBackdropBorderColor(c[1], c[2], c[3], 1) end
+		b:SetBackdropBorderColor(er, eg, eb, 1)
 	elseif b.bg then
 		b.bg:SetColorTexture(r, g, bl, a)
 	end
-	-- The header, at a group's start.
-	local headerW, timeW = 0, 0
-	if start then
-		b.who:SetText(mine and L.CHATWIN_YOU or NameText(e))
-		b.time:SetText(Grey(date("%H:%M", tonumber(e.t) or 0)))
-		timeW = math.ceil(TextWidth(b.time))
-		headerW = math.ceil(TextWidth(b.who)) + 8 + timeW
-		b.header.whisper = not mine and ns.TellName(e.sender) or nil
-		b.header.full = not mine and (ns.Codec.Plain(ns.DisplayName(e.sender) or "?") .. "  <" .. ns.Codec.Plain(e.guild or "?") .. ">") or nil
-		b.header:EnableMouse(not mine)
+	-- The name above, and the class icon beside, at a group's start (others' lines only).
+	local lead = (start and not mine) and (NAME_H + 2) or 0
+	if start and not mine then
+		local where = e.tier and ("  |c" .. Hex(Colour(e.tier)) .. "[" .. Label(e.tier) .. "]|r") or ""
+		b.who:SetText(NameText(e) .. where)
+		b.header.whisper = ns.TellName(e.sender)
+		b.header.full = ns.Codec.Plain(ns.DisplayName(e.sender) or "?") .. "  <" .. ns.Codec.Plain(e.guild or "?") .. ">"
+		b.header:EnableMouse(true)
+		b.header:SetWidth(math.max(40, math.ceil(TextWidth(b.who)) + 4))
 		b.header:Show()
+		Avatar(b.avatar, b.badge, e)
+		b.avatar:Show()
 	else
 		b.header.whisper, b.header.full = nil, nil
 		b.header:Hide()
+		b.avatar:Hide()
+		b.badge:Hide()
 	end
+	b.time:SetText(date("%H:%M", tonumber(e.t) or 0))
+	local timeW = math.ceil(TextWidth(b.time))
 	b.body:SetText(hidden and Grey(L.CHATWIN_HIDDEN)
 		or ((veiled and (Grey(L.FILTER_HIDDEN_MARK) .. " ") or "") .. ns.Codec.SanitizeChat(e.text)))
-	local inner = math.min(maxInner, math.max(math.ceil(TextWidth(b.body)), headerW, 1))
+	local room = maxInner - (mine and 0 or (AVATAR + 5))
+	local inner = math.min(room, math.max(math.ceil(TextWidth(b.body)), timeW + 4, 1))
 	b.body:SetWidth(inner)
 	local bodyH = TextHeight(b.body, inner)
-	local top = PAD
-	if start then
-		b.header:SetWidth(inner)
-		b.who:SetWidth(math.max(1, inner - timeW - 8))
-		top = top + HEADER_H + 2
-	end
 	b.body:ClearAllPoints()
-	b.body:SetPoint("TOPLEFT", b, "TOPLEFT", PAD, -top)
-	local h = top + bodyH + PAD
+	b.body:SetPoint("TOPLEFT", b, "TOPLEFT", PAD, -PAD + 1)
+	local h = PAD - 1 + bodyH + TIME_H + PAD - 3
 	b:SetSize(inner + 2 * PAD, h)
 	b:ClearAllPoints()
+	b.y = y + lead
 	if mine then
-		b:SetPoint("TOPRIGHT", frame.content, "TOPRIGHT", -EDGE, -y)
+		b:SetPoint("TOPRIGHT", frame.content, "TOPRIGHT", -EDGE, -(y + lead))
 	else
-		b:SetPoint("TOPLEFT", frame.content, "TOPLEFT", EDGE, -y)
+		b:SetPoint("TOPLEFT", frame.content, "TOPLEFT", EDGE + AVATAR + 5, -(y + lead))
 	end
 	b:Show()
-	return h
+	return h + lead
 end
 
 local function ContentWidth()
@@ -611,18 +807,23 @@ local function DrawLines(all)
 	local list = Searched(all, q, hides)
 	local nb, nr = 0, 0
 	local y = 6
-	nr = nr + 1
-	y = y + Row(nr, Grey(L.CHATWIN_KEPT:format(C.HISTORY or 100)), y, width) + 6
+	-- (1.3.0: the "last 100 lines are kept" note lives in the cog's tooltip now, the user's call.)
 	-- (The count of the lines the block terms hide is a strip over the lines: DrawHiddenCount.)
 	if #all == 0 then
 		nr = nr + 1
-		y = y + 8 + Row(nr, Grey(L.CHATWIN_EMPTY:format(Label(tier))), y + 8, width)
+		y = y + 8 + Row(nr, Grey(mentionsView and L.MENTIONS_EMPTY or L.CHATWIN_EMPTY:format(Label(tier))), y + 8, width)
 	elseif #list == 0 then
 		nr = nr + 1
 		y = y + 8 + Row(nr, Grey(L.SEARCH_NO_MATCH), y + 8, width)
 	end
 	local maxInner = math.max(BUBBLE_MIN, math.floor(width * SHARE)) - 2 * PAD
 	local prev, prevDay
+	-- "Today", "Yesterday", else the date; "New messages" over the first line from someone else
+	-- since this channel was last looked at (not in the Mentions view, nor while searching).
+	local now = ns.Now()
+	local today, yesterday = date("%Y-%m-%d", now), date("%Y-%m-%d", now - 86400)
+	local mark = not mentionsView and not q and divider[tier] or nil
+	local marked = false
 	for _, e in ipairs(list) do
 		local t = tonumber(e.t) or 0
 		local day = date("%Y-%m-%d", t)
@@ -630,11 +831,18 @@ local function DrawLines(all)
 		if newDay then
 			if prev then y = y + GAP_OUT end
 			nr = nr + 1
-			y = y + Row(nr, Grey(day), y, width) + 4
+			local word = day == today and L.CHATWIN_TODAY or (day == yesterday and L.CHATWIN_YESTERDAY or day)
+			y = y + Row(nr, Grey(word), y, width) + 4
 			prevDay = day
 		end
+		if mark and not marked and t > mark and not Own(e) then
+			marked = true
+			nr = nr + 1
+			y = y + 4 + Row(nr, "|cffff6060" .. L.CHATWIN_NEW_DIVIDER .. "|r", y + 4, width) + 4
+			prev = nil -- (a fresh group under it: the name again)
+		end
 		local start = newDay or not prev or ns.FullName(prev.sender) ~= ns.FullName(e.sender)
-			or Own(prev) ~= Own(e) or t - (tonumber(prev.t) or 0) > GROUP_TIME
+			or Own(prev) ~= Own(e) or t - (tonumber(prev.t) or 0) > GROUP_TIME or prev.tier ~= e.tier
 		if prev and not newDay then y = y + (start and GAP_OUT or GAP_IN) end
 		nb = nb + 1
 		y = y + Bubble(nb, e, start, y, maxInner, hides)
@@ -754,10 +962,11 @@ local function PlaceInput(p)
 	local input = p.places and p.places.input
 	if not input then return end
 	local room = 0
-	if p.answers and p.answers:IsShown() then
-		p.answers:ClearAllPoints()
-		p.answers:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", input.right, input.y + math.floor((input.h - SEARCH_H) / 2))
-		room = p.answers:GetWidth() + TOP_GAP
+	-- 1.3.0: Send at the row's end (Enter still sends); the Answers went to the top row, an icon.
+	if p.send then
+		p.send:ClearAllPoints()
+		p.send:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", input.right, input.y + math.floor((input.h - SEARCH_H) / 2))
+		room = p.send:GetWidth() + TOP_GAP
 	end
 	-- (The box's border art reaches 10 past its ends.)
 	p.input:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", input.right - 10 - room, input.y)
@@ -774,17 +983,34 @@ local function DrawTop(tiers, on)
 	PaintGear()
 	local right = s.right - GEAR_W - TOP_GAP
 	-- 1.1.2: the page's "?" left of the gear (Answers.lua: the tab's explanation, the detail box's
-	-- "?" of the other tabs being under this one). The Answers of the author, the High Council and
-	-- the Stewards: at the end of the box they fill, while the lines and that box show (PlaceInput).
+	-- "?" of the other tabs being under this one).
 	frame.help:ClearAllPoints()
 	frame.help:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, s.top)
 	frame.help:Show()
 	right = right - GEAR_W - TOP_GAP
+	-- 1.3.0: "@", the Mentions view (Mentions.lua), with its unread count.
+	local M = ns.Mentions
+	if M and not M.missing and frame.at then
+		frame.at:ClearAllPoints()
+		frame.at:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, s.top)
+		local n = M.Unread()
+		frame.at.count:SetText(n > 0 and (n > 9 and "9+" or tostring(n)) or "")
+		frame.at.count:SetShown(n > 0)
+		if mentionsView then frame.at:LockHighlight() else frame.at:UnlockHighlight() end
+		frame.at:SetShown(on)
+		if on then right = right - GEAR_W - TOP_GAP end
+	end
+	-- The Answers (the addon keeper and the Dreadguards): an icon, left of the "@".
 	local A = ns.Answers
 	frame.answers:SetShown(lines and A ~= nil and type(A.Allowed) == "function" and A.Allowed() == true)
+	if frame.answers:IsShown() then
+		frame.answers:ClearAllPoints()
+		frame.answers:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, s.top)
+		right = right - GEAR_W - TOP_GAP
+	end
 	PlaceInput(frame)
 	local sw = frame.switch
-	if lines and #tiers > 1 then
+	if lines and #tiers > 1 and not mentionsView then
 		PaintSwitch()
 		sw:ClearAllPoints()
 		sw:SetPoint("TOPRIGHT", frame, "TOPRIGHT", right, s.top)
@@ -1224,6 +1450,21 @@ function ChatWindow.SettingsLines()
 		for _, l in ipairs(public) do Add({ indent = true, text = l.text, tip = l.tooltip, onClick = l.onClick }) end
 	end
 	out[#out].gap = true
+	-- 1.3.0: the mentions' feed by the minimap and its sound (Mentions.lua).
+	local M = ns.Mentions
+	if M and not M.missing then
+		local mon = M.On()
+		Add({ header = true, text = Gold(L.MENTIONS_TITLE) })
+		Add({ indent = true, text = mon and Green(L.MENTIONS_SET_ON) or Grey(L.MENTIONS_SET_OFF),
+			onClick = function()
+				M.SetOn(not M.On())
+				Render()
+			end,
+			tip = function(tt)
+				tt:AddLine(L.MENTIONS_TITLE, 1, 0.82, 0)
+				tt:AddLine(L.MENTIONS_SET_TIP, 1, 1, 1, true)
+			end, gap = true })
+	end
 	-- Each channel this rank reads, in the game's chat.
 	for _, t in ipairs(Readable()) do
 		local word = C.TIERS[t].word
@@ -1534,6 +1775,7 @@ local function ShowParts(mode)
 	local lines = mode == "lines"
 	frame.scroll:SetShown(lines)
 	frame.input:SetShown(lines)
+	if frame.send then frame.send:SetShown(lines) end
 	frame.off:SetShown(mode == "off")
 	frame.setScroll:SetShown(mode == "settings")
 	if not lines then
@@ -1573,7 +1815,9 @@ local function Draw()
 	-- The strips over the lines, each taking room only while it shows: the pinned line, the way to
 	-- the Sylvanistas tab, the count of the lines the block terms hide (nearest the lines it counts).
 	y = y - DrawPin(y)
-	local all = on and C.History(tier) or nil -- (read once, for the count and the lines)
+	local M = ns.Mentions
+	if mentionsView and not (M and not M.missing) then mentionsView = false end
+	local all = on and (mentionsView and M.List() or C.History(tier)) or nil -- (read once, for the count and the lines)
 	if on then
 		y = y - DrawGuide(y)
 		y = y - DrawHiddenCount(y, all)
@@ -1588,8 +1832,41 @@ local function Draw()
 	DrawSearch()
 	DrawInput()
 	local was = not stick and InView() or nil
+	-- 1.3.0: "New messages" under the newest line seen before this look at the channel (kept per
+	-- realm group, ns.rdb.chatSeen); a channel never looked at shows none.
+	local newest = 0
+	for _, e in ipairs(all) do newest = math.max(newest, tonumber(e.t) or 0) end
+	if not mentionsView and divider[tier] == nil then
+		local seen = ns.rdb and type(ns.rdb.chatSeen) == "table" and ns.rdb.chatSeen[tier]
+		divider[tier] = tonumber(seen) or newest
+	end
 	DrawLines(all)
-	if stick then
+	if stick and not mentionsView and ns.rdb then
+		ns.rdb.chatSeen = type(ns.rdb.chatSeen) == "table" and ns.rdb.chatSeen or {}
+		ns.rdb.chatSeen[tier] = newest
+	end
+	-- 1.3.0: what names us is read once it shows (the Mentions view: all of it; a channel: its own).
+	if M and not M.missing then
+		if mentionsView then
+			M.MarkRead()
+		else
+			for _, m in ipairs(M.List()) do if m.tier == tier and not m.read then M.MarkRead(m) end end
+		end
+	end
+	-- A mention to bring into view (a card or the Mentions view clicked): its bubble near the top.
+	local focused = false
+	if focus and not mentionsView then
+		for _, b in ipairs(frame.bubbles) do
+			if b:IsShown() and b.entry and M and M.Same(b.entry, focus) then
+				stick, want, focused = false, math.max(0, (b.y or 0) - 30), true
+				break
+			end
+		end
+		focus = nil
+	end
+	if focused then
+		Held() -- (and again once the client measured the new range)
+	elseif stick then
 		want = nil
 		ToBottom()
 	elseif was and #was > 0 then
@@ -1622,11 +1899,38 @@ function ChatWindow.ShowSettings(on)
 end
 function ChatWindow.SettingsShown() return settings end
 
+-- 1.3.0: the Mentions view (Mentions.lua): every line that named us, from each channel we read,
+-- in place of one channel's; on = nil toggles. Opens the tab when it is closed.
+function ChatWindow.ShowMentions(on)
+	if on == nil then on = not mentionsView end
+	if on and not Shown() and not ChatWindow.Open() then return end
+	mentionsView = on and true or false
+	settings = false
+	CloseMenu()
+	stick, newCount, want = true, 0, nil
+	if Shown() then Render() end
+end
+function ChatWindow.MentionsShown() return mentionsView end
+
+local Select -- (below, with the writing)
+-- A mention's line in its channel: the tab open on that channel, the line brought into view.
+function ChatWindow.ShowMention(m)
+	if type(m) ~= "table" or not ns.Channels.TIERS[m.tier] then return end
+	focus = m
+	mentionsView = false
+	if Shown() then
+		if tier ~= m.tier then Select(m.tier) else Render() end
+	else
+		ChatWindow.Open(m.tier)
+	end
+	if Shown() then Render() end
+end
+
 ---------------------------------------------------------------------------
 -- Writing: Sylvanistas's own box, through Channels.Send (every check and refusal is Send's).
 ---------------------------------------------------------------------------
 
-local function Select(t)
+function Select(t)
 	local C = ns.Channels
 	local d = C.TIERS[t]
 	if not d then return end
@@ -1637,6 +1941,8 @@ local function Select(t)
 	tier = t
 	unread[t] = nil
 	Remember(t)
+	mentionsView = false
+	divider[t] = nil -- (a new look at it)
 	CloseMenu()
 	settings = false -- (a channel picked: its lines, not the settings)
 	if Shown() then
@@ -1646,7 +1952,7 @@ local function Select(t)
 	end
 end
 
-local function NextTier()
+function NextTier()
 	local tiers = Readable()
 	if #tiers < 2 then return end
 	local at = 1
@@ -1847,6 +2153,7 @@ local function MakeGear(p)
 		Tip(self, function(tt)
 			tt:AddLine(L.CHATSET_TITLE, 1, 0.82, 0)
 			tt:AddLine(L.CHATSET_TIP, 1, 1, 1, true)
+			tt:AddLine(L.CHATWIN_KEPT:format(ns.Channels.HISTORY or 100), 0.6, 0.6, 0.6, true)
 		end)
 	end)
 	g:SetScript("OnLeave", function(self) Untip(self) end)
@@ -1890,8 +2197,15 @@ local function MakeHelp(p)
 	end)
 	h:SetScript("OnLeave", function(self) Untip(self) end)
 	p.help = h
-	local a = Button(p, L.ANSWERS_BTN, 70)
-	a:SetHeight(SEARCH_H)
+	-- (1.3.0: an icon on the top row, the user's call; Send took its place by the box.)
+	local a = CreateFrame("Button", nil, p)
+	a:SetSize(GEAR_W, GEAR_W)
+	a.icon = a:CreateTexture(nil, "ARTWORK")
+	a.icon:SetSize(16, 16)
+	a.icon:SetPoint("CENTER")
+	a.icon:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+	a.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	a:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
 	a:SetScript("OnClick", function()
 		ns.SafeCall("chat answers", function() if ns.Answers and ns.Answers.Open then ns.Answers.Open(p.input) end end)
 	end)
@@ -1904,6 +2218,35 @@ local function MakeHelp(p)
 	a:SetScript("OnLeave", function(self) Untip(self) end)
 	a:Hide()
 	p.answers = a
+	-- 1.3.0: Send, by the box (Enter still sends).
+	local send = Button(p, L.CHATWIN_SEND, 60)
+	send:SetHeight(SEARCH_H)
+	send:SetScript("OnClick", function() ns.SafeCall("chat tab send", Submit) end)
+	send:Hide()
+	p.send = send
+end
+
+-- 1.3.0: "@" on the top row, the Mentions view (and back to the channel), its unread count on it.
+local function MakeAt(p)
+	local b = CreateFrame("Button", nil, p)
+	b:SetSize(GEAR_W, GEAR_W)
+	b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	b.text:SetPoint("CENTER", 0, 1)
+	b.text:SetText("@")
+	b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+	b.count = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	b.count:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 4, -2)
+	b.count:SetTextColor(1, 0.3, 0.3)
+	b:SetScript("OnClick", function() ns.SafeCall("chat mentions", ChatWindow.ShowMentions, not mentionsView) end)
+	b:SetScript("OnEnter", function(self)
+		Tip(self, function(tt)
+			tt:AddLine(L.MENTIONS_TITLE, 1, 0.82, 0)
+			tt:AddLine(L.MENTIONS_BTN_TIP, 1, 1, 1, true)
+		end)
+	end)
+	b:SetScript("OnLeave", function(self) Untip(self) end)
+	b:Hide()
+	p.at = b
 end
 
 -- A strip over the lines (the pinned line, the Sylvanistas tab's line, the count of the hidden lines): a
@@ -1984,6 +2327,7 @@ local function Build(h)
 	MakeSwitch(p)
 	MakeGear(p)
 	MakeHelp(p)
+	MakeAt(p)
 
 	-- The pinned line.
 	p.pin = StripButton(p, PIN_LINES)
@@ -2122,14 +2466,20 @@ local function Build(h)
 	eb.hint:SetWordWrap(false)
 	eb:SetScript("OnEnterPressed", function() ns.SafeCall("chat tab send", Submit) end)
 	eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-	eb:SetScript("OnTabPressed", function() ns.SafeCall("chat tab channel", NextTier) end)
-	eb:SetScript("OnTextChanged", function() ns.SafeCall("chat tab box", Hint) end)
+	eb:SetScript("OnTabPressed", function() ns.SafeCall("chat tab channel", TabPressed) end)
+	eb:SetScript("OnTextChanged", function() ns.SafeCall("chat tab box", Hint); ns.SafeCall("chat tab names", Suggest) end)
 	eb:SetScript("OnEditFocusGained", function() ns.SafeCall("chat tab box", Hint) end)
-	eb:SetScript("OnEditFocusLost", function() ns.SafeCall("chat tab box", Hint) end)
+	eb:SetScript("OnEditFocusLost", function()
+		ns.SafeCall("chat tab box", Hint)
+		-- (A click on a name takes the focus first: the list goes a moment later.)
+		ns.After(0.2, "chat tab names", function() if frame and frame.input and not frame.input:HasFocus() then HideSuggest() end end)
+	end)
 	eb:SetScript("OnHide", function(self) self:ClearFocus() end)
 	p.input = eb
+	MakeSuggest(p)
 
 	p:HookScript("OnHide", function()
+		divider = {} -- (the next look at each channel marks what came since)
 		eb:ClearFocus()
 		sb:ClearFocus()
 		p.menu:Hide()
@@ -2288,6 +2638,7 @@ end
 ns.On("CHAT_CHANGED", function(t)
 	if t == nil or t == tier then MarkDirty() end
 end)
+ns.On("MENTIONS_CHANGED", function() if Shown() then MarkDirty() end end)
 ns.On("CHAT_LINE", function(t)
 	if not Shown() or not ns.Channels.TIERS[t] then return end
 	if t ~= tier then

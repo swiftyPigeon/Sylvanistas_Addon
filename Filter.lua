@@ -327,7 +327,7 @@ function Filter.Receive(dist, sender, text)
 	if not digest then return end
 	sender = ns.FullName(sender)
 	if not Filter.IsEditorName(sender) then
-		ns.Log("block terms from %s ignored: not the King, his Steward, a Hand or a High Councillor", sender)
+		ns.Log("block terms from %s ignored: not the King, their Steward, a Hand or a High Councillor", sender)
 		return
 	end
 	local S, now = Shared(), Clock()

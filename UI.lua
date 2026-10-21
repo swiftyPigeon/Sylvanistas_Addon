@@ -88,6 +88,11 @@ local function DecreeAction(kind)
 	end
 end
 
+-- The Board (Board.lua) showing in the Realm tab.
+local function OnBoard()
+	return ns.Board ~= nil and not ns.Board.missing and ns.Views.BoardShown ~= nil and ns.Views.BoardShown() == true
+end
+
 -- Three buttons per tab, like "Guild Information / Add Member / Guild Control".
 local BUTTONS = {
 	census = {
@@ -104,29 +109,51 @@ local BUTTONS = {
 	realm = {
 		{ "EXPAND_ALL", function() ns.Views.ExpandAll(true); UI.Refresh() end },
 		{ "COLLAPSE_ALL", function() ns.Views.ExpandAll(false); UI.Refresh() end },
-		{ "COPY_BTN", function() UI.ShowCopy(L.COPY_DISCORD, ns.Data.DiscordText()) end },
+		{ "COPY_BTN", function() UI.ShowCopy(L.COPY_DISCORD, ns.Data.DiscordText()) end, shown = function() return not OnBoard() end },
+		-- 1.3.0 (the user's call): on the Board, its flag window in place of Copy; our flag up, lowered.
+		{ "BOARD_RAISE_FLAG", function()
+			if ns.Board.MyFlag() then ns.Board.Lower() else ns.Board.Prompt() end
+		end, refresh = true, shown = OnBoard,
+			label = function() return ns.Board.MyFlag() and L.BOARD_LOWER_FLAG or L.BOARD_RAISE_FLAG end,
+			tooltip = function(tt)
+				local mine = ns.Board.MyFlag()
+				tt:AddLine(mine and L.BOARD_LOWER_FLAG or L.BOARD_RAISE_FLAG, 1, 0.82, 0)
+				tt:AddLine(mine and L.BOARD_LOWER_FLAG_TIP:format(L[ns.Board.LABEL[mine.flag]] or mine.flag) or L.BOARD_RAISE_FLAG_TIP, 1, 1, 1, true)
+			end },
+		-- 1.3.0: the camp the same way (its dialog; ours up, taken down).
+		{ "BOARD_CAMP_DROP_BTN", function()
+			if ns.Board.MineIn("camp") then ns.Board.LowerCamp() else ns.Board.PromptCamp() end
+		end, refresh = true, shown = OnBoard,
+			label = function() return ns.Board.MineIn("camp") and L.BOARD_CAMP_TAKE_BTN or L.BOARD_CAMP_DROP_BTN end,
+			tooltip = function(tt)
+				local camp = ns.Board.MineIn("camp")
+				tt:AddLine(camp and L.BOARD_CAMP_TAKE_BTN or L.BOARD_CAMP_DROP_BTN, 1, 0.82, 0)
+				tt:AddLine(camp and L.BOARD_CAMP_MINE_TIP or L.BOARD_CAMP_DROP_TIP, 1, 1, 1, true)
+			end },
 	},
 	decrees = {
-		{ "ARMS_BTN", DecreeAction("ARMS") },
-		{ "MUSTER_BTN", DecreeAction("MUSTER") },
-		{ "ROYAL_BTN", DecreeAction("ROYAL") },
+		-- (1.3.0: two rows, each with its small title: def.group, LayoutButtons.)
+		{ "ARMS_BTN", DecreeAction("ARMS"), group = "CALLS" },
+		{ "MUSTER_BTN", DecreeAction("MUSTER"), group = "CALLS" },
+		{ "ROYAL_BTN", DecreeAction("ROYAL"), group = "CALLS" },
+		-- 1.3.0: Parties, from the Board (the user's call): their state on the button itself.
+		{ "PARTY_GATHER_BTN", function() ns.Party.Gather() end, label = function() return ns.Party.GatherLabel(false) end, group = "PARTIES",
+			tooltip = function(tt) ns.Party.Tooltip(tt, "gather") end },
+		{ "PARTY_SCREAM_BTN", function() ns.Party.Scream("") end, label = function() return ns.Party.ScreamLabel() end, group = "PARTIES",
+			tooltip = function(tt) ns.Party.Tooltip(tt, "scream") end },
+		{ "PARTY_ZONE_BTN", function() ns.Party.GatherZone() end, label = function() return ns.Party.GatherLabel(true) end, group = "PARTIES",
+			shown = function() return ns.Party ~= nil and ns.Party.CanZone ~= nil and ns.Party.CanZone() end,
+			tooltip = function(tt) ns.Party.Tooltip(tt, "zone") end },
 	},
 	heraldry = {
 		{ "PATROL_BTN", function() ns.Inspect.SetPatrol(not ns.Inspect.IsPatrolling()) end,
-			-- 1.2.2 (casual): the patrol finds Fellow Forsaken.
+			-- 1.2.2: the patrol finds Fellow Forsaken.
+			label = function() return ns.Inspect.IsPatrolling() and L.FELLOW_STOP or L.FELLOW_BTN end,
 			tooltip = function(tt)
-				local casual = ns.Casual()
-				tt:AddLine(casual and L.FELLOW_TITLE or L.PATROL_BTN, 1, 0.82, 0)
-				tt:AddLine(casual and L.FELLOW_BTN_TIP or L.PATROL_BTN_TIP, 1, 1, 1, true)
+				tt:AddLine(L.FELLOW_TITLE, 1, 0.82, 0)
+				tt:AddLine(L.FELLOW_BTN_TIP, 1, 1, 1, true)
 			end },
-		{ "MARK_TARGET", function() ns.Inspect.MarkTarget() end, shown = function() return not ns.Casual() end },
-		-- 1.2.2 (casual): Raising the Loyal, the patrol on and the list in sight.
-		{ "RAISING_BTN", function()
-			if not ns.Inspect.IsPatrolling() then ns.Inspect.SetPatrol(true) end
-			UI.SelectTab("heraldry", "regalia:raising")
-		end, shown = function() return false end }, -- (1.3.0: one Fellow Forsaken, the user's call)
-		{ "COPY_BTN", function() UI.ShowCopy(ns.Casual() and L.TAB_HERALDRY or L.INSPECT_TITLE, ns.Inspect.DiscordText()) end,
-			shown = function() return not ns.Casual() end }, -- (1.3.0: not on Forsaken Regalia, the user's call)
+		-- (1.3.0: no Mark target, Raising or Copy: the original's tabard inspection is gone.)
 	},
 	-- The Throne: the agenda (the King and his Hands), the court (the King's).
 	-- The roll call lives in the Realm, the inspection in the Tabards (King.RollCallLines...).
@@ -231,12 +258,11 @@ local DETAIL_BUTTONS = {
 	},
 	heraldry = {
 		{ "HERALDRY_BTN", DecreeAction("HERALDRY"),
-			-- 1.2.2 (casual): Assemble the Loyal.
-			label = function() return ns.Casual() and L.ASSEMBLE_BTN or L.HERALDRY_BTN end,
+			-- 1.2.2: Assemble the Loyal (HERALDRY, its old code name).
+			label = function() return L.ASSEMBLE_BTN end,
 			tooltip = function(tt)
-				local casual = ns.Casual()
-				tt:AddLine(casual and L.ASSEMBLE_BTN or L.HERALDRY_BTN, 1, 0.82, 0)
-				tt:AddLine(casual and L.ASSEMBLE_BTN_TIP or L.HERALDRY_BTN_TIP, 1, 1, 1, true)
+				tt:AddLine(L.ASSEMBLE_BTN, 1, 0.82, 0)
+				tt:AddLine(L.ASSEMBLE_BTN_TIP, 1, 1, 1, true)
 			end },
 		{ "CLEAR", function() ns.ShowDialog("SYLVANISTAS_CLEAR_INSPECT") end },
 	},
@@ -247,7 +273,6 @@ local DETAIL_BUTTONS = {
 		{ "WRIT_BTN", function() ns.Acts.WritPrompt() end, shown = KingOnly },
 	},
 }
--- (0.9.2: no "Publish shame" button any more: the untabarded list is the King's, Throne tab.)
 -- Asking a High Councillor (a moderator) for help, on the Realm tab (0.9.7, Workshop.lua).
 DETAIL_BUTTONS.realm = DETAIL_BUTTONS.realm or {}
 table.insert(DETAIL_BUTTONS.realm, { "COUNCIL_ASK_BTN", function() ns.ShowDialog("SYLVANISTAS_COUNCIL_ASK") end,
@@ -257,10 +282,8 @@ table.insert(DETAIL_BUTTONS.realm, { "COUNCIL_ASK_BTN", function() ns.ShowDialog
 -- to councillors alone.
 table.insert(DETAIL_BUTTONS.realm, { "COUNCIL_ICON_BTN", function() ns.Workshop.ShowIconPicker() end,
 	shown = function() return ns.IsHighCouncillor(ns.me) end })
--- 1.1 (request #28): an officer keeps the gear of the player he targets, in range (Inspect.lua).
-table.insert(DETAIL_BUTTONS.heraldry, 1, { "GEAR_BTN", function() ns.Inspect.InspectGear() end,
-	-- (1.2.2, casual: Raising the Loyal takes its place; /syl gear still keeps a target's gear.)
-	shown = function() return not ns.Casual() and ns.IsMember() and ns.Roster.IsOfficer() end })
+-- (1.1, request #28: an officer keeps a target's gear with /syl gear; its list on the Regalia
+-- page. The button went with the original's tabard inspection, 1.3.0.)
 
 -- Buttons that come and go (def.shown): only the ones shown, in order.
 local function Shown(defs)
@@ -1002,9 +1025,10 @@ local function CreateMain(style)
 		f.detailButtons[i] = b
 	end
 
-	-- Bottom buttons (the HD ones as low as "View Log" and "Invite Member", CommunitiesFrame.xml)
+	-- Bottom buttons (the HD ones as low as "View Log" and "Invite Member", CommunitiesFrame.xml).
+	-- (1.3.0: six, for the Screams tab with Parties; a tab shows only the ones it has.)
 	f.buttons = {}
-	for i = 1, 3 do
+	for i = 1, 6 do
 		local b = Button(f, 10, 22)
 		if hd then b:SetHeight(g.buttons.h) end
 		f.buttons[i] = b
@@ -1116,6 +1140,10 @@ local function UseStyle(style)
 end
 
 -- The bottom buttons share the window width: three on a tab, two on the Join screen.
+-- 1.3.0: a tab whose buttons come in groups (def.group: the Screams tab's Calls and Parties) gets
+-- a row per group, stacked, each with a small title saying what the row is for; the list and the
+-- detail box move up by main.buttonLift to make room (UI.Layout).
+local GROUP_TITLE_H = 13
 local function LayoutButtons()
 	local g = GEOMETRY[main.style].buttons
 	local shown = {}
@@ -1123,12 +1151,61 @@ local function LayoutButtons()
 		if b:IsShown() then shown[#shown + 1] = b end
 	end
 	if #shown == 0 then shown = main.buttons end
-	local bw = math.floor((main:GetWidth() - g.margin - 2 * (#shown - 1)) / #shown)
-	for i, b in ipairs(shown) do
-		b:SetWidth(bw)
-		b:ClearAllPoints()
-		if i == 1 then b:SetPoint("BOTTOMLEFT", g.x, g.y) else b:SetPoint("LEFT", shown[i - 1], "RIGHT", 2, 0) end
-		FitLabel(b)
+	local rows, at = {}, {}
+	for _, b in ipairs(shown) do
+		local key = b:IsShown() and b.group or false
+		if not at[key] then rows[#rows + 1] = { key = key }; at[key] = rows[#rows] end
+		table.insert(at[key], b)
+	end
+	if #rows < 2 or not rows[1].key then rows = { shown } end
+	main.groupTitles = main.groupTitles or {}
+	for _, t in ipairs(main.groupTitles) do t:Hide() end
+	local step = g.h + GROUP_TITLE_H + 4
+	for r, row in ipairs(rows) do
+		local y = g.y + (#rows - r) * step
+		local bw = math.floor((main:GetWidth() - g.margin - 2 * (#row - 1)) / #row)
+		for i, b in ipairs(row) do
+			b:SetWidth(bw)
+			b:ClearAllPoints()
+			if i == 1 then b:SetPoint("BOTTOMLEFT", g.x, y) else b:SetPoint("LEFT", row[i - 1], "RIGHT", 2, 0) end
+			FitLabel(b)
+		end
+		if row.key then
+			-- The row's title and the help icon after it: hovering either says what the row is for.
+			local t = main.groupTitles[r]
+			if not t then
+				t = CreateFrame("Button", nil, main)
+				t:SetHeight(GROUP_TITLE_H)
+				t.text = t:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+				t.text:SetPoint("LEFT", 0, 0)
+				t.text:SetJustifyH("LEFT")
+				t.text:SetWordWrap(false)
+				t.icon = t:CreateTexture(nil, "ARTWORK")
+				t.icon:SetSize(13, 13)
+				t.icon:SetPoint("LEFT", t.text, "RIGHT", 3, 0)
+				t.icon:SetTexture(UI.HELP_ICON)
+				t:SetScript("OnEnter", function(self)
+					GameTooltip:SetOwner(self, "ANCHOR_TOP")
+					GameTooltip:AddLine(L["BTN_GROUP_" .. self.key] or self.key, 1, 0.82, 0)
+					local tip = rawget(L, "BTN_GROUP_" .. self.key .. "_TIP")
+					if tip then GameTooltip:AddLine(tip, 1, 1, 1, true) end
+					GameTooltip:Show()
+				end)
+				t:SetScript("OnLeave", function() GameTooltip:Hide() end)
+				main.groupTitles[r] = t
+			end
+			t.key = row.key
+			t.text:SetText(L["BTN_GROUP_" .. row.key] or row.key)
+			t:SetWidth(math.ceil(t.text:GetStringWidth() or 40) + 18)
+			t:ClearAllPoints()
+			t:SetPoint("BOTTOMLEFT", main, "BOTTOMLEFT", g.x + 4, y + g.h + 2)
+			t:Show()
+		end
+	end
+	local lift = rows[1].key and ((#rows - 1) * step + GROUP_TITLE_H + 4) or 0
+	if lift ~= (main.buttonLift or 0) then
+		main.buttonLift = lift
+		if not main.inLayout then UI.Layout() end
 	end
 end
 
@@ -1277,7 +1354,10 @@ function UI.Layout()
 	if not main then return end
 	local g = GEOMETRY[main.style]
 	local w = main:GetWidth()
+	main.inLayout = true
 	LayoutButtons()
+	main.inLayout = false
+	local lift = main.buttonLift or 0
 	LayoutDetailButtons()
 	FitHeader()
 	main.layoutLocked = not ns.IsMember()
@@ -1290,15 +1370,21 @@ function UI.Layout()
 		if main[key] then main[key]:SetShown(not chat) end
 	end
 	-- The HD list box starts right under the column titles, higher without them.
-	if g.box.topNoCols and main.listBox then
+	-- (main.buttonLift: a second row of buttons, LayoutButtons; the list and the detail box go up.)
+	if main.listBox then
 		main.listBox:ClearAllPoints()
-		main.listBox:SetPoint("TOPLEFT", g.box.left, hasCols and g.box.top or g.box.topNoCols)
-		main.listBox:SetPoint("BOTTOMRIGHT", g.box.right, g.box.bottom)
+		main.listBox:SetPoint("TOPLEFT", g.box.left, (hasCols or not g.box.topNoCols) and g.box.top or g.box.topNoCols)
+		main.listBox:SetPoint("BOTTOMRIGHT", g.box.right, g.box.bottom + lift)
+	end
+	if main.detail then
+		main.detail:ClearAllPoints()
+		main.detail:SetPoint("BOTTOMLEFT", g.detail.left, g.detail.y + lift)
+		main.detail:SetPoint("BOTTOMRIGHT", g.detail.right, g.detail.y + lift)
 	end
 	local right = main.scrollRight or g.scroll.right
 	main.scroll:ClearAllPoints()
-	main.scroll:SetPoint("TOPLEFT", g.scroll.left, hasCols and g.scroll.top or g.scroll.topNoCols)
-	main.scroll:SetPoint("BOTTOMRIGHT", right, g.scroll.bottom)
+	main.scroll:SetPoint("TOPLEFT", g.scroll.left, (hasCols or not g.scroll.topNoCols) and g.scroll.top or g.scroll.topNoCols)
+	main.scroll:SetPoint("BOTTOMRIGHT", right, g.scroll.bottom + lift)
 	local listW = w - g.scroll.left + right - 2
 	for _, v in pairs(main.views) do v:SetWidth(listW) end
 	if hasCols then
@@ -1368,12 +1454,9 @@ local function SetButtons(list, defs)
 		local def = defs and defs[i]
 		if def then
 			local label = def.label and def.label() or L[def[1]]
-			if def[1] == "PATROL_BTN" then
-				local casual = ns.Casual()
-				if ns.Inspect.IsPatrolling() then label = casual and L.FELLOW_STOP or L.PATROL_STOP
-				else label = casual and L.FELLOW_BTN or L.PATROL_START end
-			end
 			b:SetText(label)
+			b.labelFn = def.label
+			b.group = def.group
 			b:SetScript("OnClick", function()
 				ns.SafeCall("button " .. def[1], def[2])
 				-- A button that shows a state (def.label) shows the new one at once.
@@ -1409,6 +1492,19 @@ local function SetButtons(list, defs)
 	if list == main.buttons then LayoutButtons() end
 	if list == main.detailButtons then LayoutDetailButtons() end
 end
+
+-- 1.3.0: the buttons that show a state (def.label) take their new words, without redrawing the
+-- list (the Party Scream's wait, a gather under way: Party.lua, once a second).
+function UI.RelabelButtons()
+	if not (main and main:IsShown()) then return end
+	for _, b in ipairs(main.buttons) do
+		if b:IsShown() and b.labelFn then
+			local ok, label = pcall(b.labelFn)
+			if ok and label and label ~= b:GetText() then b:SetText(label) FitLabel(b) end
+		end
+	end
+end
+ns.On("PARTY_CHANGED", function() UI.RelabelButtons() end)
 
 -- Shows tab `key` in the window in use, and the window if it is closed. `focus`: the id of the
 -- row it opens on (Views.lua: a guild clicked in the Census), in sight (UI.KeepPlace).
@@ -1814,10 +1910,9 @@ function UI.WhisperText(name, text)
 end
 
 -- Whisper, invite and /who take the name the server finds (ns.TellName).
+-- (1.3.0: Sylvanistas's whisper window in both input modes, never the game's chat box: Board.Whisper.)
 local function Whisper(name)
-	name = ns.TellName(name)
-	if ns.GamepadUI() then return UI.WhisperWindow(name) end
-	if ChatFrame_SendTell then ChatFrame_SendTell(name) else ChatFrame_OpenChat("/w " .. name .. " ") end
+	return UI.WhisperWindow(ns.TellName(name))
 end
 
 local function Invite(name)
@@ -2172,8 +2267,62 @@ ns.RegisterEvent("UI_SCALE_CHANGED", function() ns.SafeCall("relayout", Relayout
 -- The bug report, with "Send to <author>" while the addon's author is online (Workshop.lua).
 function UI.ShowBugReport()
 	local text = ns.BuildBugReport()
-	UI.ShowCopy(L.REPORT_BUG, text, ns.Workshop and ns.Workshop.BugAction and ns.Workshop.BugAction(text) or nil)
+	UI.ShowCopy(L.REPORT_BUG, text, ns.Workshop and ns.Workshop.BugAction and ns.Workshop.BugAction(text) or nil,
+		{ clear = function() ns.ShowDialog("SYLVANISTAS_BUG_CLEAR", L.BUG_CLEAR_WORD) end })
 end
+
+-- 1.3.0 (the user's call): Clear report empties what earlier sessions left in it (the errors, the calls
+-- the game blocked, the log), only once CLEAR is typed in a box that asks whether the player knows
+-- what they're doing. The status part is read fresh at each report: nothing to clear there.
+local function ClearTyped(text)
+	return tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""):upper() == L.BUG_CLEAR_WORD:upper()
+end
+function UI.ClearBugReport()
+	if ns.ClearDiagnostics then ns.ClearDiagnostics() end
+	ns.Print(L.BUG_CLEARED)
+	local f = UI.CopyFrameOf and UI.CopyFrameOf("copy")
+	if f and f:IsShown() then UI.ShowBugReport() end
+end
+local function ClearButton(popup)
+	return popup and (popup.button1 or (popup.GetButton and popup:GetButton(1)))
+end
+StaticPopupDialogs["SYLVANISTAS_BUG_CLEAR"] = {
+	text = L.BUG_CLEAR_ASK,
+	button1 = L.BUG_CLEAR_BTN,
+	button2 = CANCEL or "Cancel",
+	showAlert = true,
+	hasEditBox = true,
+	editBoxWidth = 160,
+	maxLetters = 16,
+	OnShow = function(self)
+		local eb = self.editBox or self.EditBox
+		if eb then eb:SetText(""); eb:SetFocus() end
+		local b = ClearButton(self)
+		if b then b:Disable() end
+	end,
+	EditBoxOnTextChanged = function(self)
+		local b = ClearButton(self:GetParent())
+		if b then b:SetEnabled(ClearTyped(self:GetText())) end
+	end,
+	OnAccept = function(self)
+		local eb = self.editBox or self.EditBox
+		if not ClearTyped(eb and eb:GetText()) then
+			ns.Print(L.TYPE_WORD_FIRST:format(L.BUG_CLEAR_WORD))
+			return true
+		end
+		ns.SafeCall("bug clear", UI.ClearBugReport)
+	end,
+	EditBoxOnEnterPressed = function(self)
+		if not ClearTyped(self:GetText()) then return ns.Print(L.TYPE_WORD_FIRST:format(L.BUG_CLEAR_WORD)) end
+		self:GetParent():Hide()
+		ns.SafeCall("bug clear", UI.ClearBugReport)
+	end,
+	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
 
 -- Where the addon lives: its CurseForge page (bugs and questions as comments there).
 -- (Sylvanistas: no public code repository; bugs and questions go to the CurseForge page.)
@@ -2201,11 +2350,11 @@ function UI.ShowHelp()
 		L.HELP_PRIVACY,
 		L.HELP_LOCATION,
 		L.HELP_ROLLCALL,
-		L.HELP_INSPECTION,
 		L.HELP_CHAT,
 		L.HELP_PRIVACY_PAGE,
 		L.HELP_FILTER,
 		L.HELP_LOG,
+		L.HELP_MENTIONS,
 		L.HELP_BACKUP,
 		L.HELP_LETTERS,
 		L.HELP_MAINKEY,
@@ -2232,6 +2381,7 @@ end
 -- a Select all button (the reports: long, and read before copied), auto = opened by itself (no
 -- keyboard: see the end) }. Each key's window keeps its place and text while another one shows.
 local copyFrames = {}
+function UI.CopyFrameOf(key) return copyFrames[key] end -- (1.3.0: Clear report redraws the report)
 local COPY_PLACES = { bug = { 0, 30 }, versions = { 60, -30 }, status = { -60, 30 } }
 
 local function CopyFrame(key, big)
@@ -2333,6 +2483,24 @@ function UI.ShowCopy(title, text, action, opts)
 		copyFrame.selectAll:ClearAllPoints()
 		if action then copyFrame.selectAll:SetPoint("LEFT", button, "RIGHT", 6, 0) else copyFrame.selectAll:SetPoint("BOTTOMLEFT", 10, 6) end
 	end
+	-- 1.3.0: the bug report's Clear report, bottom right in red; the hint moves left of it.
+	if opts.clear and not copyFrame.clear then
+		local c = CreateFrame("Button", nil, copyFrame, "UIPanelButtonTemplate")
+		c:SetSize(110, 20)
+		c:SetPoint("BOTTOMRIGHT", -10, 6)
+		c:SetText("|cffff4040" .. L.BUG_CLEAR_BTN .. "|r")
+		c:SetScript("OnClick", function(self) if self.fn then ns.SafeCall("bug clear", self.fn) end end)
+		copyFrame.clear = c
+	end
+	if copyFrame.clear then
+		copyFrame.clear.fn = opts.clear
+		copyFrame.clear:SetShown(opts.clear ~= nil)
+		if opts.clear then
+			copyFrame.hint:ClearAllPoints()
+			copyFrame.hint:SetPoint("RIGHT", copyFrame.clear, "LEFT", -8, 0)
+			copyFrame.hint:SetJustifyH("RIGHT")
+		end
+	end
 	if copyFrame.TitleText then copyFrame.TitleText:SetText(title) end
 	copyFrame.text = text
 	copyFrame.eb:SetText(text)
@@ -2409,6 +2577,8 @@ local function CreateMinimapButton()
 		if ns.IsMember() and ns.Comm and ns.Comm.PeerCount then
 			GameTooltip:AddLine(ns.Plural(ns.Comm.PeerCount() + 1, L.MINIMAP_USERS_ONE, L.MINIMAP_USERS, ns.Comm.PeerCount() + 1), 0.25, 1, 0.25)
 		end
+		local unread = ns.Mentions and ns.Mentions.Unread and ns.Mentions.Unread() or 0
+		if unread > 0 then GameTooltip:AddLine(L.MENTIONS_UNREAD_TIP:format(unread), 1, 0.4, 0.4) end
 		GameTooltip:AddLine(" ")
 		GameTooltip:AddLine(L.MINIMAP_LEFT, 0.6, 0.6, 0.6)
 		GameTooltip:AddLine(L.MINIMAP_SHIFT, 0.6, 0.6, 0.6)
@@ -2417,13 +2587,36 @@ local function CreateMinimapButton()
 		GameTooltip:Show()
 	end)
 	b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	-- 1.3.0: the unread mentions (Mentions.lua), a red count on the button's corner.
+	b.badge = CreateFrame("Frame", nil, b)
+	b.badge:SetSize(16, 16)
+	b.badge:SetPoint("TOPRIGHT", b, "TOPRIGHT", 3, 3)
+	b.badge:SetFrameLevel(b:GetFrameLevel() + 3)
+	b.badge.dot = b.badge:CreateTexture(nil, "ARTWORK")
+	b.badge.dot:SetAllPoints()
+	b.badge.dot:SetTexture("Interface\\COMMON\\Indicator-Red")
+	b.badge.dot:SetVertexColor(1, 1, 1)
+	b.badge.text = b.badge:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	b.badge.text:SetPoint("CENTER", 0, 0)
+	b.badge:Hide()
 	return b
 end
+
+-- The red count on the minimap button: unread mentions (Mentions.lua).
+function UI.UpdateMinimapBadge()
+	if not minimapButton or not minimapButton.badge then return end
+	local M = ns.Mentions
+	local n = M and not M.missing and M.Unread and M.Unread() or 0
+	minimapButton.badge.text:SetText(n > 9 and "9+" or tostring(n))
+	minimapButton.badge:SetShown(n > 0)
+end
+ns.On("MENTIONS_CHANGED", function() UI.UpdateMinimapBadge() end)
 
 function UI.UpdateMinimapButton()
 	minimapButton = minimapButton or CreateMinimapButton()
 	PositionMinimapButton()
 	minimapButton:SetShown(not ns.db.hideMinimap)
+	UI.UpdateMinimapBadge()
 end
 
 ns.On("LOGIN", function()

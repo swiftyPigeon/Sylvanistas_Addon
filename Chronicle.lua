@@ -177,14 +177,32 @@ end
 
 -- The Decrees tab's section: the caveat, a copy of the whole log, and the newest entries, or
 -- every one that holds the search `q`.
+-- 1.3.0: the log folds away (kept per character, ns.db.actsCollapsed) and its header carries
+-- Collapse, Copy and Clear (the user's call). A search shows its matches folded or not.
+function Chronicle.Collapsed() return ns.db ~= nil and ns.db.actsCollapsed == true end
+function Chronicle.SetCollapsed(on) if ns.db then ns.db.actsCollapsed = on and true or nil end end
+
 function Chronicle.AddLines(lines, q)
-	lines[#lines + 1] = { header = true, text = L.ACTS_TITLE }
-	lines[#lines + 1] = { text = "|cff9d9d9d" .. L.ACTS_NOTE .. "|r" }
-	lines[#lines + 1] = {
-		text = "|cff40ff40" .. L.ACTS_COPY .. "|r",
-		onClick = function() if ns.UI and ns.UI.ShowCopy then ns.UI.ShowCopy(L.ACTS_TITLE, Chronicle.Text()) end end,
-	}
 	local list, shown = Chronicle.Entries(), 0
+	local folded = Chronicle.Collapsed() and not q
+	lines[#lines + 1] = {
+		header = true, text = (folded and "[+] " or "[-] ") .. L.ACTS_TITLE, right = "|cff9d9d9d" .. #list .. "|r",
+		onClick = function() Chronicle.SetCollapsed(not Chronicle.Collapsed()) end,
+		tooltip = function(tt)
+			tt:AddLine(L.ACTS_TITLE, 1, 0.82, 0)
+			tt:AddLine(L.ACTS_NOTE, 1, 1, 1, true)
+		end,
+		actions = {
+			{ text = folded and L.ACTS_EXPAND or L.ACTS_COLLAPSE, onClick = function() Chronicle.SetCollapsed(not Chronicle.Collapsed()) end },
+			{ text = L.ACTS_COPY_BTN, tooltip = L.ACTS_COPY_TIP,
+				onClick = function() if ns.UI and ns.UI.ShowCopy then ns.UI.ShowCopy(L.ACTS_TITLE, Chronicle.Text()) end end },
+			{ text = L.ACTS_CLEAR_BTN, tooltip = L.ACTS_CLEAR_TIP, onClick = function() ns.ShowDialog("SYLVANISTAS_ACTS_CLEAR") end },
+		},
+	}
+	if folded then
+		lines[#lines].gapAfter = true
+		return lines
+	end
 	for i = #list, 1, -1 do
 		local e = list[i]
 		if not q or Found(e, q) then
@@ -210,6 +228,20 @@ function Chronicle.AddLines(lines, q)
 	lines[#lines].gapAfter = true
 	return lines
 end
+
+StaticPopupDialogs["SYLVANISTAS_ACTS_CLEAR"] = {
+	text = L.ACTS_CLEAR_CONFIRM,
+	button1 = YES or "Yes",
+	button2 = NO or "No",
+	OnAccept = function()
+		Chronicle.Clear()
+		ns.Print(L.ACTS_CLEARED)
+	end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
 
 -- /syl log: the newest entries (or n of them), "clear", "copy", or those holding a word.
 function Chronicle.Slash(rest)

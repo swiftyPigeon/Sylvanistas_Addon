@@ -565,7 +565,7 @@ function Moderation.Handle(dist, sender, text)
 	if not kind or not Moderation.KINDS[kind] then return end
 	sender = ns.FullName(sender)
 	if not Moderation.IsIssuer(sender) then
-		return Refuse(sender, "not the King, his Steward, a Hand or a High Councillor here")
+		return Refuse(sender, "not the King, their Steward, a Hand or a High Councillor here")
 	end
 	local e, why = Moderation.Entry(kind, name, off == "1", at, by, reason)
 	if not e then return Refuse(sender, tostring(why)) end

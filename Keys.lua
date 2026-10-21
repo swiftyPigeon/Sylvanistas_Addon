@@ -214,7 +214,7 @@ function Keys.HandleKey(dist, sender, text)
 		-- sender, nobody else carries it.
 		if not (ns.IsKingCharacter(sender) or (ns.KingCharacter() ~= nil and ns.King.IsStewardName(sender))) then
 			stats.refused = stats.refused + 1
-			return ns.Log("realm key by whisper from %s ignored: not the King nor his Steward", sender)
+			return ns.Log("realm key by whisper from %s ignored: not the King nor their Steward", sender)
 		end
 		fromCrown = true
 	elseif dist == "GUILD" then

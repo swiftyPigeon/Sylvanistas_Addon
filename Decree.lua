@@ -51,8 +51,8 @@ local ICONS = {
 	HERALDRY = "Interface\\Icons\\INV_Shirt_GuildTabard_01",
 }
 local function Label(d)
-	-- 1.2.2: the tabard call is Assemble the Loyal in casual (ns.TABARD_MODE).
-	if d.kind == "HERALDRY" and ns.Casual() then return L.ASSEMBLE_CALL end
+	-- 1.2.2: the tabard call is Assemble the Loyal (HERALDRY, its old code name).
+	if d.kind == "HERALDRY" then return L.ASSEMBLE_CALL end
 	return L[LABEL[d.kind] or "MUSTER"]
 end
 Decree.Label = Label
@@ -253,7 +253,7 @@ function Decree.Send(kind, text)
 	if kind == "REV" then ReadRevenant(d) end
 	Show(d, true)
 	-- 1.2.2: Assemble the Loyal (casual): our patrol counts who comes in regalia (Inspect.Assembly).
-	if kind == "HERALDRY" and ns.Casual() and ns.Inspect.StartAssembly then ns.Inspect.StartAssembly() end
+	if kind == "HERALDRY" and ns.Inspect.StartAssembly then ns.Inspect.StartAssembly() end
 end
 
 -- Local-only preview so anyone can see what a decree looks like (nothing is sent).

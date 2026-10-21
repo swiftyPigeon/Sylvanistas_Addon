@@ -2885,19 +2885,12 @@ end)
 -- What the tab shows
 ---------------------------------------------------------------------------
 
--- A paragraph in short rows, grey unless said (the list's rows are one line each).
+-- A paragraph, grey unless said, wrapped to the page's width (line.wrap, Views.Render; 1.3.0: no
+-- longer cut at a count of letters).
 local function Para(lines, text, color)
 	color = color or Grey
-	local row = ""
-	for word in tostring(text or ""):gmatch("%S+") do
-		if row ~= "" and #row + 1 + #word > 58 then
-			lines[#lines + 1] = { text = color(row) }
-			row = word
-		else
-			row = row == "" and word or (row .. " " .. word)
-		end
-	end
-	if row ~= "" then lines[#lines + 1] = { text = color(row) } end
+	text = tostring(text or ""):gsub("%s+", " "):gsub("^ ", ""):gsub(" $", "")
+	if text ~= "" then lines[#lines + 1] = { text = color(text), wrap = true } end
 	return lines
 end
 

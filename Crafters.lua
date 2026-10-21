@@ -14,7 +14,7 @@ local L = ns.L
 -- crafter whispers him (the game's own whisper, the player types it); nothing is crafted, ordered,
 -- bought, sold or bid for anyone, and nothing touches the auction house.
 --   W1~<guild>~<key>:<profession>:<skill>:<max>:<recipes>,...   a crafter's listing (CHANNEL; at
---                                                   his yes and after a change, then every 45 min)
+--                                                   their yes and after a change, then every LIST_EVERY)
 --   W0~                                              he unlisted every profession (CHANNEL)
 --   WQ~<ask>~i~<item id> | WQ~<ask>~t~<words>        "who can make this?" (CHANNEL, on a click)
 --   WA~<ask>~<guild>~<profession>~<skill>~<recipe>:<item>,...   a listed crafter's answer:
@@ -31,14 +31,15 @@ local L = ns.L
 local Crafters = {}
 ns.Crafters = Crafters
 
-Crafters.LIST_EVERY = 45 * 60      -- a listing is repeated this often while the player plays...
-Crafters.LIST_KEEP = 100 * 60      -- ...and shows this long after it was last heard
+Crafters.LIST_EVERY = 15 * 60      -- a listing is repeated this often while the player plays (1.3.0: 15 min, was 45)
+Crafters.LIST_KEEP = 100 * 60      -- ...and shows this long after it was last heard (older clients repeat every 45 min)
 Crafters.LIST_GAP = 10 * 60        -- a listing whose skill or recipes changed this often at most (Crafters.SendListing)
 Crafters.BOARD_MAX = 400           -- crafters on the board
 Crafters.PROFS_MAX = 4             -- professions a listing carries
 Crafters.ASK_GAP = 15              -- our asks: one each 15 seconds...
 Crafters.ASKS_PER_10MIN = 12       -- ...and 12 each 10 minutes
 Crafters.ASK_WAIT = 120            -- answers to our ask are taken this long
+Crafters.LIST_WAIT = 300           -- 1.3.0: a recipe list's first part, this long after we asked (a busy sender's queue)
 Crafters.ANSWERS_MAX = 30          -- ...this many at most
 Crafters.MATCHES_MAX = 6           -- recipes an answer names
 Crafters.ANSWER_PER_MIN = 10       -- a crafter answers this many asks a minute at most...
@@ -76,6 +77,9 @@ local lastListing, lastListingText = -math.huge, nil
 local open = {}         -- [crafter] = true: shown opened on the page
 local mineOpen = false  -- 1.3.0: our own listing shown opened on the page
 local pendingRead       -- a profession read waiting for its data
+-- 1.3.0: what the recipe lists did this session, for /syl bug (a list that never comes, traced).
+local listStats = { asked = 0, askedOfUs = 0, refused = 0, sent = 0, stalled = 0, parts = 0, late = 0, busy = 0 }
+local opened             -- 1.3.0: the profession in the window now { key, name, rank, craft } (its button)
 local questioned = {}   -- [key] = true: asked this session (once, until answered: a closed window is no answer)
 
 local function Grey(s) return "|cff9d9d9d" .. s .. "|r" end
@@ -90,7 +94,10 @@ local function Num(s, max)
 	return n
 end
 
-local function Changed() ns.Fire("REALM_PAGE_CHANGED", "crafters") end
+local function Changed()
+	ns.Fire("REALM_PAGE_CHANGED", "crafters")
+	if Crafters.RefreshButton then ns.SafeCall("crafter window button", Crafters.RefreshButton) end
+end
 
 -- A name the moderators took off (net-off, Moderation.lua), in the name of `guild` when known.
 local function Off(name, guild)
@@ -118,8 +125,15 @@ local function Saved(field)
 	ns.db[field][me] = type(ns.db[field][me]) == "table" and ns.db[field][me] or {}
 	return ns.db[field][me]
 end
--- Our yes (true) or no (false) per profession key; nil: not asked yet.
+-- Our yes (true) or no (false) per profession key; nil: never chosen (1.3.0: listed, as a yes).
 function Crafters.Choices() return Saved("crafterChoice") end
+-- 1.3.0 (the user's call): listing is on by default; going private is one click (the notice at the
+-- first listing, the Go private button on our own row, the privacy page, /syl crafter off) and
+-- holds for every profession, those read later too. prefs = { private = true, told = true }.
+local function Prefs() return Saved("crafterPrefs") end
+function Crafters.Private() return Prefs().private == true end
+-- A profession of ours on the board: not private, and no "no" for it (never chosen counts as yes).
+function Crafters.IsListed(key) return not Crafters.Private() and Crafters.Choices()[key] ~= false end
 -- What we read of each profession: { key, name, rank, max, recipes = { { r, i, n } }, t }.
 function Crafters.Mine() return Saved("crafterData") end
 
@@ -217,16 +231,142 @@ end
 function Crafters.Opened(craft)
 	if not ns.IsMember() or (InCombatLockdown and InCombatLockdown()) then return end
 	local p = Crafters.Read(craft)
-	if not p then return end
+	if not p then
+		-- (Someone else's profession in the window, or nothing read: no button on it.)
+		if Crafters.HideButton then Crafters.HideButton() end
+		return
+	end
 	Crafters.Mine()[p.key] = p
-	local choice = Crafters.Choices()[p.key]
-	if choice == true then
+	opened = { key = p.key, name = p.name, rank = p.rank, craft = craft }
+	ns.SafeCall("crafter window button", Crafters.PlaceButton, craft)
+	-- 1.3.0: listed unless we went private or said no to this one; told once, with Go private on it.
+	if Crafters.IsListed(p.key) then
 		Crafters.SendListing()
-	elseif choice == nil and not questioned[p.key] then
-		questioned[p.key] = true
-		ns.ShowDialog("SYLVANISTAS_CRAFTER_LIST", p.name, nil, p.key)
+		local prefs = Prefs()
+		if not prefs.told then
+			prefs.told = true
+			ns.ShowDialog("SYLVANISTAS_CRAFTER_LISTED", ("%s %d"):format(p.name, p.rank or 0))
+		end
 	end
 	Changed()
+end
+
+---------------------------------------------------------------------------
+-- The button on the profession window (1.3.0, the user's call): Sylvanistas's round logo beside the
+-- window's X. Lit with a green check while this profession is on the Crafters board, greyed with a
+-- red cross while it isn't; one click either way, for this profession alone (Crafters.Choose).
+-- The game's window is only read and anchored to, never changed: the button is Sylvanistas's own,
+-- parented to it so it shows and hides with it. Forever's ProfessionsFrame, Classic's TradeSkillFrame,
+-- or Classic Era's CraftFrame (Enchanting).
+---------------------------------------------------------------------------
+
+local windowButton
+local windowName = "none" -- the window last found (/syl bug)
+-- A shown window whose name says it's a profession's (Forever may name its own otherwise): one of
+-- the UI's top frames, the first found.
+local function FoundWindow()
+	if type(EnumerateFrames) ~= "function" then return nil end
+	local f = EnumerateFrames()
+	while f do
+		local name = f.GetName and f:GetName()
+		if name and f:IsShown() and f:GetParent() == UIParent and (name:find("TradeSkill") or name:find("Profession") or name:find("Craft"))
+			and not name:find("^Sylvanistas") then
+			return f
+		end
+		f = EnumerateFrames(f)
+	end
+end
+-- For /syl bug: where the window is and whether it draws (left, top, width, height, its alpha as seen).
+local function Where(f)
+	if not f then return "" end
+	local l, b, w, h = f:GetRect()
+	local a = f.GetEffectiveAlpha and f:GetEffectiveAlpha() or f:GetAlpha()
+	return ("(at %s,%s %sx%s alpha %.2f, button %s)"):format(l and math.floor(l) or "?", (b and h) and math.floor(b + h) or "?",
+		w and math.floor(w) or "?", h and math.floor(h) or "?", a or -1,
+		windowButton and windowButton:IsShown() and ("shown at " .. tostring(windowButton:GetLeft() and math.floor(windowButton:GetLeft())) .. "," .. tostring(windowButton:GetTop() and math.floor(windowButton:GetTop()))
+			.. " " .. windowButton:GetFrameStrata() .. " (window " .. f:GetFrameStrata() .. " " .. tostring(f:GetFrameLevel()) .. ")") or "hidden")
+end
+local windowFrame
+local function ProfessionWindow(craft)
+	local names = craft and { "CraftFrame", "ProfessionsFrame", "TradeSkillFrame" } or { "ProfessionsFrame", "TradeSkillFrame", "CraftFrame" }
+	for _, n in ipairs(names) do
+		local f = _G[n]
+		if type(f) == "table" and f.IsShown and f:IsShown() then windowName, windowFrame = n, f return f end
+	end
+	local f = FoundWindow()
+	windowName, windowFrame = f and f:GetName() or "not found", f
+	return f
+end
+
+function Crafters.RefreshButton()
+	local b = windowButton
+	if not b or not opened then return end
+	local on = Crafters.IsListed(opened.key)
+	b.icon:SetDesaturated(not on)
+	b.mark:SetTexture(on and "Interface\\RaidFrame\\ReadyCheck-Ready" or "Interface\\RaidFrame\\ReadyCheck-NotReady")
+	if GameTooltip:IsOwned(b) and b:GetScript("OnEnter") then b:GetScript("OnEnter")(b) end
+end
+
+-- A profession window open now (the campfire log tells a kit crafted from a kit used).
+function Crafters.WindowShown() return windowButton ~= nil and windowButton:IsShown() end
+
+function Crafters.HideButton()
+	opened = nil
+	if windowButton then windowButton:Hide() end
+end
+
+function Crafters.PlaceButton(craft)
+	local win = ProfessionWindow(craft)
+	if not win then
+		ns.Log("crafters: no profession window found for the button")
+		return
+	end
+	if not windowButton then
+		local b = ns.MakeRoundButton("SylvanistasCrafterButton", win, 28)
+		b.mark = b:CreateTexture(nil, "OVERLAY", nil, 7)
+		b.mark:SetSize(12, 12)
+		b.mark:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", -1, 1)
+		b:SetScript("OnClick", function()
+			if not opened then return end
+			Prefs().told = true -- (the button says what it does: no notice after it)
+			ns.SafeCall("crafter window button", Crafters.Choose, opened.key, not Crafters.IsListed(opened.key))
+			Crafters.RefreshButton()
+		end)
+		b:SetScript("OnEnter", function(self)
+			if not opened then return end
+			local on = Crafters.IsListed(opened.key)
+			GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+			GameTooltip:AddLine(L.CRAFTER_BTN_TITLE, 1, 0.82, 0)
+			local what = ("%s %d"):format(opened.name or "?", opened.rank or 0)
+			GameTooltip:AddLine((on and L.CRAFTER_BTN_ON or (Crafters.Private() and L.CRAFTER_BTN_PRIVATE or L.CRAFTER_BTN_OFF)):format(what), 1, 1, 1, true)
+			GameTooltip:Show()
+		end)
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		b:SetScript("OnUpdate", function(self)
+			if not (self.window and self.window:IsShown()) then self:Hide() end
+		end)
+		windowButton = b
+	end
+	local b = windowButton
+	-- Its own frame on UIParent, pinned to the window's top right left of its X, hiding itself when
+	-- the window goes (its own OnUpdate looks: nothing of the game's window is hooked). Not a child of the
+	-- window: Forever's ProfessionsFrame draws nothing of a child past its edges (the button
+	-- was there, its tooltip showed, nothing drawn).
+	b:SetParent(UIParent)
+	-- One strata above the window's: its title bar art sits on frame levels far above its own (the
+	-- button was in place, at the right spot, under it: /syl bug, 2026-10-21).
+	local STRATA = { "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG", "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP" }
+	local above = "HIGH"
+	for i, name in ipairs(STRATA) do
+		if name == win:GetFrameStrata() then above = STRATA[math.min(i + 1, #STRATA - 1)] break end
+	end
+	b:SetFrameStrata(above)
+	b:SetFrameLevel(10)
+	b:ClearAllPoints()
+	b:SetPoint("TOPRIGHT", win, "TOPRIGHT", -30, 2)
+	b.window = win
+	b:Show()
+	Crafters.RefreshButton()
 end
 
 -- The player's answer for one profession (the dialog), or every one (/syl crafter on|off).
@@ -235,8 +375,11 @@ function Crafters.Choose(key, yes)
 	local was = #Crafters.Listed()
 	if key then
 		choices[key] = yes and true or false
+		if yes then Prefs().private = nil end
 	else
 		for k in pairs(Crafters.Mine()) do choices[k] = yes and true or false end
+		Prefs().private = not yes or nil
+		Prefs().told = true
 	end
 	local now = #Crafters.Listed()
 	local off = SelfOff()
@@ -255,6 +398,8 @@ function Crafters.Choose(key, yes)
 			Crafters.SendListing(true)
 		end
 		ns.Print(L.CRAFTER_UNLISTED)
+	elseif key == nil and not yes then
+		ns.Print(L.CRAFTER_YOU_PRIVATE) -- (private before anything was listed)
 	else
 		ns.Print(L.CRAFTER_NOT_LISTED)
 	end
@@ -265,7 +410,7 @@ end
 function Crafters.Listed()
 	local out = {}
 	for key, p in pairs(Crafters.Mine()) do
-		if Crafters.Choices()[key] == true and type(p) == "table" then out[#out + 1] = p end
+		if Crafters.IsListed(key) and type(p) == "table" then out[#out + 1] = p end
 	end
 	table.sort(out, function(a, b) return (a.key or "") < (b.key or "") end)
 	return out
@@ -411,7 +556,7 @@ local function Matches(kind, what)
 	local out = {}
 	local best
 	for key, p in pairs(Crafters.Mine()) do
-		if Crafters.Choices()[key] == true and type(p) == "table" then
+		if Crafters.IsListed(key) and type(p) == "table" then
 			local found = {}
 			for _, r in ipairs(p.recipes or {}) do
 				local hit
@@ -491,6 +636,8 @@ function Crafters.AskList(crafter, key)
 	if now - (asked[k] or -math.huge) < Crafters.LIST_SAME then return false end
 	asked[k] = now
 	lists[k] = { parts = {}, t = now }
+	listStats.asked = listStats.asked + 1
+	ns.Log("crafters: asked %s for their %s recipes", crafter, key)
 	ns.Comm.Whisper(crafter, "WR~" .. key, "crafterlistask " .. k)
 	Changed()
 	return true
@@ -507,7 +654,11 @@ local function PumpLists()
 	end
 	if ns.Comm.QueueSize and ns.Comm.QueueSize() > Crafters.LIST_QUEUE then
 		job.stalls = job.stalls + 1
-		if job.stalls * Crafters.LIST_PACE >= 60 then table.remove(listJobs, 1) end
+		if job.stalls * Crafters.LIST_PACE >= 180 then
+			table.remove(listJobs, 1)
+			listStats.stalled = listStats.stalled + 1
+			ns.Log("crafters: recipe list for %s dropped, our send queue stayed full", job.to)
+		end
 	else
 		job.i = job.i + 1
 		ns.Comm.Whisper(job.to, ("WL~%s~%d/%d~%s"):format(job.key, job.i, #job.parts, table.concat(job.parts[job.i], ",")), "crafterlist " .. job.to .. job.i)
@@ -524,7 +675,12 @@ function Crafters.HandleListAsk(dist, sender, text)
 	if dist ~= "WHISPER" or not ns.IsMember() or SelfOff() then return end
 	local key = text:match("^WR~([^~]+)$")
 	local p = key and Crafters.Mine()[key]
-	if not p or Crafters.Choices()[key] ~= true then return end
+	listStats.askedOfUs = listStats.askedOfUs + 1
+	if not p or not Crafters.IsListed(key) then
+		listStats.refused = listStats.refused + 1
+		ns.Log("crafters: %s asked for our %s recipes: %s", tostring(sender), tostring(key), p and "not listed" or "not read on this character")
+		return
+	end
 	sender = ns.FullName(sender)
 	local now = ns.Now()
 	if now - (listSent[sender] or -math.huge) < Crafters.LIST_SAME or Recent(listTimes, 60) >= Crafters.LISTS_PER_MIN then return end
@@ -552,6 +708,7 @@ function Crafters.HandleListAsk(dist, sender, text)
 	if #cur > 0 and #parts < Crafters.LIST_PARTS then parts[#parts + 1] = cur end
 	if #parts == 0 then return end
 	listJobs[#listJobs + 1] = { to = sender, key = key, parts = parts, i = 0, stalls = 0 }
+	listStats.sent = listStats.sent + 1
 	if not listPumping then
 		listPumping = true
 		PumpLists()
@@ -567,9 +724,13 @@ function Crafters.HandleList(dist, sender, text)
 	local l = key and lists[sender .. "~" .. key]
 	part, parts = Num(part, Crafters.LIST_PARTS), Num(parts, Crafters.LIST_PARTS)
 	local now = ns.Now()
-	-- (Paced: a part each LIST_PACE; taken while they keep coming, ASK_WAIT after the last.)
-	if not l or not part or not parts or now - (l.last or l.t) > Crafters.ASK_WAIT then return end
+	-- (Paced: a part each LIST_PACE; the first LIST_WAIT after we asked, the others ASK_WAIT after the last.)
+	if not l or not part or not parts or now - (l.last or l.t) > (l.last and Crafters.ASK_WAIT or Crafters.LIST_WAIT) then
+		listStats.late = listStats.late + 1
+		return
+	end
 	if part == 0 and parts == 0 and not l.n then
+		listStats.busy = listStats.busy + 1
 		-- He is busy sending other players' lists: asked again, on a click, BUSY_WAIT later.
 		l.busy = now
 		asked[sender .. "~" .. key] = now - Crafters.LIST_SAME + Crafters.BUSY_WAIT
@@ -577,6 +738,7 @@ function Crafters.HandleList(dist, sender, text)
 	end
 	if part < 1 or part > parts then return end
 	l.parts[part] = Recipes(list, Crafters.LIST_PER_MSG)
+	listStats.parts = listStats.parts + 1
 	l.n, l.last, l.busy = parts, now, nil
 	Changed()
 end
@@ -597,18 +759,16 @@ end
 -- The page (the Realm tab)
 ---------------------------------------------------------------------------
 
--- A whisper to a crafter, the player's own (the game's box; Sylvanistas's with the gamepad UI).
+-- A whisper to a crafter, the player's own, in Sylvanistas's whisper window (1.3.0: never the game's
+-- chat box, Board.Whisper says why).
 local function Whisper(name)
-	local tell = ns.TellName(name)
-	if ns.GamepadUI() then return ns.UI.WhisperWindow(tell) end
-	if ChatFrame_SendTell then ChatFrame_SendTell(tell) end
+	return ns.UI.WhisperWindow(ns.TellName(name))
 end
 Crafters.Whisper = Whisper
 
--- The ask's box: with mouse and keyboard the chat's, "/syl craft " in it, where a shift-click
--- puts an item's link; with the gamepad UI Sylvanistas's own window (words only there).
+-- The ask's box: Sylvanistas's own window, part of the item's name (1.3.0: never the game's chat box;
+-- /syl craft typed by the player there still takes a shift-clicked link).
 function Crafters.AskPrompt()
-	if not ns.GamepadUI() and ChatFrame_OpenChat then return ChatFrame_OpenChat("/syl craft ") end
 	ns.ShowDialog("SYLVANISTAS_CRAFT_ASK")
 end
 
@@ -643,13 +803,34 @@ function Crafters.Lines(q)
 		lines[#lines + 1] = { text = Green(L.CRAFTER_ASK), onClick = function() Crafters.AskPrompt() end,
 			tooltip = function(tt) tt:AddLine(L.CRAFTER_ASK, 1, 0.82, 0); tt:AddLine(L.CRAFTER_ASK_TIP, 1, 1, 1, true) end }
 		-- Our own listing, and how to change it.
-		-- 1.3.0: a click opens it (each profession, its skill, its recipes, when it was read); taking
-		-- it off the board is a line of its own there, behind typing REMOVE (Crafters.AskUnlist).
+		-- 1.3.0: a click opens it (each profession, its skill, its recipes, when it was read); Go private
+		-- on the row, behind typing PRIVACY (Crafters.AskUnlist). Private: the way back, one click.
 		local listed = Crafters.Listed()
-		if #listed > 0 then
+		if Crafters.Private() then
+			lines[#lines + 1] = { text = Grey(L.CRAFTER_YOU_PRIVATE),
+				actions = { { text = L.CRAFTER_LIST_ME, tooltip = L.CRAFTER_LIST_ME_TIP, onClick = function()
+					if next(Crafters.Mine()) == nil then
+						Prefs().private = nil
+						ns.Print(L.CRAFTER_HOW_LIST)
+					else
+						Crafters.Choose(nil, true)
+					end
+				end } } }
+		elseif #listed > 0 then
 			local names = {}
 			for _, p in ipairs(listed) do names[#names + 1] = ("%s %d"):format(p.name, p.rank or 0) end
-			lines[#lines + 1] = { text = (mineOpen and "[-] " or "[+] ") .. Grey(L.CRAFTER_YOU:format(table.concat(names, ", "))),
+			-- 1.3.0: read but turned off (an earlier no, or the profession window's button), each with
+			-- its own List when opened.
+			local off = {}
+			for key, p in pairs(Crafters.Mine()) do
+				if type(p) == "table" and not Crafters.IsListed(key) then off[#off + 1] = p end
+			end
+			table.sort(off, function(a, b) return (a.name or "") < (b.name or "") end)
+			local offNames = {}
+			for _, p in ipairs(off) do offNames[#offNames + 1] = p.name end
+			lines[#lines + 1] = { text = (mineOpen and "[-] " or "[+] ") .. Grey(L.CRAFTER_YOU:format(table.concat(names, ", "))
+				.. (#off > 0 and ("  ·  " .. L.CRAFTER_YOU_OFF:format(table.concat(offNames, ", "))) or "")),
+				actions = { { text = L.CRAFTER_GO_PRIVATE, tooltip = L.CRAFTER_UNLIST_TIP, onClick = function() Crafters.AskUnlist() end } },
 				onClick = function()
 					mineOpen = not mineOpen
 					if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
@@ -668,10 +849,20 @@ function Crafters.Lines(q)
 					if #items > 0 then lines[#lines + 1] = { indent = 2, items = items } end
 					if others > 0 then lines[#lines + 1] = { indent = 2, text = Grey(L.CRAFTER_OTHERS:format(others)) } end
 				end
-				lines[#lines + 1] = { indent = 1, text = "|cffff6060" .. L.CRAFTER_UNLIST .. "|r",
-					onClick = function() Crafters.AskUnlist() end,
-					tooltip = function(tt) tt:AddLine(L.CRAFTER_UNLIST, 1, 0.82, 0); tt:AddLine(L.CRAFTER_UNLIST_TIP, 1, 1, 1, true) end }
+				for _, p in ipairs(off) do
+					local key = p.key
+					lines[#lines + 1] = { indent = 1, text = Grey(p.name .. "  " .. L.CRAFTER_OFF_MARK),
+						right = Grey(L.CRAFTER_SKILL:format(p.rank or 0, p.max or 0, type(p.recipes) == "table" and #p.recipes or 0)),
+						actions = { { text = L.CRAFTER_LIST_ONE, tooltip = L.CRAFTER_LIST_ONE_TIP:format(p.name), onClick = function() Crafters.Choose(key, true) end } } }
+				end
 			end
+		elseif next(Crafters.Mine()) ~= nil then
+			-- (Read, but each one turned down: an earlier no, kept. One click lists them all.)
+			local names = {}
+			for _, p in pairs(Crafters.Mine()) do if type(p) == "table" and p.name then names[#names + 1] = p.name end end
+			table.sort(names)
+			lines[#lines + 1] = { text = Grey(L.CRAFTER_YOU_NOT_LISTED:format(table.concat(names, ", "))),
+				actions = { { text = L.CRAFTER_LIST_ME, tooltip = L.CRAFTER_LIST_ME_TIP, onClick = function() Crafters.Choose(nil, true) end } } }
 		else
 			lines[#lines + 1] = { text = Grey(L.CRAFTER_HOW_LIST) }
 		end
@@ -763,7 +954,20 @@ function Crafters.Lines(q)
 					local got = 0
 					for part = 1, l.n or 0 do if l.parts[part] then got = got + 1 end end
 					if #recipes == 0 or got < (l.n or 1) then
-						lines[#lines + 1] = { indent = 2, text = Grey(ns.Now() - (l.last or l.t) < Crafters.ASK_WAIT and L.CRAFTER_WAITING or L.CRAFTER_LIST_PART:format(got, l.n or 0)) }
+						local waiting = ns.Now() - (l.last or l.t) < (l.last and Crafters.ASK_WAIT or Crafters.LIST_WAIT)
+						if waiting then
+							lines[#lines + 1] = { indent = 2, text = Grey(L.CRAFTER_WAITING) }
+						elseif not l.n then
+							-- 1.3.0: nothing came back (offline, out of reach, or busy): said, and a click asks again.
+							lines[#lines + 1] = { indent = 2, text = Grey(L.CRAFTER_NO_ANSWER),
+								onClick = function()
+									asked[c.name .. "~" .. p.key] = nil
+									Crafters.AskList(c.name, p.key)
+								end,
+								tooltip = function(tt) tt:AddLine(L.CRAFTER_SHOW_RECIPES, 1, 0.82, 0); tt:AddLine(L.CRAFTER_NO_ANSWER_TIP, 1, 1, 1, true) end }
+						else
+							lines[#lines + 1] = { indent = 2, text = Grey(L.CRAFTER_LIST_PART:format(got, l.n)) }
+						end
 					end
 					if others > 0 then lines[#lines + 1] = { indent = 2, text = Grey(L.CRAFTER_OTHERS:format(others)) } end
 				end
@@ -774,23 +978,28 @@ function Crafters.Lines(q)
 	return lines
 end
 
--- 1.3.0: taking our listing off the board, only once the word is typed (L.CRAFTER_REMOVE_WORD,
--- any case): a stray click on the page no longer does it.
-local function RemoveTyped(text)
-	return tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""):upper() == L.CRAFTER_REMOVE_WORD:upper()
+-- Going private (1.3.0, the user's call): a click on Go private, then the word typed
+-- (L.CRAFTER_PRIVATE_WORD, PRIVACY, any case), so a stray click never does it. /syl crafter off and
+-- the privacy page's switch, typed or picked on purpose, need no word.
+local function WordTyped(text)
+	return tostring(text or ""):gsub("^%s+", ""):gsub("%s+$", ""):upper() == L.CRAFTER_PRIVATE_WORD:upper()
 end
 function Crafters.AskUnlist()
-	if #Crafters.Listed() == 0 then return end
-	ns.ShowDialog("SYLVANISTAS_CRAFTER_REMOVE", L.CRAFTER_REMOVE_WORD)
+	ns.ShowDialog("SYLVANISTAS_CRAFTER_REMOVE", L.CRAFTER_PRIVATE_WORD)
+end
+function Crafters.GoPrivate()
+	mineOpen = false
+	Crafters.Choose(nil, false)
+	if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
 end
 -- (The game's popup greys its button until the word is typed; Sylvanistas's own window, Dialog.lua,
 -- can't: there a wrong word keeps the dialog up, with a line that says why.)
-local function RemoveButton(popup)
+local function PrivateButton(popup)
 	return popup and (popup.button1 or (popup.GetButton and popup:GetButton(1)))
 end
 StaticPopupDialogs["SYLVANISTAS_CRAFTER_REMOVE"] = {
-	text = L.CRAFTER_REMOVE_PROMPT,
-	button1 = L.CRAFTER_UNLIST,
+	text = L.CRAFTER_PRIVATE_ASK,
+	button1 = L.CRAFTER_GO_PRIVATE,
 	button2 = CANCEL or "Cancel",
 	hasEditBox = true,
 	editBoxWidth = 160,
@@ -798,30 +1007,25 @@ StaticPopupDialogs["SYLVANISTAS_CRAFTER_REMOVE"] = {
 	OnShow = function(self)
 		local eb = self.editBox or self.EditBox
 		if eb then eb:SetText(""); eb:SetFocus() end
-		local b = RemoveButton(self)
+		local b = PrivateButton(self)
 		if b then b:Disable() end
 	end,
 	EditBoxOnTextChanged = function(self)
-		local b = RemoveButton(self:GetParent())
-		if b then b:SetEnabled(RemoveTyped(self:GetText())) end
+		local b = PrivateButton(self:GetParent())
+		if b then b:SetEnabled(WordTyped(self:GetText())) end
 	end,
 	OnAccept = function(self)
 		local eb = self.editBox or self.EditBox
-		if not RemoveTyped(eb and eb:GetText()) then
-			ns.Print(L.TYPE_WORD_FIRST:format(L.CRAFTER_REMOVE_WORD))
+		if not WordTyped(eb and eb:GetText()) then
+			ns.Print(L.TYPE_WORD_FIRST:format(L.CRAFTER_PRIVATE_WORD))
 			return true
 		end
-		mineOpen = false
-		ns.SafeCall("crafter remove", Crafters.Choose, nil, false)
-		if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+		ns.SafeCall("crafter private", Crafters.GoPrivate)
 	end,
 	EditBoxOnEnterPressed = function(self)
-		local parent = self:GetParent()
-		if not RemoveTyped(self:GetText()) then return ns.Print(L.TYPE_WORD_FIRST:format(L.CRAFTER_REMOVE_WORD)) end
-		parent:Hide()
-		mineOpen = false
-		ns.SafeCall("crafter remove", Crafters.Choose, nil, false)
-		if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+		if not WordTyped(self:GetText()) then return ns.Print(L.TYPE_WORD_FIRST:format(L.CRAFTER_PRIVATE_WORD)) end
+		self:GetParent():Hide()
+		ns.SafeCall("crafter private", Crafters.GoPrivate)
 	end,
 	EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
 	timeout = 0,
@@ -829,22 +1033,21 @@ StaticPopupDialogs["SYLVANISTAS_CRAFTER_REMOVE"] = {
 	hideOnEscape = true,
 	preferredIndex = 3,
 }
-
--- The dialogs: the question when a profession opens (data: its key), the ask's box (gamepad UI).
-StaticPopupDialogs["SYLVANISTAS_CRAFTER_LIST"] = {
-	text = L.CRAFTER_LIST_ASK,
-	button1 = L.CRAFTER_LIST_YES,
-	button2 = L.CRAFTER_LIST_NO,
-	OnAccept = function(self, key) ns.SafeCall("crafter yes", Crafters.Choose, key or (self and self.data), true) end,
-	OnCancel = function(self, key, reason)
-		if reason == "clicked" then ns.SafeCall("crafter no", Crafters.Choose, key or (self and self.data), false) end
+-- The notice at our first listing: listed already; Go private undoes it at once.
+StaticPopupDialogs["SYLVANISTAS_CRAFTER_LISTED"] = {
+	text = L.CRAFTER_LISTED_NOTICE,
+	button1 = L.CRAFTER_KEEP_LISTED,
+	button2 = L.CRAFTER_GO_PRIVATE,
+	OnCancel = function(_, _, reason)
+		if reason == "clicked" then ns.SafeCall("crafter private", Crafters.AskUnlist) end
 	end,
-	noCancelOnEscape = true, -- (Escape closes it unanswered: asked again next session)
 	timeout = 0,
 	whileDead = true,
 	hideOnEscape = true,
 	preferredIndex = 3,
 }
+
+-- The ask's box (gamepad UI).
 StaticPopupDialogs["SYLVANISTAS_CRAFT_ASK"] = {
 	text = L.CRAFTER_ASK_PROMPT,
 	button1 = L.CRAFTER_ASK_BTN,
@@ -913,7 +1116,38 @@ local function Soon(craft)
 	end)
 end
 local shown = {}
+-- 1.3.0: the board kept for a /reload or the next login (per realm group, SavedVariables): a
+-- listing is repeated only every LIST_EVERY, so a client that forgot it at each /reload showed an
+-- empty board until the next repeat. Kept as heard, until LIST_KEEP after it was last heard; only
+-- what HandleListing would take comes back.
+function Crafters.Restore(now)
+	if not ns.rdb then return end
+	now = now or ns.Now()
+	local saved = ns.rdb.crafterBoard
+	if type(saved) == "table" and saved ~= board then
+		for name, e in pairs(saved) do
+			local fine = type(name) == "string" and not name:find("[|%c]") and type(e) == "table" and type(e.guild) == "string"
+				and not e.guild:find("[|%c]") and tonumber(e.t) and now - e.t <= Crafters.LIST_KEEP and type(e.profs) == "table"
+			if fine and not board[name] and boardCount < Crafters.BOARD_MAX then
+				local profs = {}
+				for _, p in ipairs(e.profs) do
+					if type(p) == "table" and type(p.key) == "string" and type(p.name) == "string" and #profs < Crafters.PROFS_MAX
+						and not (p.key .. p.name):find("[|%c]") then
+						profs[#profs + 1] = { key = p.key, name = p.name, rank = Num(p.rank, 9999) or 0, max = Num(p.max, 9999) or 0, n = Num(p.n, 9999) or 0 }
+					end
+				end
+				if #profs > 0 then
+					board[name] = { guild = e.guild, profs = profs, t = e.t }
+					boardCount = boardCount + 1
+				end
+			end
+		end
+	end
+	ns.rdb.crafterBoard = board -- (the same table: what is heard from now on is kept with it)
+end
+
 function Crafters.OnLogin()
+	Crafters.Restore()
 	for _, ev in ipairs({ "TRADE_SKILL_SHOW", "CRAFT_SHOW" }) do
 		pcall(ns.RegisterEvent, ev, function()
 			shown[ev] = true
@@ -945,4 +1179,25 @@ function Crafters.Reset()
 	wipe(askTimes); wipe(answered); wipe(answerTimes); wipe(listSent); wipe(listTimes); wipe(lists); wipe(asked); wipe(open); wipe(questioned)
 	lastListing, lastListingText, lastListingKeys, changedWaiting, loginWait = -math.huge, nil, nil, false, false
 	wipe(listJobs); wipe(busyTimes); listPumping = false
+end
+
+-- 1.3.0: the privacy page's line (/syl privacy): listed by default, private with one switch.
+-- (At login: Consent.lua loads after this file.)
+ns.On("LOGIN", function()
+	if not (ns.Consent and not ns.Consent.missing and ns.Consent.Register) then return end
+	ns.Consent.Register({ key = "crafters", label = "CRAFTER_CONSENT", text = "CRAFTER_CONSENT_TEXT",
+		shown = function() return ns.IsMember() end,
+		get = function() return not Crafters.Private() end,
+		set = function(on)
+			if on and next(Crafters.Mine()) == nil then Prefs().private = nil; Prefs().told = true; return end
+			Crafters.Choose(nil, on and true or false)
+		end })
+end)
+
+-- /syl bug: the board, our listing, and the recipe lists asked and answered this session.
+function Crafters.StatusLine()
+	local st = listStats
+	return ("window %s  |  board %d  |  listed %d%s  |  lists: asked %d, parts in %d, late %d, busy %d  |  asked of us %d, refused %d, sent %d, stalled %d  |  queue %d"):format(
+		windowName .. " " .. Where(windowFrame), boardCount, #Crafters.Listed(), Crafters.Private() and " (private)" or "", st.asked, st.parts, st.late, st.busy,
+		st.askedOfUs, st.refused, st.sent, st.stalled, #listJobs)
 end

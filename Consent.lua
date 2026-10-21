@@ -8,10 +8,10 @@ local L = ns.L
 -- this page instead of their popups (Layers.AskChoice, Treasury.AskConsent); their popups stay
 -- for a client without this file (updated without a restart) and a keeper outside a guild.
 -- It has a Yes and a No for each thing the addon would otherwise share or show on its own: the
--- zone and layer, layer help, a treasury keeper's book (keepers only), the Royal Inspection, the
+-- zone and layer, layer help, a treasury keeper's book (keepers only), the
 -- author's roll call, the Sylvanistas chats and an officer's patrol findings (officers only). Each
 -- stays off until its Yes: nil, never answered, is off (Layers.Sharing, Hop.Helps,
--- Treasury.Consent, King's OnInspect, Workshop.Answers, Channels.ChatOn, Inspect.Sharing).
+-- Treasury.Consent, Workshop.Answers, Channels.ChatOn).
 -- The page also says what always goes out while the player is in a Sylvanistas
 -- guild (the census the elected member sends, names included, and the hello), so it never
 -- promises that nothing does. The window works whatever the answers: the census, the Realm and
@@ -364,14 +364,6 @@ Consent.Register({
 	end,
 })
 Consent.Register({
-	key = "inspection", label = "CONSENT_INSPECTION", text = "CONSENT_INSPECTION_TEXT",
-	get = function() return ns.db.royalInspection end,
-	set = function(on)
-		ns.db.royalInspection = on
-		ns.Print(on and L.INSPECTION_OPT_ON or L.INSPECTION_OPT_OFF)
-	end,
-})
-Consent.Register({
 	key = "rollcall", label = "CONSENT_ROLLCALL", text = "CONSENT_ROLLCALL_TEXT",
 	get = function() return ns.db.rollCall end,
 	set = function(on) ns.Workshop.SetAnswers(on) end,
@@ -380,15 +372,6 @@ Consent.Register({
 	key = "chat", label = "CONSENT_CHAT", text = "CONSENT_CHAT_TEXT",
 	get = function() return ns.db.addonChat ~= false end, -- (1.3.0: on unless a No: never waits for an answer)
 	set = function(on) ns.Channels.SetChatOn(on) end,
-})
--- An officer's patrol findings to his guild's officers (Inspect.lua, request #29): officers alone
--- send and keep them, so only they are asked (review of 1.1: it was on by default and
--- missing from this page).
-Consent.Register({
-	key = "patrolshare", label = "CONSENT_PATROLSHARE", text = "CONSENT_PATROLSHARE_TEXT",
-	shown = function() return ns.IsMember() == true and ns.Roster.IsOfficer() == true end,
-	get = function() return ns.db.patrolShare end,
-	set = function(on) ns.Inspect.SetSharing(on) end,
 })
 
 -- The first question after login: the page, once the login settled, then on the minute until it

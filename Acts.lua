@@ -6,11 +6,10 @@ local L = ns.L
 --     Captains, on parchment. Each one can acknowledge it; the King sees how many did.
 --   Open the Gates (Realm tab, Recruiting): the guild the army should send new recruits to,
 --     for two hours. The King or a Hand opens them.
---   Royal Pardon (Tabards tab, Wall of Shame): a name off the wall, for everyone, for a week.
+--   (1.3.0: the Royal Pardon went with the Wall of Shame, the user's call.)
 --   T1~W~<id>~<guild>~<L|C>~<text>               a writ (the King's)
 --   T6~<id>~<guild>                               acknowledged (whisper to the King)
 --   T1~G~<id>~<guild>~<seconds left>~<guild to join>   gates open (empty guild: closed)
---   T1~F~<id>~<guild>~<name>                      pardon (the King's)
 
 local Acts = {}
 ns.Acts = Acts
@@ -21,8 +20,6 @@ Acts.WRIT_MAX = 200         -- letters
 Acts.WRITS_KEPT = 20
 Acts.GATES_TIME = 2 * 3600  -- gates stay open this long
 Acts.GATES_RESEND = 600
-Acts.PARDON_DAYS = 7
-Acts.PARDON_RESEND = 600    -- the King's client repeats the week's pardons for late logins
 Acts.NEWS_GAP = 60          -- gates news in chat once a minute at most
 Acts.MAX_ACKS = 300
 
@@ -434,99 +431,6 @@ function Acts.GatesClick(guild)
 	ns.ShowDialog("SYLVANISTAS_GATES", guild, nil, guild)
 end
 
----------------------------------------------------------------------------
--- Royal Pardon
----------------------------------------------------------------------------
-
-local function Pardons()
-	local p = Store("pardons")
-	local now = ns.Now()
-	for name, t in pairs(p) do
-		if now - t > Acts.PARDON_DAYS * 86400 then p[name] = nil end
-	end
-	return p
-end
-
-function Acts.Pardoned(name)
-	return name ~= nil and Pardons()[ns.ShortName(name):lower()] ~= nil
-end
-
-local function Apply(name)
-	local short = ns.ShortName(name)
-	Pardons()[short:lower()] = ns.Now()
-	local shame = ns.Inspect.Shame()
-	if shame and shame.list then
-		for i = #shame.list, 1, -1 do
-			if ns.ShortName(shame.list[i].name):lower() == short:lower() then table.remove(shame.list, i) end
-		end
-	end
-	ns.Fire("INSPECT_CHANGED")
-end
-
--- The King's pardons of the week, in one message (as many names as fit): sent at once, then
--- repeated for whoever logs in later.
-local function SendPardons()
-	local given = ns.rdb.pardonsGiven
-	if not given or not ns.King.IsKing() then return end
-	local now, names, len = ns.Now(), {}, 0
-	for name, t in pairs(given) do
-		if now - t > Acts.PARDON_DAYS * 86400 then
-			given[name] = nil
-		elseif len + #name + 1 <= 200 then
-			names[#names + 1] = name
-			len = len + #name + 1
-		end
-	end
-	if #names == 0 then return end
-	table.sort(names)
-	ns.Comm.Send("CHANNEL", ("T1~F~%d~%s~%s"):format(ns.King.NewId(), GetGuildInfo("player") or "", table.concat(names, ",")), "pardons")
-end
-
-function Acts.Pardon(name)
-	local preview = ns.King.Preview()
-	if not ns.King.IsKing() and not preview then return ns.Print(L.THRONE_ONLY_KING) end
-	local short = ns.King.CleanName(name)
-	if not short then return ns.Print(L.PARDON_BAD_NAME) end
-	if not preview then
-		ns.rdb.pardonsGiven = ns.rdb.pardonsGiven or {}
-		ns.rdb.pardonsGiven[short] = ns.Now()
-		SendPardons()
-		-- 1.1 (#12): our own act never comes back to us: in our log as we send it.
-		ns.Chronicle.Add("pardon", ns.me, L.ACTS_PARDON:format(short))
-	else
-		ns.Print(L.THRONE_PREVIEW_NOTE)
-	end
-	Apply(short)
-	ns.Print(L.PARDON_DONE:format(short))
-end
-
-local function OnPardon(sender, id, rest)
-	local n = 0
-	for name in tostring(rest or ""):gmatch("[^,]+") do
-		local short = ns.King.CleanName(name)
-		n = n + 1
-		if n > 30 then break end
-		if short and not Acts.Pardoned(short) then
-			Apply(short)
-			-- 1.1 (#12): in this client's log of acts, with the name the server stamped.
-			ns.Chronicle.Add("pardon", sender, L.ACTS_PARDON:format(short))
-			ns.Print("|cffffd200" .. L.PARDON_NEWS:format(ns.KingName(sender), short) .. "|r")
-		end
-	end
-end
-ns.King.Register("F", OnPardon)
-
-StaticPopupDialogs["SYLVANISTAS_PARDON"] = {
-	text = L.PARDON_CONFIRM,
-	button1 = YES or "Yes",
-	button2 = NO or "No",
-	OnAccept = function(self, data) ns.SafeCall("pardon", Acts.Pardon, data or (self and self.data)) end,
-	timeout = 0,
-	whileDead = true,
-	hideOnEscape = true,
-	preferredIndex = 3,
-}
-
 ns.On("LOGIN", function()
 	-- Our own gates from before a /reload, while they last.
 	local kept = ns.rdb and ns.rdb.gates
@@ -535,7 +439,6 @@ ns.On("LOGIN", function()
 	elseif ns.rdb then
 		ns.rdb.gates = nil
 	end
-	local lastPardons = ns.Now()
 	ns.Every(60, "gates", function()
 		local g = gates
 		if g and ns.Now() > g.at then
@@ -545,10 +448,6 @@ ns.On("LOGIN", function()
 		end
 		-- Only while we may still command (a Hand no longer named stops repeating them).
 		if g and g.mine and ns.King.CanCommand() and ns.Now() - (g.sentAt or 0) >= Acts.GATES_RESEND then SendGates() end
-		if ns.Now() - lastPardons >= Acts.PARDON_RESEND then
-			lastPardons = ns.Now()
-			SendPardons()
-		end
 	end)
 end)
 
