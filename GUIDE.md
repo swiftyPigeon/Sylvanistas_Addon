@@ -1,6 +1,32 @@
 # Sylvanistas: how to use it, from the Dark Lady to the Forsaken
 
-Start with **Part 1** whatever your rank, then read your own part.
+## Start here (five minutes)
+
+1. **Install** from the CurseForge app (search *Sylvanistas*), then **restart the game**.
+2. **Log in** on your Horde character in <Sylvanistas> or <Sylvanistas Underground>.
+3. **Say Yes** on the privacy page that opens, at least to *Share my zone and layer* and *Layer help*.
+4. **Open the window:** `/syl`, the minimap button, or **Shift-J**.
+
+Then try these:
+
+| Try this | How |
+|---|---|
+| **Talk to the whole guild network** | `/sy hello!`, or `/sy` alone for the Chat tab |
+| **Jump to the Dark Lady's layer** | go to their zone, then the swirling portal on the **Shadows** tab (`/syl hop`) |
+| **Get a party going** | **Screams** tab → **Gather Party**, or **Party Scream** so solo guildmates get a Join button |
+| **Find a group** | **Shadows** → **Board** → **Raise a flag** (dungeon, raid or layer) |
+| **Share your camp** | light a campfire and click **Share camp**: a campfire shows on every guildmate's map |
+| **Find a crafter** | **Shadows** → **Crafters** → **Ask who can make an item…** (you're listed yourself when you open a profession) |
+| **Help a lowbie** | **Regalia** → **Fellow Forsaken**: guildmates below your level in your zone |
+| **Call a rare** | target a rare enemy, then **Screams** → **Revenant Call** |
+| **See your week** | **Shadows** → **Your week** |
+
+Stuck? `/syl help` lists every command, `/sy help` the chat ones, and `/syl bug` makes a report to send.
+That's all you need. The rest of this guide is reference: read it when you want to know more.
+
+---
+
+Read **Part 1** whatever your rank, then your own part.
 
 | Your place in <Sylvanistas> | Read |
 |---|---|
@@ -31,20 +57,19 @@ Start with **Part 1** whatever your rank, then read your own part.
    Each line stays **off until you say Yes**. For layer hop, say **Yes** to:
    - **Share my zone and layer**
    - **Layer help** (lets others ask you for an invite to your layer)
-   - **Chats**, if you want the guild chats
-   - **Party invites** is already on; **Auto-join parties** if you'd like to join without the popup
+   - **Chats**, **Party invites** and your **Crafters** listing are already on; **Auto-join parties** if you'd like to join without the popup
 4. **Open the window:** type `/syl`, click the minimap button, or press **Shift-J** (Shift + your guild
    key; pick your own in the game's Key Bindings, under AddOns).
 5. **Check it works:** `/syl status`. You should see your guild, the channel, and your layer
    once you have looked at an NPC.
 6. **Check your version:** the first line of `/syl status` (or the AddOns list on the character
-   screen) should say **1.2.21** or newer. Party invites need 1.2.0 or newer on **every** player involved.
+   screen) should say **1.3.0** or newer. The newest features (race portraits, camps on the map) need 1.3.0 on both ends.
    From 1.2.2, when two or more guildmates run a newer version than you, one line in chat says so:
    *"Sylvanistas is on version X (you are on Y). Please update on CurseForge."*
    After each update a short **"What's new"** letter shows once, a few seconds after login;
    `/syl letters` (or `/syl whatsnew`) opens it again any time.
 
-> **The beta forgets addon settings at login.** If the privacy page comes back, answer it again.
+> **If the privacy page comes back after a login**, answer it again (early beta builds forgot add-on settings).
 > `/syl backup` copies your settings as text; `/syl restore` pastes them back.
 
 ---
@@ -72,7 +97,7 @@ three party buttons sit on the **Screams** tab, next to Revenant Call and Gather
 |---|---|
 | Stop (or allow) guildmates inviting you when you're solo | Screams → cog → **Party invites from guildmates**, or `/syl party off` / `on` |
 | Join those invites without the popup | Screams → cog → **Auto-join those invites**, or `/syl partyauto on` |
-| Gather a party (up to 5) of solo guildmates in your zone | **Screams** → **Gather a party**, or `/syl party gather` |
+| Gather a party (up to 5) of solo guildmates in your zone | **Screams** → **Gather Party**, or `/syl party gather` |
 | Tell solo guildmates here you're forming a party | **Screams** → **Party Scream**, or `/syl party scream <note>`. They get a small window with a **Join** button. |
 
 - **You see what happens.** Each click shows a small silver window (and a chat line): who is being
@@ -114,14 +139,15 @@ come in your tabard.
 | Type | To |
 |---|---|
 | `/sy <text>` | every Sylvanistas member with the addon |
-| `/sy` alone | opens the **Chat** tab |
+| `/sy` alone | opens or closes the **Chat** tab (`/sy open`, `/sy close`: just that; `/sy help`: the chat commands) |
 | Click **[Sylvanistas]**, **[Dark Rangers]** or **[Darkcallers]** before a line | opens the Sylvanistas window's Chat tab on that channel (only channels you may write in) |
 | `/syl mute sylvanistas` | hides that channel from your chat window |
 
-These chats are **not private**: never type passwords or secrets there.
+These chats are **not private**: never type passwords or secrets there. Whispers you start from the add-on
+(a crafter, a Board card) open its own small window; the game shows them where it puts whispers.
 
 The **Chat** tab reads like a messenger: your lines on the right in the channel's colour, everyone
-else's on the left with their class icon and name, the time inside each bubble, **Today** /
+else's on the left with their race portrait (a class badge in its corner) and name, the time inside each bubble, **Today** /
 **Yesterday** between days, and a red **New messages** line over what came since you last looked.
 Type in the box at the bottom and press **Enter** or **Send**. Scrolled up while lines arrive? The
 **"N new"** button takes you back down.
@@ -163,11 +189,12 @@ All current Screams are on the **Screams** tab (`/syl screams`).
 ### Groups, crafting and more
 | Want to… | Do |
 |---|---|
-| Find a group | `/syl lfg dungeon` (or `raid`, `layer`) raises your flag on the **Board**; `/syl lfg off` lowers it |
+| Find a group | **Shadows** → **Board** → **Raise a flag**: pick a dungeon, a raid or a layer (PvP on PvP realms), add a note. **Lower my flag** takes it down. Or `/syl lfg dungeon` / `/syl lfg off` |
+| Share a camp | light a campfire and click **Share camp**, or **Board** → **Drop a camp**. A campfire shows where you stand on every guildmate's world map and minimap. **Take down my camp** removes it; `/syl camps ask off` stops the question |
 | See the guild's week | `/syl week` (events, and signups for them); **The week** on the Board has the numbers |
 | Your week at a glance | `/syl brief`: **Your week, in five lines** (next event, what's open, guildmates online, a sister guild on your layer, whether you're up to date) |
-| Find a crafter | `/syl craft <item>` |
-| List your professions | open a profession, then `/syl crafter on` |
+| Find a crafter | **Shadows** → **Crafters** → **Ask who can make an item…**, or `/syl craft <item>`; click a crafter to whisper them or see their recipes |
+| List your professions | just open a profession: it's listed. The Sylvanistas icon on the profession window (top right) lists or unlists that one; **Go private** on the Crafters page (type PRIVACY) takes you off |
 | Link your alts | a character in **Sylvanistas Underground** is asked once, at login, to link with your Sylvanistas character (one click). Otherwise `/syl alt add <name>` on your main, then log the alt and confirm. Linked alts show "Ana's alt" in the lists |
 | See Raid Loot (raid decisions and points) | `/syl loot` |
 | Ask the moderators for help | `/syl helpme <question>` |
@@ -183,7 +210,8 @@ All current Screams are on the **Screams** tab (`/syl screams`).
 
 ### Something's wrong?
 1. `/syl status` shows what the addon sees.
-2. `/syl bug` gives a report to copy. Paste it to the addon keeper, or in a comment on the CurseForge page.
+2. `/syl bug` opens a report you can copy. Paste it to the addon keeper, or in a comment on the CurseForge page.
+   Its **Clear report** button (type CLEAR) empties it, so the next report shows only what happens after.
    Neither shows the guild's channel key.
 
 | You see | It means |
@@ -325,7 +353,7 @@ that player alone. Only the keeper, the Dark Lady and the moderators can ask.
 ## Quick reference
 | Command | Who | What |
 |---|---|---|
-| `/syl` | all | open the window |
+| `/syl` | all | open or close the window (`/syl open`, `/syl close`) |
 | `/syl status` | all | what the addon sees |
 | `/syl privacy` | all | sharing switches |
 | `/syl hop` | all | ask for an invite to the Dark Lady's layer |
@@ -335,6 +363,8 @@ that player alone. Only the keeper, the Dark Lady and the moderators can ask.
 | `/syl screams` | all | the Screams tab |
 | `/syl voice on/off` | all | polls in a window, or in chat only |
 | `/syl lfg …`, `/syl week` | all | the Board, the week |
+| `/syl camp [note]` / `off` | all | drop your camp / take it down |
+| `/syl craft <item>` | all | who can make it |
 | `/syl inspect` | all | the Regalia tab |
 | `/syl party on/off` | all | take party invites when solo, or not |
 | `/syl partyauto on/off` | all | join those invites without the popup |
@@ -347,9 +377,9 @@ that player alone. Only the keeper, the Dark Lady and the moderators can ask.
 | `/syl pin <text>` | Dark Lady, Deathstalkers | pin a line for 2 hours |
 | `/syl netoff <name>: <reason>` | Dark Lady, Dreadguards, Deathstalkers | hide a player from all addon screens |
 | `/syl released` | addon keeper | mark the version CurseForge approved |
-| `/syl bug` | all | copy a bug report |
+| `/syl bug` | all | a bug report to copy |
 | `/syl letters` (or `/syl whatsnew`) | all | what's new in each version |
 | `/syl brief` | all | your week, in five lines (the Board has the week's numbers) |
 | `/syl musters` | all | officer musters (officers, the Dark Lady and the Deathstalkers call them) |
 | `/syl hotkey on/off` | all | the Shift-J shortcut |
-| `/syl help` | all | every command, in chat |
+| `/syl help` / `/sy help` | all | every command / the chat ones, in chat |
