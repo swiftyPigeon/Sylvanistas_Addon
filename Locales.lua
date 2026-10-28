@@ -4292,7 +4292,7 @@ L.JOIN_NETOFF_PROMPT = "%s was taken off the Sylvanistas network (%s): \"%s\".\n
 L.JOIN_NETOFF_INVITE = "Invite anyway"
 L.JOIN_NETOFF_CANCEL = "Not now"
 -- The letter.
-L.LETTER_1_3_1_HEADLINE = "The Gates Open"
+L.LETTER_1_3_1_HEADLINE = "The Live One"
 L.LETTER_1_3_1_TITLE = "Ready for the Realm"
 L.LETTER_1_3_1 = "- Sylvanistas is set for the live realm: the Dark Lady is known by their own character's name, and the guild master of Sylvanistas Underground by theirs. A guild that only borrows the name Sylvanistas gets neither title.\n- Installing by hand? The folder is now World of Warcraft/_forever_/Interface/AddOns/ (CurseForge does it for you).\n- The GUIDE is updated for launch, and the help answers no longer talk about the beta."
 L.LETTER_1_3_0_HEADLINE = "Two Halls, One Banner"
@@ -4400,7 +4400,7 @@ if GetLocale and GetLocale() == "ptBR" then
 	L.JOIN_NETOFF_PROMPT = "%s foi tirado da rede Sylvanistas (%s): \"%s\".\n\nConvidar mesmo assim?"
 	L.JOIN_NETOFF_INVITE = "Convidar mesmo assim"
 	L.JOIN_NETOFF_CANCEL = "Agora não"
-	L.LETTER_1_3_1_HEADLINE = "Os Portões se Abrem"
+	L.LETTER_1_3_1_HEADLINE = "Ao Vivo"
 	L.LETTER_1_3_1_TITLE = "Prontos para o Reino"
 	L.LETTER_1_3_1 = "- O Sylvanistas está pronto para o reino oficial: a Dama Sombria é reconhecida pelo nome do próprio personagem, e o mestre de Sylvanistas Underground pelo seu. Uma guilda que só pega emprestado o nome Sylvanistas não recebe nenhum dos dois títulos.\n- Instalando à mão? A pasta agora é World of Warcraft/_forever_/Interface/AddOns/ (o CurseForge faz isso por você).\n- O GUIA foi atualizado para o lançamento, e as respostas da ajuda não falam mais do beta."
 	L.LETTER_1_3_0_HEADLINE = "Dois Salões, Uma Bandeira"
