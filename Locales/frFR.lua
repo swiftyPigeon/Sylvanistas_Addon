@@ -240,7 +240,7 @@ ns.Locale("frFR", {
 	REBUILDING = "Recensement en reconstruction après la connexion : %d guildes entendues",
 	REBUILDING_WAIT = "Il se remplit tout seul en 3 minutes environ : pas besoin de /reload.",
 	REBUILDING_SUB = "Recensement en reconstruction : %d guildes entendues",
-	REBUILDING_TIP = "Chaque connexion part de ce que ce client a enregistré, et la bêta ne recharge souvent rien. Votre addon demande le recensement au canal Sylvanistas, et le rapporteur de chaque guilde répond en quelques minutes. Les Réprouvés n'ont pas disparu : leurs chiffres reviennent tout seuls.",
+	REBUILDING_TIP = "Chaque connexion part de ce que ce client a enregistré, parfois rien. Votre addon demande le recensement au canal Sylvanistas, et le rapporteur de chaque guilde répond en quelques minutes. Les Réprouvés n'ont pas disparu : leurs chiffres reviennent tout seuls.",
 	BEHIND_LINE = "Mettez Sylvanistas à jour : la %s est sortie, vous avez la %s.",
 	BEHIND_TIP = "L'auteur de l'addon a annoncé sur le canal Sylvanistas que cette version est sortie. Mettez à jour depuis l'appli CurseForge, WowUp ou la page CurseForge, puis relancez le jeu. Une ancienne version ignore ce que les nouvelles envoient, et sa guilde peut sembler cassée aux autres.",
 	BEHIND_CHAT = "Sylvanistas %s est sorti et vous avez la %s : mettez à jour depuis CurseForge ou votre appli d'addons, puis relancez le jeu.",

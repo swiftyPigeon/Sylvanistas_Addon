@@ -33,8 +33,8 @@ Read **Part 1** whatever your rank, then your own part.
 | Everyone | [Part 1: Getting started](#part-1-getting-started-everyone) and [Part 2: The Forsaken](#part-2-the-forsaken-every-member) |
 | Officers (guild ranks 0 and 1) | + [Part 3: Dark Rangers](#part-3-dark-rangers-officers) |
 | Helpers the Dark Lady names | + [Part 4: Deathstalkers](#part-4-deathstalkers) |
-| The guild master (Testiana Paladina) | + [Part 5: The Dark Lady](#part-5-the-dark-lady-guild-master) |
-| The addon keeper (Riztosin Psalmpalm) | + [Part 6: The addon keeper](#part-6-the-addon-keeper) |
+| The guild master (Steveo Rino) | + [Part 5: The Dark Lady](#part-5-the-dark-lady-guild-master) |
+| The addon keeper (Danzig Gloomvein) | + [Part 6: The addon keeper](#part-6-the-addon-keeper) |
 
 > **Who is who in the addon:** in Sylvanistas and Sylvanistas Underground the ranks are **Dark Lady** (guild master),
 > **Dreadguard** (rank 1, the moderators), **Valkyr** (rank 2, the recruiters) and **Forsaken**. In other Sylvanistas
@@ -49,7 +49,7 @@ Read **Part 1** whatever your rank, then your own part.
 
 1. **Install.** The easiest way is the **CurseForge app** (or WowUp), from the guild's CurseForge link
    (https://www.curseforge.com/wow/addons/sylvanistas-guild): it keeps the addon updated. By hand: download **Sylvanistas_CF_<version>.zip** from CurseForge or the
-   GitHub Releases page and unzip it into `World of Warcraft/_classic_beta_/Interface/AddOns/`, so you
+   GitHub Releases page and unzip it into `World of Warcraft/_forever_/Interface/AddOns/`, so you
    get an `AddOns/Sylvanistas/` folder. Then **restart the game** (not just `/reload`).
    (Never GitHub's green "Code → Download ZIP": its folder has the wrong name and the game skips it.)
 2. **Log in** on your Horde character in <Sylvanistas>. On any other character the addon stays idle.
@@ -69,7 +69,7 @@ Read **Part 1** whatever your rank, then your own part.
    After each update a short **"What's new"** letter shows once, a few seconds after login;
    `/syl letters` (or `/syl whatsnew`) opens it again any time.
 
-> **If the privacy page comes back after a login**, answer it again (early beta builds forgot add-on settings).
+> **If the privacy page comes back after a login**, answer it again.
 > `/syl backup` copies your settings as text; `/syl restore` pastes them back.
 
 ---
@@ -282,7 +282,7 @@ The Dark Lady names you on their **Sanctum** tab. You then see the **Sanctum** t
 
 ## Part 5: The Dark Lady (guild master)
 
-Everything above, plus tools only they have. Their character is **Testiana Paladina**; the addon
+Everything above, plus tools only they have. Their character is **Steveo Rino**; the addon
 calls them **Dark Lady** and puts their **crown** on the map.
 
 ### First steps
@@ -326,7 +326,7 @@ their guild gets it. To drop one, **Key rotation** and leave that guild out.
 
 ## Part 6: The addon keeper
 
-Riztosin Psalmpalm has the **Workshop** tab:
+Danzig Gloomvein has the **Workshop** tab:
 - **Roll call:** which versions members run, and what errors they hit.
 - **Please update:** a fixed reminder sent to a player on an old version.
 - **`/syl released`:** once CurseForge has approved a version, mark it as out: members behind it are
