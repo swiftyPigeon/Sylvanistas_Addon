@@ -240,7 +240,7 @@ ns.Locale({ "esES", "esMX" }, {
 	REBUILDING = "Rehaciendo el censo tras entrar: %d hermandades oídas hasta ahora",
 	REBUILDING_WAIT = "Se completa solo en unos 3 minutos: no hace falta /reload.",
 	REBUILDING_SUB = "Rehaciendo el censo: %d hermandades oídas",
-	REBUILDING_TIP = "Cada entrada empieza por lo que este cliente guardó, y la beta a menudo no carga nada. Tu addon pide el censo al canal de Sylvanistas, y el informante de cada hermandad responde en pocos minutos. Los Renegados no han desaparecido: sus números vuelven solos.",
+	REBUILDING_TIP = "Cada entrada empieza por lo que este cliente guardó, que puede ser nada. Tu addon pide el censo al canal de Sylvanistas, y el informante de cada hermandad responde en pocos minutos. Los Renegados no han desaparecido: sus números vuelven solos.",
 	BEHIND_LINE = "Actualiza Sylvanistas: ya salió la %s, tú tienes la %s.",
 	BEHIND_TIP = "El autor del addon anunció en el canal de Sylvanistas que esta versión ya salió. Actualiza desde la app de CurseForge, WowUp o la página de CurseForge, y reinicia el juego. Una versión antigua descarta lo que envían las nuevas, y su hermandad puede parecer rota a las demás.",
 	BEHIND_CHAT = "Ya salió Sylvanistas %s y tú tienes la %s: actualiza desde CurseForge o tu app de addons, y reinicia el juego.",

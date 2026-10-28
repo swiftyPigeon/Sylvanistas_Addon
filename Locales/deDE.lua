@@ -240,7 +240,7 @@ ns.Locale("deDE", {
 	REBUILDING = "Zensus wird nach dem Einloggen neu aufgebaut: bisher %d Gilden gehört",
 	REBUILDING_WAIT = "Er füllt sich in etwa 3 Minuten von selbst: kein /reload nötig.",
 	REBUILDING_SUB = "Zensus wird neu aufgebaut: %d Gilden gehört",
-	REBUILDING_TIP = "Jedes Einloggen beginnt mit dem, was dieser Client gespeichert hat, und die Beta lädt oft nichts zurück. Dein Addon fragt den Sylvanistas-Kanal nach dem Zensus, und der Melder jeder Gilde antwortet in wenigen Minuten. Die Verlassenen sind nicht weg: ihre Zahlen kommen von selbst zurück.",
+	REBUILDING_TIP = "Jedes Einloggen beginnt mit dem, was dieser Client gespeichert hat, und das kann nichts sein. Dein Addon fragt den Sylvanistas-Kanal nach dem Zensus, und der Melder jeder Gilde antwortet in wenigen Minuten. Die Verlassenen sind nicht weg: ihre Zahlen kommen von selbst zurück.",
 	BEHIND_LINE = "Sylvanistas aktualisieren: %s ist erschienen, du hast %s.",
 	BEHIND_TIP = "Der Autor des Addons hat im Sylvanistas-Kanal bekanntgegeben, dass diese Version erschienen ist. Aktualisiere über die CurseForge-App, WowUp oder die CurseForge-Seite und starte das Spiel neu. Eine alte Version verwirft, was neuere senden, und ihre Gilde kann für die anderen kaputt aussehen.",
 	BEHIND_CHAT = "Sylvanistas %s ist erschienen und du hast %s: aktualisiere über CurseForge oder deine Addon-App und starte das Spiel neu.",

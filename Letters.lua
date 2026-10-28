@@ -23,7 +23,7 @@ ns.Letters = Letters
 local SizedFont -- (below)
 
 -- Every version with a letter, newest first.
-Letters.LIST = { "1.3.0", "1.2.21" }
+Letters.LIST = { "1.3.1", "1.3.0", "1.2.21" }
 -- A letter's sections, in order, when it has more than its own. 1.2.21 is the first release with
 -- letters: it also tells 1.2.2's changes and 1.2.20's (never released on its own).
 Letters.PARTS = { ["1.2.21"] = { "1.2.2", "1.2.20", "1.2.21" }, ["1.3.0"] = { "1.3.0", "1.3.0b", "1.3.0c", "1.3.0d", "1.3.0e" } }

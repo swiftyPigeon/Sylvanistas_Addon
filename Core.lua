@@ -8,13 +8,13 @@ local L = ns.L
 ---------------------------------------------------------------------------
 ns.FACTION_ONLY = "Horde"                      -- the addon runs for this faction alone (ns.IsMember)
 ns.GUILD_NAME = "Sylvanistas"                  -- the main guild's exact name (case counts: not SYLVANISTAS)
-ns.GM_CHARACTER = "Testiana Paladina"          -- the guild master (the Dark Lady): her character's exact name
-ns.GM_REALM = "ClassicBetaPvE"                 -- her realm group (e.g. "ClassicBetaPvE"); nil: learned from her first message, see /syl status
+ns.GM_CHARACTER = "Steveo Rino"                -- the guild master (the Dark Lady): her character's exact name
+ns.GM_REALM = nil                              -- her realm group (e.g. "ClassicBetaPvE"); nil: learned from her first message, see /syl status
 ns.GM_DISPLAY = "Dark Lady"                   -- what the addon calls her on the lines and the crown
 ns.ALT_GUILD_NAME = "Sylvanistas Underground" -- the alt branch: the main guild's alternate characters, one house with it (exact name)
-ns.GM_ALT_CHARACTER = "CHANGEME_DarkLadyAlt"  -- its guild master: the Dark Lady's alt, exactly as the game writes it (her title, not her powers)
-ns.AUTHOR_CHARACTER = "Riztosin Psalmpalm"      -- the addon keeper's character (the Workshop tab, bug reports, signed lists)
-ns.REALM_GROUP = "ClassicBetaPvE"              -- the author's and Treasurer's realm group (e.g. "ClassicBetaPvP")
+ns.GM_ALT_CHARACTER = "Foreverana Sylvanista" -- its guild master: the Dark Lady's alt, exactly as the game writes it (her title, not her powers)
+ns.AUTHOR_CHARACTER = "Danzig Gloomvein"        -- the addon keeper's character (the Workshop tab, bug reports, signed lists)
+ns.REALM_GROUP = "CAMWOWUS2Realm5PvE"          -- the author's and Treasurer's realm group (e.g. "ClassicBetaPvP")
 ns.TREASURER_CHARACTER = "CHANGEME_Treasurer"  -- the Treasurer (in the main guild)
 ns.TREASURER_MAIL_CHARACTER = "CHANGEME_TreasurerMail" -- where dues and treasury mail go (any guild)
 ns.TREASURY_OFF = true                        -- true turns the Treasury and Bank off (1.3.0: off in beta; on at launch, the Treasurer a guild rank)
@@ -24,7 +24,7 @@ ns.BLOCKED_GUILDS = {                          -- guilds cut off for good, whate
 }
 
 ns.NAME = "Sylvanistas"
-ns.VERSION = "1.3.0"
+ns.VERSION = "1.3.1"
 ns.PREFIX = "SYLVANISTAS"        -- addon message prefix (max 16 chars)
 ns.CHANNEL = "SylvanistasNet"    -- hidden chat channel (Alliance: unused, the addon is Horde-only)
 ns.CHANNEL_HORDE = "SylvanistasNetH" -- the Horde's hidden chat channel, shared by every Sylvanistas guild

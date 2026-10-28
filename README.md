@@ -1,13 +1,13 @@
 # Sylvanistas
 
-A guild addon for the Horde guild **<Sylvanistas>** on WoW: Forever (Classic beta).
+A guild addon for the Horde guild **<Sylvanistas>** on WoW: Forever.
 Crypt and roster, the map, **layer detection and layer hop**, guild chats, the Dark Lady's
 Sanctum, Screams, polls and more. Main command: **`/syl`**.
 
 ## Install
 Get it from [CurseForge](https://www.curseforge.com/wow/addons/sylvanistas-guild), or download
 **Sylvanistas_CF_<version>.zip** (e.g. `Sylvanistas_CF_1.2.21.zip`) from
-[Releases](https://github.com/swiftyPigeon/Sylvanistas_Addon/releases/latest) and unzip it into `World of Warcraft/_classic_beta_/Interface/AddOns/`, so you get an
+[Releases](https://github.com/swiftyPigeon/Sylvanistas_Addon/releases/latest) and unzip it into `World of Warcraft/_forever_/Interface/AddOns/`, so you get an
 `AddOns/Sylvanistas/` folder. Then restart the game.
 
 **Don't use Code → Download ZIP** on GitHub: its folder is named `Sylvanistas_Addon-main` and the
@@ -20,9 +20,9 @@ anywhere else it stays idle.
 | Setting | Value |
 |---|---|
 | `ns.GUILD_NAME` | `Sylvanistas` |
-| `ns.GM_CHARACTER` / `ns.GM_REALM` | `Testiana Paladina` / `ClassicBetaPvE` (the Dark Lady) |
+| `ns.GM_CHARACTER` / `ns.GM_REALM` | `Steveo Rino` / `nil`, learned from their first message (the Dark Lady) |
 | `ns.GM_DISPLAY` | `Dark Lady` |
-| `ns.AUTHOR_CHARACTER` | `Riztosin Psalmpalm` (Workshop tab, roll calls, bug reports) |
+| `ns.AUTHOR_CHARACTER` | `Danzig Gloomvein` (Workshop tab, roll calls, bug reports) |
 | `ns.TREASURER_CHARACTER`, `ns.TREASURER_MAIL_CHARACTER` | `CHANGEME_…` (no treasurer yet) |
 | `ns.TREASURY_OFF` | `true` (Treasury and Bank hidden until launch) |
 | `ns.REQUIRE_KEY` | `false`; `true`: guilds without the channel key get no network (seal the channel first) |
@@ -73,7 +73,7 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
   anyone who joins `SylvanistasNetH` by name can read the census.
 - **Signed lists** (Valkyrs, Dreadguards, approved guilds) and **Discord Link** need
   keys and are off; every signature is refused until a public key is set in `Sign.lua`.
-- The Forever beta wipes addon data at login: settings and privacy answers come back each session.
+- If the game forgets addon data at login, settings and privacy answers are asked again; `/syl backup` and `/syl restore` cover settings.
 - Translations: German, French and Spanish cover part of the text (the rest shows in English);
   Portuguese is complete.
 
