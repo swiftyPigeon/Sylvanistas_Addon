@@ -514,9 +514,9 @@ local function Candidates(word)
 			out[#out + 1] = short
 		end
 	end
-	if GetNumGuildMembers and GetGuildRosterInfo then
-		for i = 1, (GetNumGuildMembers()) or 0 do
-			local name, _, _, _, _, _, _, _, online = GetGuildRosterInfo(i)
+	if ns.NumGuildMembers and ns.GuildRosterInfo then
+		for i = 1, (ns.NumGuildMembers()) or 0 do
+			local name, _, _, _, _, _, _, _, online = ns.GuildRosterInfo(i)
 			if online then Try(name) end
 		end
 	end

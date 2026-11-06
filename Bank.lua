@@ -68,7 +68,7 @@ function Bank.Read()
 	if not HasBank() then return nil end
 	local n = tonumber(GetNumGuildBankTabs()) or 0
 	if n == 0 then return nil end
-	local snap = { t = ns.Now(), guild = GetGuildInfo("player"), by = ns.me, money = GetGuildBankMoney and (tonumber(GetGuildBankMoney()) or 0) or 0, tabs = {} }
+	local snap = { t = ns.Now(), guild = ns.GuildInfo("player"), by = ns.me, money = GetGuildBankMoney and (tonumber(GetGuildBankMoney()) or 0) or 0, tabs = {} }
 	local total = 0
 	for tab = 1, math.min(n, Bank.MAX_TABS) do
 		local name, icon, viewable = GetGuildBankTabInfo(tab)
@@ -500,7 +500,7 @@ end
 -- rank), of a Sylvanistas guild that is not the King's.
 function Bank.SisterTreasurer()
 	if not ns.IsMember() or not ns.me then return false end
-	local guild, _, rank = GetGuildInfo("player")
+	local guild, _, rank = ns.GuildInfo("player")
 	rank = tonumber(rank)
 	return type(guild) == "string" and not ns.IsKingGuild(guild) and rank ~= nil and rank <= ns.CAPTAIN_RANK
 end
@@ -543,7 +543,7 @@ end
 -- Our own guild's snapshot as it is whispered (TS), with his yes; nil otherwise.
 function Bank.SisterMessage()
 	if not Bank.SisterTreasurer() or Bank.SisterConsent() ~= true then return nil end
-	local snap, guild = Bank.Own(), GetGuildInfo("player")
+	local snap, guild = Bank.Own(), ns.GuildInfo("player")
 	if type(snap) ~= "table" or snap.guild ~= guild then return nil end
 	return Bank.Message(snap, "TS")
 end
@@ -557,7 +557,7 @@ function Bank.ShareSister()
 	for name, t in pairs(sisterHeard) do
 		if now - t <= ns.Treasury.AUDIENCE_FRESH and SisterViewer(name) and ns.Treasury.Private(name, "TS", msg) then n = n + 1 end
 	end
-	if n > 0 then MarkSent(GetGuildInfo("player")) end
+	if n > 0 then MarkSent(ns.GuildInfo("player")) end
 	return n
 end
 
@@ -577,7 +577,7 @@ function Bank.HeardAsk(sender, fresh)
 		return
 	end
 	local msg = Bank.SisterMessage()
-	if msg and ns.Treasury.Private(sender, "TS", msg) then MarkSent(GetGuildInfo("player")) end
+	if msg and ns.Treasury.Private(sender, "TS", msg) then MarkSent(ns.GuildInfo("player")) end
 end
 function Bank.NotFound(Is)
 	for name in pairs(sisterHeard) do if Is(name) then sisterHeard[name] = nil end end
@@ -599,7 +599,7 @@ function Bank.SetSisterConsent(on)
 	-- missed one who asked 12 minutes before), those heard before a /reload of ours too (KeptHeard);
 	-- from the others at their next ask (HeardAsk). Whole snapshots still go only to those heard
 	-- within AUDIENCE_FRESH (ShareSister).
-	local guild, now = SentGuild() or GetGuildInfo("player"), ns.Now()
+	local guild, now = SentGuild() or ns.GuildInfo("player"), ns.Now()
 	local within = {}
 	for name, t in pairs(KeptHeard()) do within[name] = t end
 	for name, t in pairs(sisterHeard) do
@@ -630,7 +630,7 @@ function Bank.AskSister()
 	if sisterAsked or not Bank.SisterTreasurer() or Bank.SisterConsent() ~= nil then return false end
 	if InCombatLockdown and InCombatLockdown() then return false end
 	sisterAsked = true
-	ns.ShowDialog("SYLVANISTAS_SISTER_BANK", GetGuildInfo("player") or "?")
+	ns.ShowDialog("SYLVANISTAS_SISTER_BANK", ns.GuildInfo("player") or "?")
 	return true
 end
 
@@ -740,7 +740,7 @@ local function Expired(e) return ns.Now() - (tonumber(e.t) or 0) > Bank.REQUEST_
 -- Steward or a keeper: the treasury is theirs already. (The treasury is the Alliance's <Sylvanistas>'s.)
 function Bank.MayRequest()
 	if ns.TREASURY_OFF or not ns.IsMember() or ns.Treasury.IsInsider() then return false end
-	local _, _, rank = GetGuildInfo("player")
+	local _, _, rank = ns.GuildInfo("player")
 	rank = tonumber(rank)
 	return rank ~= nil and rank <= ns.CAPTAIN_RANK
 end
@@ -808,7 +808,7 @@ end
 -- where it stands. Returns how many whispers went.
 function Bank.SendRequests(force)
 	if not ns.rdb or not ns.me or not ns.IsMember() then return 0 end
-	local n, now, guild = 0, ns.Now(), Clean(GetGuildInfo("player"), 40)
+	local n, now, guild = 0, ns.Now(), Clean(ns.GuildInfo("player"), 40)
 	for _, e in ipairs(Mine()) do
 		local cancel = e.state == "cancel"
 		if (Open(e.state) or cancel) and not Expired(e) then
@@ -1018,7 +1018,7 @@ function Bank.SharePublic(force)
 		end
 		return false
 	end
-	local guild = Clean(GetGuildInfo("player"), 40)
+	local guild = Clean(ns.GuildInfo("player"), 40)
 	local entries = {}
 	for _, e in ipairs(Bank.Requests()) do
 		if Open(e.state) then entries[#entries + 1] = ("%d:%d:%d:%s:%s"):format(e.id, e.item, e.n, Field(e.from, 60), Field(e.guild, 24)) end

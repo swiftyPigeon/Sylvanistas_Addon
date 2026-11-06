@@ -7,7 +7,7 @@ local L = ns.L
 --     (only when the same guilds reported both weeks: missing history stays unknown, never zero),
 --     our guild's place by size, the week's events and the last public Voice of the Forsaken.
 --   * "Your week, in five lines" (a page the Realm links): the next event and our signup, what is
---     open now (the Dark Lady's Conclave, a poll), guildmates online, a sister guild's member on
+--     open now (the Guild Master's Conclave, a poll), guildmates online, a sister guild's member on
 --     our layer, and whether our addon is up to date.
 -- Two local week snapshots are kept (ns.rdb.weeklyBrief), never sent.
 local Brief = {}
@@ -36,7 +36,7 @@ local function Week() return ns.Weeks and ns.Weeks.Week and ns.Weeks.Week() or n
 local function Census()
 	local D = ns.Data
 	if not D or not D.Summary or (D.Rebuilding and D.Rebuilding() ~= nil) then return nil end
-	local summary, names, own, sizes = D.Summary(), {}, GetGuildInfo("player"), {}
+	local summary, names, own, sizes = D.Summary(), {}, ns.GuildInfo("player"), {}
 	for _, e in ipairs(summary.guilds or {}) do
 		local size = e.counted and type(e.g) == "table" and Number(e.g.total)
 		if size then names[#names + 1] = e.name; sizes[e.name] = math.min(size, ns.Codec.GUILD_CAP) end
@@ -143,7 +143,7 @@ local function Companion()
 	local mine = layers.Mine and layers.Mine()
 	local map = layers.CurrentMap and layers.CurrentMap()
 	if not mine or mine.mapID ~= map or not layers.ForMap then return L.BRIEF_UNKNOWN end
-	local guild = GetGuildInfo("player")
+	local guild = ns.GuildInfo("player")
 	for _, layer in ipairs(layers.ForMap(map)) do
 		local h = layer.head
 		if h and h.guild ~= guild and ns.IsFederation(h.guild) then

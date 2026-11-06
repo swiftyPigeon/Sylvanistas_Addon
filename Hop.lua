@@ -136,7 +136,7 @@ end
 -- one everybody wants, and his screen is on stream.
 -- 1.3.0 (the user's call): in the house (<Sylvanistas>, <Sylvanistas Underground>) helping is on
 -- unless its player said no; elsewhere it waits for a yes, as before.
-local function InHouse() return ns.IsHouseGuild(IsInGuild() and GetGuildInfo("player") or nil) end
+local function InHouse() return ns.IsHouseGuild(ns.InGuild() and ns.GuildInfo("player") or nil) end
 function Hop.Helps()
 	if ns.db == nil then return false end
 	if InHouse() then return ns.db.layerHelp ~= false end
@@ -231,6 +231,7 @@ end
 
 -- release: the addon lets the guest go after GUEST_TIME (the helper chose that).
 local function Invite(name, id, release)
+	if ns.DemoBlocked() then return end -- (1.3.2: /syl demo sends nothing)
 	local target = ns.TellName(name)
 	if C_PartyInfo and C_PartyInfo.InviteUnit then C_PartyInfo.InviteUnit(target) elseif InviteUnit then InviteUnit(target) end
 	guests[ns.ShortName(name)] = { name = name, id = id or 0, t = ns.Now(), release = release and true or false }
@@ -461,7 +462,7 @@ function Hop.SendAsk()
 end
 
 -- A helper the addon can vouch for, and so may act for without a click: a guildmate (our
--- roster), the Dark Lady's pinned character, her Valkyr and her Dark Rangers. Their invite is
+-- roster), the Guild Master's pinned character, her Valkyr and her Dark Rangers. Their invite is
 -- accepted for the player, and "Always invite" or "For Sylvanistas!" invites them; anyone else's
 -- invite is left to the game's invite window (one click), and anyone else's request to ours, so
 -- nobody pulls a player into a group just by answering an ask read on the channel. 1.2.20 (from

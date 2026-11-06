@@ -2,7 +2,7 @@ local ADDON, ns = ...
 local L = ns.L
 
 -- Our own guild's members page (1.1), in the Realm tab like the Board. Asked for by a moderator, of
--- the Dark Lady's moderators:
+-- the Guild Master's moderators:
 -- #38: the members offline 7, 14 or 30 days and more, with rank, class, level and last online,
 --   from our own roster (Roster.Scan: the server's word, what the game's Guild window shows every
 --   member). A player whose rank may remove members (CanGuildRemove, and only ranks below theirs,
@@ -82,6 +82,7 @@ function Members.Remove(m)
 		ns.Print(L.MEMBERS_REMOVE_WAIT)
 		return false
 	end
+	if ns.DemoBlocked() then return false end -- (1.3.2: /syl demo sends nothing)
 	local uninvite = (C_GuildInfo and C_GuildInfo.Uninvite) or GuildUninvite
 	if type(uninvite) ~= "function" then return false end
 	lastRemove = now
@@ -108,11 +109,11 @@ local lastMentor = -math.huge
 local firstRoster -- { guild, names = { [raw] = true } }: the members at this session's first read
 local joined = {} -- [raw] = true: in our guild since then
 
-function Members.IsLord() return IsInGuild() and (ns.Roster.MyRank() == 0 or ns.IsValkyr(ns.me)) end -- (1.3.0: Valkyr, the recruiters, too)
+function Members.IsLord() return ns.InGuild() and (ns.Roster.MyRank() == 0 or ns.IsValkyr(ns.me)) end -- (1.3.0: Valkyr, the recruiters, too)
 
 local function Mentors(guild)
 	ns.rdb.mentors = ns.rdb.mentors or {}
-	local g = guild or GetGuildInfo("player") or "?"
+	local g = guild or ns.GuildInfo("player") or "?"
 	ns.rdb.mentors[g] = ns.rdb.mentors[g] or {}
 	return ns.rdb.mentors[g]
 end
@@ -125,7 +126,7 @@ end
 -- Each roster read (Roster.TryScan): who joined since the first one, then our Lord away (#39).
 function Members.OnScan(r)
 	local all = ns.Roster.members or {}
-	local guild = type(r) == "table" and r.guild or GetGuildInfo("player")
+	local guild = type(r) == "table" and r.guild or ns.GuildInfo("player")
 	if not firstRoster or firstRoster.guild ~= guild then
 		firstRoster = { guild = guild, names = {} }
 		wipe(joined)
@@ -207,7 +208,8 @@ function Members.AssignMentor(recruit, captain)
 		return false
 	end
 	lastMentor = now
-	local guild = GetGuildInfo("player") or "?"
+	local guild = ns.GuildInfo("player") or "?"
+	if ns.DemoBlocked() then return end -- (1.3.2: /syl demo sends nothing)
 	SendChatMessage(L.MENTOR_TO_CAPTAIN:format(Plain(recruit.name), guild), "WHISPER", nil, ns.TellName(captain.raw))
 	SendChatMessage(L.MENTOR_TO_RECRUIT:format(guild, Plain(captain.name)), "WHISPER", nil, ns.TellName(recruit.raw))
 	Mentors(guild)[recruit.raw] = { mentor = captain.raw, t = ns.Now() }
@@ -293,7 +295,7 @@ local function Row(m, canRemove)
 	local className, file = ClassName(m)
 	local gone = removed[m.raw]
 	local removable = canRemove and Members.Removable(m)
-	local person = { name = m.name, class = m.class, level = m.level, guild = GetGuildInfo("player"), rank = m.rank, online = m.online, days = m.days }
+	local person = { name = m.name, class = m.class, level = m.level, guild = ns.GuildInfo("player"), rank = m.rank, online = m.online, days = m.days }
 	return {
 		key = m.name,
 		text = V.ClassColored(m.name, file) .. "  " .. V.Grey(Plain(m.rank or "") .. (className ~= "" and ("  ·  " .. className) or "")),
@@ -317,7 +319,7 @@ end
 function Members.Lines(q)
 	local V = ns.Views
 	local lines = { { text = V.Gold(L.MEMBERS_BACK), onClick = Members.Close, gapAfter = true } }
-	local guild = GetGuildInfo("player")
+	local guild = ns.GuildInfo("player")
 	local all = ns.Roster.members or {}
 	if not (guild and ns.IsFederation(guild)) or #all == 0 then
 		lines[#lines + 1] = { text = V.Grey(L.MEMBERS_NONE_YET) }
@@ -433,7 +435,7 @@ function Members.CheckLords(now)
 	if not (ns.King and ns.King.CanCommand and ns.King.CanCommand()) then return 0 end
 	local loginAt = ns.Comm and ns.Comm.loginAt
 	if loginAt and now - loginAt < ns.Data.CROWN_AFTER then return 0 end -- the census rebuilding
-	local warned, own, crossed = Warned(), GetGuildInfo("player"), {}
+	local warned, own, crossed = Warned(), ns.GuildInfo("player"), {}
 	for name, g in pairs(ns.rdb.guilds or {}) do
 		local age = now - (type(g) == "table" and g.t or 0)
 		if type(g) == "table" and not g.mine and name ~= own and g.leader and age <= ns.Data.KEEP and ns.IsFederation(name) then

@@ -1197,7 +1197,7 @@ local function KnownGuilds()
 		local key = Fold(who)
 		byPlayer[key] = byPlayer[key] or g
 	end
-	local mine = GetGuildInfo and GetGuildInfo("player")
+	local mine = ns.GuildInfo and ns.GuildInfo("player")
 	if type(mine) == "string" and mine ~= "" then
 		names[Fold(mine)] = true
 		for who in pairs(ns.Roster and ns.Roster.byName or {}) do Put(who, mine) end
@@ -1927,7 +1927,7 @@ ns.Comm.Handle("HT", function(...) Workshop.HandleTitles(...) end)
 -- The list made our guild a Sylvanistas guild, or no longer: the addon starts (the channel, the
 -- census, the roster) or stops, as when one joins or leaves a guild.
 function Workshop.MembershipChanged(wasMember)
-	local guild = (GetGuildInfo and GetGuildInfo("player")) or "?"
+	local guild = (ns.GuildInfo and ns.GuildInfo("player")) or "?"
 	if ns.IsMember() then
 		ns.Print(L.APPROVED_YOU:format(guild))
 		ns.PlayAlert("soft", "update") -- (the author's word: his signed list)
@@ -1996,7 +1996,7 @@ function Workshop.Approved(word)
 	if tostring(word or ""):lower() == "paste" then return ns.ShowDialog("SYLVANISTAS_APPROVED_PASTE") end
 	local list = ns.ApprovedGuilds()
 	ns.Print(L.APPROVED_LIST:format(#list > 0 and table.concat(list, ", ") or "-"))
-	local guild = IsInGuild() and GetGuildInfo("player")
+	local guild = ns.InGuild() and ns.GuildInfo("player")
 	if type(guild) == "string" and ns.IsApprovedGuild(guild) then
 		ns.Print(L.APPROVED_MINE:format(guild))
 	elseif type(guild) == "string" and not ns.IsFederation(guild) then

@@ -176,7 +176,7 @@ function Backup.Data()
 		books[#books + 1] = { name = b.name, opening = b.opening, openedAt = b.openedAt, opened = b.opened, lines = Copy(b.lines), sums = Copy(b.sums) }
 	end
 	if #books > 0 then d.books = books end
-	-- The King's word, from his client or a Steward's (never the author's Dark Lady view).
+	-- The King's word, from his client or a Steward's (never the author's Guild Master view).
 	if ns.King and ns.King.SetsLists and ns.King.SetsLists() and ns.rdb then
 		local f = ns.rdb.treasuryFlags
 		local k = ns.rdb.treasuryKeepers

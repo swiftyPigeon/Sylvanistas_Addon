@@ -122,7 +122,7 @@ end
 ---------------------------------------------------------------------------
 
 function Loot.Guild()
-	local guild = IsInGuild() and GetGuildInfo("player")
+	local guild = ns.InGuild() and ns.GuildInfo("player")
 	return type(guild) == "string" and guild ~= "" and guild or nil
 end
 

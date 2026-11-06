@@ -1021,7 +1021,7 @@ function Link.Start(t)
 	end
 	if (tonumber(t.exp) or 0) <= ServerTime() then return ns.Print(L.LINK_CODE_EXPIRED) end
 	if not ns.IsMember() then return ns.Print(L.LINK_NOT_MEMBER) end
-	local guild = GetGuildInfo("player")
+	local guild = ns.GuildInfo("player")
 	local faction = ns.faction
 	if not Link.ValidName(ns.me) or not Link.ValidGuild(guild) or not FACTIONS[faction] then return ns.Print(L.LINK_CANT) end
 	local now = ns.Now()
@@ -1361,7 +1361,7 @@ end
 -- WHO_FRESH; "c" only claimed. nil when what we know says otherwise (they claim our guild and our
 -- roster doesn't list them, or a recent /who shows them in another guild): nothing is signed.
 function Link.GuildFlag(requester, guild)
-	local own = GetGuildInfo("player")
+	local own = ns.GuildInfo("player")
 	local roster = ns.Roster
 	local read = type(own) == "string" and type(roster) == "table" and roster.guild == own and type(roster.byName) == "table"
 		and next(roster.byName) ~= nil

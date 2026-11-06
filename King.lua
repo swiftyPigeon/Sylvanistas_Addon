@@ -76,13 +76,13 @@ end
 -- would obey the powers the Throne gave that character.
 function King.IsKing()
 	if not ns.IsMember() then return false end
-	local guild, _, rank = GetGuildInfo("player")
+	local guild, _, rank = ns.GuildInfo("player")
 	if not (ns.IsKingGuild(guild) and rank == 0) then return false end
 	return ns.KingCharacter() == nil or ns.IsKingCharacter(ns.me)
 end
 
 -- The author's test build (Dev.lua, never published) shows the tab without the powers:
--- nothing it does reaches anyone. The author turns this "the Dark Lady's view" on and off from the
+-- nothing it does reaches anyone. The author turns this "the Guild Master's view" on and off from the
 -- Workshop (ns.db.devKingView).
 function King.Preview()
 	if King.IsKing() then return false end
@@ -237,7 +237,7 @@ function King.IsHand() return not King.SetsLists() and ns.IsMember() and Hand(ns
 function King.IsHandName(name) return type(name) == "string" and Hand(name) end
 
 -- This client's own list, the one its Hands page changes: the King's; a Steward's own (1.0.0);
--- the author's Dark Lady view's, as the King's (sent nowhere).
+-- the author's Guild Master view's, as the King's (sent nowhere).
 local function Own()
 	if not King.IsKing() and King.IsSteward() then return myStewardHands end
 	return myHands
@@ -317,7 +317,7 @@ function King.SendHands(force)
 	if not force and now - lastHandsSent < King.HANDS_EVERY then return end
 	if #myHands == 0 and lastHandsSent == -math.huge then return end -- nobody named yet
 	lastHandsSent = now
-	local msg = ("T1~H~%d~%s~%s"):format(NewId(), GetGuildInfo("player") or "", table.concat(myHands, ","))
+	local msg = ("T1~H~%d~%s~%s"):format(NewId(), ns.GuildInfo("player") or "", table.concat(myHands, ","))
 	if #msg <= 250 then ns.Comm.Send("CHANNEL", msg, "hands") else ns.Comm.SendChunked(msg) end
 end
 
@@ -328,7 +328,7 @@ function King.SendStewardHands(force)
 	if not force and now - lastStewardSent < King.HANDS_EVERY then return end
 	if #myStewardHands == 0 and lastStewardSent == -math.huge then return end -- nobody named yet
 	lastStewardSent = now
-	local msg = ("T1~N~%d~%s~%s"):format(NewId(), GetGuildInfo("player") or "", table.concat(myStewardHands, ","))
+	local msg = ("T1~N~%d~%s~%s"):format(NewId(), ns.GuildInfo("player") or "", table.concat(myStewardHands, ","))
 	if #msg <= 250 then ns.Comm.Send("CHANNEL", msg, "stewardhands") else ns.Comm.SendChunked(msg) end
 end
 
@@ -533,7 +533,7 @@ function King.Summon()
 	end
 	lastSummonSent = now
 	summon = { id = NewId(), t = now, answers = {} }
-	ns.Comm.Send("CHANNEL", ("T1~S~%d~%s"):format(summon.id, GetGuildInfo("player")))
+	ns.Comm.Send("CHANNEL", ("T1~S~%d~%s"):format(summon.id, ns.GuildInfo("player")))
 	ns.Log("throne: summon %d", summon.id)
 	Changed()
 end
@@ -557,7 +557,7 @@ end
 
 local function Answer(data, word)
 	if not data or not data.king then return end
-	ns.Comm.Whisper(data.king, ("T2~%d~%s~%s"):format(data.id, word, GetGuildInfo("player") or ""))
+	ns.Comm.Whisper(data.king, ("T2~%d~%s~%s"):format(data.id, word, ns.GuildInfo("player") or ""))
 end
 
 StaticPopupDialogs["SYLVANISTAS_KING_SUMMON"] = {
@@ -683,7 +683,7 @@ function King.SendAgenda()
 	-- Seconds left, so a resend never moves the time (minutes rounded up did).
 	local left = math.floor(agenda.at - ns.Now())
 	if left < 30 then return end
-	ns.Comm.Send("CHANNEL", ("T1~A~%d~%s~%d~%s~%s"):format(agenda.id, GetGuildInfo("player") or "", left, agenda.zone, agenda.title), "agenda")
+	ns.Comm.Send("CHANNEL", ("T1~A~%d~%s~%d~%s~%s"):format(agenda.id, ns.GuildInfo("player") or "", left, agenda.zone, agenda.title), "agenda")
 end
 
 function King.CancelAgenda()
@@ -691,7 +691,7 @@ function King.CancelAgenda()
 	-- The King or a Hand cancels it for everyone, whoever set it (its setter's client stops
 	-- repeating it when the cancel reaches it).
 	if (agenda.mine or King.CanCommand()) and not King.Preview() then
-		ns.Comm.Send("CHANNEL", ("T1~X~%d~%s"):format(agenda.id, GetGuildInfo("player") or ""), "agenda")
+		ns.Comm.Send("CHANNEL", ("T1~X~%d~%s"):format(agenda.id, ns.GuildInfo("player") or ""), "agenda")
 	end
 	if ns.Week and ns.Week.Forget then ns.Week.Forget(agenda.id) end -- (1.1: a signup for it, and its nudge)
 	agenda = nil
@@ -784,7 +784,7 @@ local function SendLocation(force)
 	local moved = lastLocation.mapID ~= mapID or math.abs((lastLocation.x or 0) - x) > 0.003 or math.abs((lastLocation.y or 0) - y) > 0.003
 	if not force and (now - lastLocation.t < King.LOCATION_EVERY or (not moved and now - lastLocation.t < King.LOCATION_STILL)) then return end
 	lastLocation = { mapID = mapID, x = x, y = y, t = now }
-	ns.Comm.Send("CHANNEL", ("T1~P~%d~%s~%d~%d~%d"):format(locationId, GetGuildInfo("player") or "", mapID,
+	ns.Comm.Send("CHANNEL", ("T1~P~%d~%s~%d~%d~%d"):format(locationId, ns.GuildInfo("player") or "", mapID,
 		math.floor(x * 1000 + 0.5), math.floor(y * 1000 + 0.5)), "kinglocation")
 end
 
@@ -802,7 +802,7 @@ function King.ToggleLocation()
 	else
 		ns.Print(L.THRONE_LOCATION_HIDDEN)
 		lastLocation = { t = -math.huge }
-		ns.Comm.Send("CHANNEL", ("T1~Q~%d~%s"):format(locationId, GetGuildInfo("player") or ""), "kinglocation")
+		ns.Comm.Send("CHANNEL", ("T1~Q~%d~%s"):format(locationId, ns.GuildInfo("player") or ""), "kinglocation")
 		-- His layer goes with it, at once, and his hello stops naming his zone (Layers.Sharing).
 		ns.Layers.Withdraw()
 		ns.Comm.Hello(true)
@@ -1027,7 +1027,7 @@ King.Para = Para
 ---------------------------------------------------------------------------
 -- Where the King's calls show: the roll call in the Realm tab (next to the Lords it calls).
 -- Plain rows (not the parchment), for the King and
--- his Hands (and the author's Dark Lady view).
+-- his Hands (and the author's Guild Master view).
 ---------------------------------------------------------------------------
 
 local function Grey(s) return "|cff9d9d9d" .. s .. "|r" end
@@ -1250,7 +1250,7 @@ function King.StewardStatusLine()
 	return ("%s  |  Hands: %s"):format(who, #held > 0 and table.concat(held, ", ") or "none")
 end
 
--- The author's Workshop: the Dark Lady's view on or off (the Throne, Vox Populi, the King's calls in
+-- The author's Workshop: the Guild Master's view on or off (the Throne, Vox Populi, the King's calls in
 -- the Realm and the Tabards), to see and try them. Nothing the view does reaches anyone.
 function King.SetDevView(on)
 	ns.db.devKingView = on and true or false

@@ -336,6 +336,7 @@ function Recruit.Ask(contact, message)
 	Recruit.lastContact = contact
 	Recruit.pending = nil
 	local to = ns.TellName(contact.name)
+	if ns.DemoBlocked() then return end -- (1.3.2: /syl demo sends nothing)
 	SendChatMessage(message:sub(1, 250), "WHISPER", nil, to)
 	local _, classFile = UnitClass("player")
 	ns.Comm.WhisperOutside(to, ("J3~%s~%d~%s"):format(Field(contact.guild), tonumber(UnitLevel("player")) or 0, Field(classFile)))
@@ -364,7 +365,7 @@ end
 
 -- The tone of the Join screen, in the spirit of Sylvanistas: other guilds should not exist.
 function Recruit.Roast()
-	local guild = GetGuildInfo("player")
+	local guild = ns.GuildInfo("player")
 	if guild and guild ~= "" then
 		return L.ROAST_GUILD:format(guild), L.ROAST_GUILD_SUB
 	end
@@ -452,7 +453,7 @@ function Recruit.RouteAnswer()
 			break
 		end
 	end
-	local own, n = GetGuildInfo("player"), 0
+	local own, n = ns.GuildInfo("player"), 0
 	for _, o in ipairs(open) do
 		local entry = Field(o.name) .. "=" .. o.free .. "=" .. table.concat(Contacts(o, own), "/")
 		local add = (n > 0 and ";" or "") .. entry
@@ -511,7 +512,7 @@ end
 function Recruit.OnJoinRequest(dist, sender, text)
 	if dist ~= "WHISPER" or not ns.IsMember() then return false end
 	local guild, level, class = tostring(text):match("^J3~([^~]+)~(%d+)~(%u*)$")
-	local own = GetGuildInfo("player")
+	local own = ns.GuildInfo("player")
 	if not guild or not own or guild:lower() ~= own:lower() then return false end
 	if ns.Roster.RankOf(sender) then return false end -- one of us already
 	local now = ns.Now()
@@ -565,6 +566,7 @@ end
 function Recruit.Accept(req, confirmed)
 	if not CanInvite() or type(req) ~= "table" then return false end
 	if Warned(req, confirmed) then return "warning" end
+	if ns.DemoBlocked() then return false end -- (1.3.2: /syl demo sends nothing)
 	local invite = (C_GuildInfo and C_GuildInfo.Invite) or GuildInvite
 	if type(invite) ~= "function" then return false end
 	invite(ns.TellName(req.name))
@@ -590,7 +592,7 @@ StaticPopupDialogs["SYLVANISTAS_RECRUIT_NETOFF"] = {
 -- review of 1.1: the top "most room" guild is one two characters can fake, and this whisper goes
 -- from the officer's own chat).
 function Recruit.DeclineText(req)
-	local own = GetGuildInfo("player")
+	local own = ns.GuildInfo("player")
 	local gates = ns.Acts and ns.Acts.Gates and ns.Acts.Gates()
 	local other = gates and gates.guild ~= own and gates.guild or nil
 	if other then return L.JOIN_DECLINE_TEXT:format(own or "?", other) end
@@ -600,6 +602,7 @@ end
 -- An officer's no: one whisper, from the click, pointing where there is room.
 function Recruit.Decline(req)
 	if not CanInvite() or type(req) ~= "table" then return false end
+	if ns.DemoBlocked() then return false end -- (1.3.2: /syl demo sends nothing)
 	SendChatMessage(Recruit.DeclineText(req), "WHISPER", nil, ns.TellName(req.name))
 	Drop(req)
 	return true
@@ -619,6 +622,7 @@ end
 function Recruit.Point(req)
 	local officer = Recruit.Officer()
 	if not officer or type(req) ~= "table" then return false end
+	if ns.DemoBlocked() then return false end -- (1.3.2: /syl demo sends nothing)
 	SendChatMessage(L.JOIN_POINT_TEXT:format(officer), "WHISPER", nil, ns.TellName(req.name))
 	Drop(req)
 	return true

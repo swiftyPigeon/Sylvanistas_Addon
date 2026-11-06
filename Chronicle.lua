@@ -50,7 +50,7 @@ Chronicle.TEXT_MAX = 160 -- bytes of what was done, and of a player's words
 local KINDS = {
 	decree = "ACTS_KIND_DECREE", gates = "ACTS_KIND_GATES", pardon = "ACTS_KIND_PARDON", switch = "ACTS_KIND_SWITCH",
 	netoff = "ACTS_KIND_NETOFF", guildnetoff = "ACTS_KIND_GUILDNETOFF", terms = "ACTS_KIND_TERMS",
-	court = "ACTS_KIND_COURT", muster = "ACTS_KIND_MUSTER", -- (1.2.21: the Dark Lady's audience notes; officer musters)
+	court = "ACTS_KIND_COURT", muster = "ACTS_KIND_MUSTER", -- (1.2.21: the Guild Master's audience notes; officer musters)
 }
 
 local function Clean(s, n)

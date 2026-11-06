@@ -283,7 +283,7 @@ function Board.HandlePost(dist, sender, text)
 		return
 	end
 	-- One guild per sender, as the chats: our own guild's name only from our roster.
-	local own = GetGuildInfo("player")
+	local own = ns.GuildInfo("player")
 	if own and e.guild == own then
 		if not ns.Roster.RankOf(sender) then return end
 	elseif not ns.Data.ClaimGuild(sender, e.guild) then
@@ -371,7 +371,7 @@ end
 -- are, and none the moment the player stops sharing); a camp keeps its own (where it was dropped).
 local function Message(p, now)
 	if p.flag ~= "C" then p.zone = SharedZone() end
-	return Board.Encode({ id = p.id, guild = GetGuildInfo("player"), flag = p.flag, level = MyLevel(), class = MyClass(),
+	return Board.Encode({ id = p.id, guild = ns.GuildInfo("player"), flag = p.flag, level = MyLevel(), class = MyClass(),
 		every = p.every, age = math.floor((now - p.raisedAt) / 60), zone = p.zone, x = p.x, y = p.y, note = p.note })
 end
 
@@ -1043,7 +1043,7 @@ local function PinTip(self)
 	GameTooltip:AddLine(L.BOARD_CAMP_PIN:format(Board.ZoneText(e.zone)), 1, 0.55, 0.15)
 	local who = e.mine and (ns.DisplayName(ns.me) or "?") or (ns.DisplayName(e.sender) or "?")
 	local note = e.mine and (e.note or "") or Board.NoteShown(e)
-	GameTooltip:AddLine(("%s <%s>%s"):format(who, ns.Codec.Plain(e.guild or GetGuildInfo("player") or "?"), note ~= "" and ('  "' .. note .. '"') or ""), 1, 1, 1, true)
+	GameTooltip:AddLine(("%s <%s>%s"):format(who, ns.Codec.Plain(e.guild or ns.GuildInfo("player") or "?"), note ~= "" and ('  "' .. note .. '"') or ""), 1, 1, 1, true)
 	local left = math.max(1, math.ceil((e.raisedAt + Board.CAMP_LIFE - ns.Now()) / 60))
 	GameTooltip:AddLine(L.BOARD_CAMP_LEFT:format(left), 0.6, 0.6, 0.6)
 	GameTooltip:AddLine(e.mine and L.BOARD_CAMP_PIN_MINE_TIP or L.BOARD_CAMP_MAP_TIP, 0.6, 0.6, 0.6, true)

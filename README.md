@@ -1,7 +1,7 @@
 # Sylvanistas
 
 A guild addon for the Horde guild **<Sylvanistas>** on WoW: Forever.
-Crypt and roster, the map, **layer detection and layer hop**, guild chats, the Dark Lady's
+Crypt and roster, the map, **layer detection and layer hop**, guild chats, the Guild Master's
 Sanctum, Screams, polls and more. Main command: **`/syl`**.
 
 ## Install
@@ -20,8 +20,8 @@ anywhere else it stays idle.
 | Setting | Value |
 |---|---|
 | `ns.GUILD_NAME` | `Sylvanistas` |
-| `ns.GM_CHARACTER` / `ns.GM_REALM` | `Steveo Rino` / `nil`, learned from their first message (the Dark Lady) |
-| `ns.GM_DISPLAY` | `Dark Lady` |
+| `ns.GM_CHARACTER` / `ns.GM_REALM` | `Steveo Rino` / `CAMWOWUS2Realm7PvE` (the Guild Master; their realm group: on any other realm a Sylvanistas guild leads itself) |
+| `ns.GM_DISPLAY` | `Guild Master` |
 | `ns.AUTHOR_CHARACTER` | `Danzig Gloomvein` (Workshop tab, roll calls, bug reports) |
 | `ns.TREASURER_CHARACTER`, `ns.TREASURER_MAIL_CHARACTER` | `CHANGEME_…` (no treasurer yet) |
 | `ns.TREASURY_OFF` | `true` (Treasury and Bank hidden until launch) |
@@ -33,16 +33,16 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
 ## Roles and terms
 | Term | Who / what |
 |---|---|
-| **the Dark Lady** | the guild master |
+| **the Guild Master** | the guild master of Sylvanistas (Steveo Rino) |
 | **Valkyr** | the recruiters: the guild rank Valkyr, in any Sylvanistas guild |
-| **Deathstalkers** | helpers the Dark Lady names in game |
+| **Banshees** | helpers the Guild Master names in game |
 | **Dark Rangers** | officers (rank 0-1) of every Sylvanistas guild |
 | **Dreadguards** | the moderators (signed list) |
-| **Darkcallers** | guild masters of the other Sylvanistas guilds (the Dark Lady leads <Sylvanistas> and its alt branch <Sylvanistas Underground>) |
+| **Darkcallers** | guild masters of the other Sylvanistas guilds (the Guild Master leads <Sylvanistas>; its alt branch <Sylvanistas Underground> is one house with it) |
 | **the Forsaken** | everyone |
-| **Sanctum** | the Dark Lady's tab |
+| **Sanctum** | the Guild Master's tab |
 | **Screams** | map calls: **Banshee Scream** (hers), **Revenant Call** (a rare enemy, skull on the map), **Gathering** (meeting point) |
-| **Covenants**, **Conclave**, **Portal**, **Voice of the Forsaken** | the Dark Lady's letters, conclaves, recruiting pin, polls |
+| **Covenants**, **Conclave**, **Portal**, **Voice of the Forsaken** | the Guild Master's letters, conclaves, recruiting pin, polls |
 
 ## Commands
 | Command | What it does |
@@ -59,12 +59,12 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
 | `/syl mentions [on/off/clear]` | the chat lines that named you (the Chat tab's @), the cards beside the minimap |
 | `/syl inspect` | the Regalia tab |
 | `/syl key <secret>` | seal the guild channel (Dark Rangers) |
-| `/syl key rotate` | new channel key nobody sees (the Dark Lady) |
+| `/syl key rotate` | new channel key nobody sees (the Guild Master) |
 | `/syl backup`, `/syl restore` | save and restore settings as text |
 | `/syl letters` | what's new in each version |
 | `/syl brief`, `/syl musters` | your week in five lines; officer musters |
 | `/syl hotkey on/off` | Shift + guild key opens the window (or set a key in Key Bindings) |
-| `/syl bug` | copyable error report |
+| `/syl bug` | copyable error report: post it as a new issue at https://github.com/swiftyPigeon/Sylvanistas_Addon/issues |
 
 ## Limits
 - **Layer hop** works between members running the addon who said yes to layer help; the Dark
@@ -78,7 +78,7 @@ A `CHANGEME_` name can belong to no real character, so that role stays empty unt
   Portuguese is complete.
 
 ## Using it
-See **GUIDE.md**: a step-by-step guide for every rank, from the Dark Lady to the Forsaken.
+See **GUIDE.md**: a step-by-step guide for every rank, from the Guild Master to the Forsaken.
 
 ## Credits and licenses
 - Sylvanistas by SwiftyPigeon512, released under the MIT license (`LICENSE.txt`), which also

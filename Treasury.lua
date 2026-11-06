@@ -218,7 +218,7 @@ Treasury.SameChar = SameChar
 
 -- The Treasurer himself (or the author's "Treasurer's view", from the Workshop).
 function Treasury.IsTreasurer()
-	if ns.IsMember() and ns.IsTreasurer(ns.me, GetGuildInfo("player")) then return true end
+	if ns.IsMember() and ns.IsTreasurer(ns.me, ns.GuildInfo("player")) then return true end
 	return Treasury.DevView()
 end
 function Treasury.DevView()
@@ -232,7 +232,7 @@ end
 
 -- The King's view of the treasury: the King, his Steward (1.0.0: the switches and the keepers
 -- are his to set in the King's name, never the King's own book or his yes to share it, which
--- are the King's client's alone), and the author's Dark Lady view.
+-- are the King's client's alone), and the author's Guild Master view.
 local function IsKingView() return ns.King.IsKing() or ns.King.IsSteward() or ns.King.Preview() end
 
 -- The King's list of keepers as this client last heard it (never expires: a keeper's book must
@@ -246,7 +246,7 @@ local function Listed(name)
 	for _, n in ipairs(k and k.names or {}) do if SameChar(n, name) then return true end end
 	return false
 end
--- The names on the King's list (the author's Dark Lady view: its own, on his screen only).
+-- The names on the King's list (the author's Guild Master view: its own, on his screen only).
 function Treasury.Keepers()
 	local k
 	if ns.King.Preview() then k = ns.db and ns.db.previewTreasuryKeepers else k = KeeperStore() end
@@ -319,13 +319,13 @@ end
 -- Treasurer's mail character keeps one outside a Sylvanistas guild too.
 local function RealKeeper()
 	if not (ns.IsMember() or ns.IsTreasurerMail(ns.me)) then return false end
-	return Treasury.IsKeeperName(ns.me, GetGuildInfo("player"))
+	return Treasury.IsKeeperName(ns.me, ns.GuildInfo("player"))
 end
 Treasury.RealKeeper = RealKeeper
 function Treasury.IsKeeper() return RealKeeper() or Treasury.DevView() end
 
 -- The King's switches: what the army sees (every client keeps the King's last word). The
--- author's the Dark Lady's view keeps its own, on his screen only: the real King's word stays as it is.
+-- author's the Guild Master's view keeps its own, on his screen only: the real King's word stays as it is.
 local FLAGS = { "balance", "ranking", "book" }
 function Treasury.Flags()
 	local f
@@ -702,7 +702,7 @@ function Treasury.TradeShow()
 	Treasury.OpenBook() -- (at the gold before this trade, if it is still closed)
 	local name = ns.UnitFullName and ns.UnitFullName("NPC") or (UnitName and UnitName("NPC"))
 	-- 1.1: the guild the game shows on the other side (the dues' guild of a gift, Dues.lua).
-	local ok, guild = pcall(GetGuildInfo, "NPC")
+	local ok, guild = pcall(ns.GuildInfo, "NPC")
 	trade = name and { name = name, got = 0, gave = 0, gotList = {}, gaveList = {}, book = BookOf(ns.me, true),
 		guild = ok and type(guild) == "string" and guild ~= "" and guild or nil } or nil
 end
@@ -1061,7 +1061,7 @@ function Treasury.Consent()
 	local shares, k = ns.db and ns.db.keeperShares, nil
 	if type(shares) == "table" then k = shares[ConsentKey()] end
 	if k ~= nil then return k end
-	if ns.db and ns.IsMember() and ns.IsTreasurer(ns.me, GetGuildInfo("player")) then return ns.db.treasurerShares end
+	if ns.db and ns.IsMember() and ns.IsTreasurer(ns.me, ns.GuildInfo("player")) then return ns.db.treasurerShares end
 	return nil
 end
 
@@ -1082,7 +1082,7 @@ function Treasury.SetConsent(on)
 	if not RealKeeper() then return ns.Print(L.TREASURER_ONLY) end
 	ns.db.keeperShares = type(ns.db.keeperShares) == "table" and ns.db.keeperShares or {}
 	ns.db.keeperShares[ConsentKey()] = on and true or false
-	if ns.IsTreasurer(ns.me, GetGuildInfo("player")) then ns.db.treasurerShares = on and true or false end
+	if ns.IsTreasurer(ns.me, ns.GuildInfo("player")) then ns.db.treasurerShares = on and true or false end
 	ns.Print(on and L.TREASURER_SHARE_ON or L.TREASURER_SHARE_OFF)
 	if on then
 		Treasury.Share(true)
@@ -1104,7 +1104,7 @@ function Treasury.Withdraw(force)
 	local now = ns.Now()
 	if not force and now - lastWithdraw < Treasury.SHARE_EVERY then return false end
 	lastWithdraw = now
-	ns.Comm.Send("CHANNEL", "TX~" .. (GetGuildInfo("player") or ""), "treasury")
+	ns.Comm.Send("CHANNEL", "TX~" .. (ns.GuildInfo("player") or ""), "treasury")
 	return true
 end
 
@@ -1224,7 +1224,7 @@ function Treasury.Message(b, parts)
 	-- (review of 1.1: TakeFlags). His keepers never do: they are the King's and his
 	-- Stewards' to set, from their own clients (review of 1.0.0), and the field stays "-"
 	-- (1.1: on the channel, the parts the book holds).
-	local mine = ns.IsTreasurer(ns.me, GetGuildInfo("player") or "") and SameChar(b.name or ns.me, ns.me)
+	local mine = ns.IsTreasurer(ns.me, ns.GuildInfo("player") or "") and SameChar(b.name or ns.me, ns.me)
 	local flags = mine and FlagsWord() or "-"
 	local keepers = whole and "-" or ((showBalance and "1" or "0") .. (showRanking and "1" or "0") .. (showBook and "1" or "0") .. "@1")
 	local caps = { rank = Treasury.RANK_SENT, book = Treasury.BOOK_SENT, items = Treasury.ITEMS_SENT }
@@ -1270,7 +1270,7 @@ function Treasury.Message(b, parts)
 			allIn, allOut, tin, tout = U(math.max(sums.rank, sums.i)), U(sums.o), U(sums.r), U(sums.s)
 		end
 		local balance = showBalance and S(Treasury.Balance(b)) or S(opening + allIn - allOut + tin - tout)
-		return ("TB~%s~%s~%d~%d~%d~%d~%d~%d~%s~%s~%s~%s~%s~%s~%d:%d"):format(Treasury.EPOCH, Clean(GetGuildInfo("player")), opening,
+		return ("TB~%s~%s~%d~%d~%d~%d~%d~%d~%s~%s~%s~%s~%s~%s~%d:%d"):format(Treasury.EPOCH, Clean(ns.GuildInfo("player")), opening,
 			balance, allIn, allOut, weekIn, donors, table.concat(week, ","), flags, keepers,
 			table.concat(rank, ","), table.concat(lines, ","), table.concat(items, ","), tin, tout)
 	end
@@ -1307,7 +1307,7 @@ function Treasury.LegacyMessage(parts)
 		end
 	end
 	local b = parts.balance
-	return ("T8~%s~%d~%d~%d~%d~%d~%s~%s~%s"):format(Clean(GetGuildInfo("player")), b and S(r.balance) or 0, b and U(r.allIn) or 0, b and U(r.allOut) or 0,
+	return ("T8~%s~%d~%d~%d~%d~%d~%s~%s~%s"):format(Clean(ns.GuildInfo("player")), b and S(r.balance) or 0, b and U(r.allIn) or 0, b and U(r.allOut) or 0,
 		b and U(r.week) or 0, b and math.min(r.donors, 9999) or 0, FlagsWord(), table.concat(rank, ","), table.concat(lines, ","))
 end
 
@@ -1341,7 +1341,7 @@ function Treasury.Share(force)
 	-- On the channel the army's part alone (1.1); the whole book by whisper to the King, his
 	-- Stewards and the keepers heard online (none of it while the switches show all of it).
 	local parts, all = Treasury.PublicParts()
-	if ns.IsTreasurer(ns.me, GetGuildInfo("player")) then Send(Treasury.LegacyMessage(parts), "treasury8") end
+	if ns.IsTreasurer(ns.me, ns.GuildInfo("player")) then Send(Treasury.LegacyMessage(parts), "treasury8") end
 	Send(Treasury.Message(nil, not all and parts or nil), "treasury")
 	Treasury.Relay()
 	Treasury.SendPrivate()
@@ -1365,7 +1365,7 @@ end
 -- his account, with its yes and his.
 function Treasury.RelayedBooks()
 	local out = {}
-	if not RealKeeper() or not ns.IsTreasurer(ns.me, GetGuildInfo("player")) or not CanSend() then return out end
+	if not RealKeeper() or not ns.IsTreasurer(ns.me, ns.GuildInfo("player")) or not CanSend() then return out end
 	local shares = type(ns.db.keeperShares) == "table" and ns.db.keeperShares or {}
 	for key, b in pairs(Books()) do
 		if type(b) == "table" and b.epoch == Treasury.EPOCH and b.opening ~= nil and type(b.lines) == "table"
@@ -1377,7 +1377,7 @@ function Treasury.RelayedBooks()
 end
 
 function Treasury.Relay(force)
-	if not RealKeeper() or not ns.IsTreasurer(ns.me, GetGuildInfo("player")) then return end
+	if not RealKeeper() or not ns.IsTreasurer(ns.me, ns.GuildInfo("player")) then return end
 	local now = ns.Now()
 	if not force and now - lastRelay < Treasury.RELAY_EVERY then return end
 	lastRelay = now
@@ -1391,7 +1391,7 @@ function Treasury.Relay(force)
 			if shares[key] == true and CanSend() then
 				Send(Treasury.RelayMessage(b, not all and parts or nil))
 			elseif shares[key] == false then
-				ns.Comm.Send("CHANNEL", ("TX~%s~%s"):format(Clean(GetGuildInfo("player")), Clean(b.name)), "treasuryx " .. key)
+				ns.Comm.Send("CHANNEL", ("TX~%s~%s"):format(Clean(ns.GuildInfo("player")), Clean(b.name)), "treasuryx " .. key)
 			end
 		end
 	end
@@ -1758,7 +1758,7 @@ end
 
 ---------------------------------------------------------------------------
 -- 1.1: what the King's switches hide never goes on the channel (a promise made to a community
--- reviewer: "the parts the Dark Lady hides won't be sent at all"). On the Sylvanistas channel, which anyone
+-- reviewer: "the parts the Guild Master hides won't be sent at all"). On the Sylvanistas channel, which anyone
 -- can read, each keeper's book carries only what the army may see (Treasury.Message: the
 -- balance, the ranking, the book, each with its switch); the guild bank goes there only with the
 -- "book" switch (Bank.lua) and the early supporters only with the "ranking" one. The whole of it
@@ -1810,7 +1810,7 @@ local lastAsk = -math.huge
 local privateKinds = {}  -- [type] = { from(sender), to, handle(dist, sender, text) }
 local held = false       -- a changed message was held back by PRIVATE_GAP: FlushPrivate sends it
 
--- The King's switches as he last gave them (never the author's Dark Lady view): what goes on the
+-- The King's switches as he last gave them (never the author's Guild Master view): what goes on the
 -- channel. Returns the parts, and whether all of them show (the whole book goes there then).
 function Treasury.PublicParts()
 	local f = ns.rdb and ns.rdb.treasuryFlags
@@ -2015,7 +2015,7 @@ function Treasury.Ask(fresh)
 	if ns.TREASURY_OFF or not ns.rdb or not ns.IsMember() then return false end
 	if not (Treasury.IsInsider() or (ns.Bank and ns.Bank.AsksSisters and ns.Bank.AsksSisters())) then return false end
 	lastAsk = ns.Now()
-	ns.Comm.Send("CHANNEL", ("TA~%s~%d"):format(Clean(GetGuildInfo("player")), fresh and 0 or 1), "treasuryask")
+	ns.Comm.Send("CHANNEL", ("TA~%s~%d"):format(Clean(ns.GuildInfo("player")), fresh and 0 or 1), "treasuryask")
 	return true
 end
 function Treasury.AskDue() return ns.Now() - lastAsk >= Treasury.ASK_EVERY end
@@ -2123,10 +2123,10 @@ function Treasury.SendFlags(force)
 	local now = ns.Now()
 	if not force and now - lastFlagsSent < Treasury.FLAGS_EVERY then return end
 	lastFlagsSent = now
-	ns.Comm.Send("CHANNEL", ("T1~T~%d~%s~%s~%d"):format(ns.King.NewId(), GetGuildInfo("player") or "", FlagDigits(f), math.floor(f.at)), "treasuryflags")
+	ns.Comm.Send("CHANNEL", ("T1~T~%d~%s~%s~%d"):format(ns.King.NewId(), ns.GuildInfo("player") or "", FlagDigits(f), math.floor(f.at)), "treasuryflags")
 end
 
--- The King's switch, or his Steward's in his name (the author's Dark Lady view: its own switches,
+-- The King's switch, or his Steward's in his name (the author's Guild Master view: its own switches,
 -- on his screen only).
 function Treasury.SetFlag(what, on)
 	if not IsKingView() then return ns.Print(L.THRONE_ONLY_KING) end
@@ -2248,10 +2248,10 @@ function Treasury.SendKeepers(force)
 	lastKeepersSent = now
 	local names = {}
 	for i, n in ipairs(k.names) do names[i] = Clean(n) end
-	ns.Comm.Send("CHANNEL", ("T1~K~%d~%s~%d~%s"):format(ns.King.NewId(), GetGuildInfo("player") or "", math.floor(k.at), table.concat(names, ",")), "treasurykeepers")
+	ns.Comm.Send("CHANNEL", ("T1~K~%d~%s~%d~%s"):format(ns.King.NewId(), ns.GuildInfo("player") or "", math.floor(k.at), table.concat(names, ",")), "treasurykeepers")
 end
 
--- 1.3.0 (the user's call): the Treasurer is a guild rank, not a pinned name. The Dark Lady's own
+-- 1.3.0 (the user's call): the Treasurer is a guild rank, not a pinned name. The Guild Master's own
 -- client (the only one whose keepers' list everyone trusts: T1~K, from her pinned name) puts every
 -- member of her guild whose rank is named Treasurer on that list, and takes them off when the rank
 -- goes; the names she added by hand stay (k.auto: the ones the rank put there). Once a minute.
@@ -2481,7 +2481,7 @@ end
 -- This character holds 0.9's book: one of the Treasurer's pinned characters, a keeper (his
 -- account kept that book).
 local function EarlyHolder()
-	return RealKeeper() and TreasurerSpeaking(ns.me, GetGuildInfo("player") or "") or false
+	return RealKeeper() and TreasurerSpeaking(ns.me, ns.GuildInfo("player") or "") or false
 end
 
 -- The early supporters as this client has them ({ at, names }), or nil: the Treasurer's own
@@ -2545,7 +2545,7 @@ function Treasury.SendEarly(force)
 	local now = ns.Now()
 	if not force and now - lastEarlySent < Treasury.EARLY_GAP then return false end
 	lastEarlySent = now
-	local guild = Clean(GetGuildInfo("player"))
+	local guild = Clean(ns.GuildInfo("player"))
 	local pieces, token = EarlyPieces(list, guild), {}
 	earlySending = token
 	local function Piece(i)
@@ -2567,7 +2567,7 @@ function Treasury.SendEarlyTo(name)
 	if not MaySendEarly() then return false end
 	local list = ArchivedSupporters()
 	if not list then return false end
-	local guild = Clean(GetGuildInfo("player"))
+	local guild = Clean(ns.GuildInfo("player"))
 	local pieces, msgs = EarlyPieces(list, guild), {}
 	for i, piece in ipairs(pieces) do msgs[i] = ("TE~%s~%d~%d~%d~%s"):format(guild, list.at, i, #pieces, piece) end
 	if #msgs == 0 then return false end
@@ -2661,7 +2661,7 @@ function Treasury.Tick()
 	Treasury.AskEarly()
 end
 
--- 1.3.0: the Dark Lady's client keeps the Treasurer rank on the keepers' list (Treasury.SyncRankKeepers).
+-- 1.3.0: the Guild Master's client keeps the Treasurer rank on the keepers' list (Treasury.SyncRankKeepers).
 ns.On("LOGIN", function()
 	ns.Every(60, "treasury rank keepers", function() ns.SafeCall("treasury rank keepers", Treasury.SyncRankKeepers) end)
 end)
@@ -2762,7 +2762,7 @@ end
 
 local function DonationMessage(on)
 	local zone = on and donating and donating.mapID
-	return ("TD~%s~%d~%d~%s"):format(Clean(GetGuildInfo("player")), on and 1 or 0, on and donating and math.floor(donating.since) or 0, zone and tostring(zone) or "")
+	return ("TD~%s~%d~%d~%s"):format(Clean(ns.GuildInfo("player")), on and 1 or 0, on and donating and math.floor(donating.since) or 0, zone and tostring(zone) or "")
 end
 
 function Treasury.SendDonations(force)

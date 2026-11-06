@@ -135,10 +135,10 @@ local function Guildmate(name) return ns.Roster and ns.Roster.RankOf and ns.Rost
 -- Guildmates online in our zone (the game's guild roster), us aside: what "nobody here" means.
 local function GuildHere()
 	local zone = GetRealZoneText and GetRealZoneText()
-	if not (zone and zone ~= "" and GetNumGuildMembers and GetGuildRosterInfo) then return 0 end
+	if not (zone and zone ~= "" and ns.NumGuildMembers and ns.GuildRosterInfo) then return 0 end
 	local n = 0
-	for i = 1, (GetNumGuildMembers()) or 0 do
-		local name, _, _, _, _, z, _, _, online = GetGuildRosterInfo(i)
+	for i = 1, (ns.NumGuildMembers()) or 0 do
+		local name, _, _, _, _, z, _, _, online = ns.GuildRosterInfo(i)
 		if online and z == zone and name and ns.FullName(name) ~= ns.me then n = n + 1 end
 	end
 	return n
@@ -253,6 +253,7 @@ end
 local function InviteNow(name)
 	pending[name] = ns.Now()
 	watch[name] = ns.Now()
+	if ns.DemoBlocked() then return end -- (1.3.2: /syl demo sends nothing)
 	local target = ns.TellName(name)
 	if C_PartyInfo and C_PartyInfo.InviteUnit then C_PartyInfo.InviteUnit(target) elseif InviteUnit then InviteUnit(target) end
 	ns.Log("party: invited %s", tostring(name))
@@ -334,8 +335,8 @@ function Party.Gather()
 	Start(names, false)
 end
 
--- The whole zone: rank 1 (Dreadguards in the house, Dark Rangers elsewhere), the Dark Lady and her
--- Deathstalkers. Past a party of
+-- The whole zone: rank 1 (Dreadguards in the house, Dark Rangers elsewhere), the Guild Master and her
+-- Banshees. Past a party of
 -- five, the leader is asked (a click) to turn the group into a raid, then it goes on.
 function Party.CanZone()
 	if not ns.IsMember() then return false end

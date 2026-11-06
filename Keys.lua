@@ -234,7 +234,7 @@ function Keys.HandleKey(dist, sender, text)
 	local took = Take(key, at, false, retires)
 	if fromCrown then
 		-- The rotating client counts who has it; an officer hands it to his guild.
-		ns.Comm.Whisper(sender, ("K4~%d~%s"):format(at, GetGuildInfo("player") or ""), "key4")
+		ns.Comm.Whisper(sender, ("K4~%d~%s"):format(at, ns.GuildInfo("player") or ""), "key4")
 		if took and ns.Roster.IsOfficer() then ToGuild(key, at) end
 	end
 end
@@ -332,12 +332,12 @@ function Keys.CanRotate()
 	return (ns.King.IsKing() and ns.IsKingCharacter(ns.me)) or ns.King.IsSteward()
 end
 
--- Sylvanistas: a Dreadguard (rank 0-1 of the Dark Lady's guild) rotates the key for that guild
+-- Sylvanistas: a Dreadguard (rank 0-1 of the Guild Master's guild) rotates the key for that guild
 -- directly: a new key nobody sees, taken here and handed to the guild over GUILD, where every
--- guildmate's addon already takes a key from its officers (HandleKey, K1). The Dark Lady's own
+-- guildmate's addon already takes a key from its officers (HandleKey, K1). The Guild Master's own
 -- rotation (above) still reaches the other Sylvanistas guilds; this one reaches her guild alone.
 function Keys.CanGuildRotate()
-	return ns.IsMember() and ns.Roster.IsOfficer() and ns.IsKingGuild(GetGuildInfo("player")) or false
+	return ns.IsMember() and ns.Roster.IsOfficer() and ns.IsKingGuild(ns.GuildInfo("player")) or false
 end
 
 function Keys.GuildRotatePrompt()
@@ -434,7 +434,7 @@ Keys.WhoSaw = WhoSaw
 -- in it (whispered), waiting = { Name-Realm } it did not (not whispered), seen }.
 function Keys.Candidates()
 	local out, now = {}, ns.Now()
-	local mine = ns.Roster.IsOfficer() and GetGuildInfo("player") or nil
+	local mine = ns.Roster.IsOfficer() and ns.GuildInfo("player") or nil
 	for _, e in ipairs(ns.Data.Summary().guilds) do
 		local g = e.g
 		if e.fresh and e.name ~= mine and now - (tonumber(g.t) or 0) <= Keys.ONLINE_FRESH then
@@ -741,6 +741,9 @@ end
 
 function Keys.RotatePrompt()
 	if ns.King and ns.King.Preview and ns.King.Preview() then return ns.Print(L.THRONE_PREVIEW_NOTE) end
+	-- 1.3.2: off the Guild Leader's realm group (no leader pinned there) the Throne's Rotate seals
+	-- that realm's own guild, as /syl key rotate does.
+	if not Keys.CanRotate() and ns.KingCharacter() == nil and Keys.CanGuildRotate() then return Keys.GuildRotatePrompt() end
 	if not Keys.CanRotate() then return ns.Print(L.KEY_ROTATE_ONLY_KING) end
 	ns.ShowDialog("SYLVANISTAS_KEY_ROTATE", tostring(math.ceil(Keys.GRACE / 60)))
 end

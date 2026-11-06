@@ -22,7 +22,7 @@ local function Interval()
 end
 
 local function SendPosition()
-	if not ns.db.sharePosition or not IsInGuild() or IsInInstance() then return end
+	if not ns.db.sharePosition or not ns.InGuild() or IsInInstance() then return end
 	local mapID = C_Map.GetBestMapForUnit("player")
 	local pos = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
 	if not pos then return end

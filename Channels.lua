@@ -115,7 +115,7 @@ end
 -- Our own rank always comes from the server.
 function Channels.MyLevel()
 	if not ns.IsMember() then return 0 end
-	local level = Channels.LevelOf(GetGuildInfo("player"), ns.Roster.MyRank())
+	local level = Channels.LevelOf(ns.GuildInfo("player"), ns.Roster.MyRank())
 	-- 1.3.0: a Dreadguard (moderator) reads and writes [Dark Rangers] like an officer.
 	if level < 2 and ns.IsHighCouncillor(ns.me) then level = 2 end
 	return level
@@ -133,7 +133,7 @@ end
 function Channels.VerifiedLevel(sender, guild)
 	local who = ns.FullName(sender)
 	local rank = ns.Roster.RankOf(who)
-	local mine = GetGuildInfo("player")
+	local mine = ns.GuildInfo("player")
 	if mine and guild:lower() == mine:lower() then
 		if guild ~= mine then return 0, false end -- our name spelled another way (names ignore case)
 		if rank then return Channels.LevelOf(guild, rank), true, rank end
@@ -913,7 +913,7 @@ function Channels.Send(tier, text, now, keepMute)
 		ns.ShowDialog("SYLVANISTAS_CHAT_PRIVACY", Label(tier), ns.Comm.Audience(), { tier = tier, text = text, channel = ns.Comm.ChannelName(), keepMute = keepMute or nil })
 		return false, "confirm"
 	end
-	local guild = GetGuildInfo("player")
+	local guild = ns.GuildInfo("player")
 	local class = ns.Roster.ClassCode(UnitClass and select(2, UnitClass("player")))
 	-- Classes without a 2 letter code travel without a class (the decoder only takes 2 letters).
 	if not class:match("^%u%u$") then class = "" end
@@ -1288,7 +1288,7 @@ end
 function Channels.PinRank(sender, guild, dist)
 	if type(sender) ~= "string" or type(guild) ~= "string" or not ns.IsFederation(guild) then return nil end
 	if dist == "GUILD" then
-		if guild ~= GetGuildInfo("player") then return nil end
+		if guild ~= ns.GuildInfo("player") then return nil end
 		return ns.Roster.RankOf(sender) == 0 and Channels.PIN_LORD or nil
 	end
 	if (dist or "CHANNEL") ~= "CHANNEL" or not ns.IsKingGuild(guild) then return nil end
@@ -1304,9 +1304,9 @@ end
 -- officers of <Sylvanistas> (Lords on its own members' clients alone).
 local function MyPin()
 	local K = ns.King
-	if K and K.IsKing and K.IsKing() and ns.IsKingCharacter(ns.me) then return Channels.PIN_KING, GetGuildInfo("player"), "CHANNEL" end
+	if K and K.IsKing and K.IsKing() and ns.IsKingCharacter(ns.me) then return Channels.PIN_KING, ns.GuildInfo("player"), "CHANNEL" end
 	if K and ((K.IsSteward and K.IsSteward()) or (K.IsHand and K.IsHand())) then return Channels.PIN_CROWN, ns.KingGuildName(), "CHANNEL" end
-	if ns.IsMember() and ns.Roster.MyRank() == 0 and Channels.MyLevel() >= TIERS.L.level then return Channels.PIN_LORD, GetGuildInfo("player"), "GUILD" end
+	if ns.IsMember() and ns.Roster.MyRank() == 0 and Channels.MyLevel() >= TIERS.L.level then return Channels.PIN_LORD, ns.GuildInfo("player"), "GUILD" end
 	return nil
 end
 function Channels.CanPin() return MyPin() ~= nil end
@@ -1723,7 +1723,7 @@ ns.Comm.Handle("N1", function(dist, sender, text) Channels.HandlePin(dist, sende
 function Channels.PinStatus(now)
 	local p = Current(now)
 	if not p then return "none" end
-	local ranks = { [3] = "the Dark Lady", [2] = "Valkyr or Deathstalker", [1] = "Darkcaller" }
+	local ranks = { [3] = "the Guild Master", [2] = "Valkyr or Banshee", [1] = "Darkcaller" }
 	return ("by %s <%s> (%s)%s%s, ends in %dm"):format(ns.DisplayName(p.sender) or "?", Codec.Plain(p.guild), ranks[p.rank] or "?",
 		p.mine and ", ours" or "", Channels.Pin(now) ~= p and ", not shown here (chats off or net-off)" or "",
 		math.ceil((p.expires - (now or ns.Now())) / 60))
@@ -1844,7 +1844,7 @@ function Channels.ToggleMute(word)
 		return
 	end
 	local muted = Muted()
-	-- 1.3.0 (the user's rule): the officers' chats ([Dark Rangers], [Darkcallers]) are muted by the Dark Lady alone.
+	-- 1.3.0 (the user's rule): the officers' chats ([Dark Rangers], [Darkcallers]) are muted by the Guild Master alone.
 	if (tier == "C" or tier == "L") and not muted[tier] and not ns.IAmDarkLady() then return ns.Print(L.MUTE_NOT_OFFICERS) end
 	if muted[tier] then
 		muted[tier] = nil

@@ -76,7 +76,7 @@ end
 
 local function Ask()
 	local mapID = Here()
-	if not mapID or not IsInGuild() or IsInInstance() then return end
+	if not mapID or not ns.InGuild() or IsInInstance() then return end
 	lastAsk = ns.Now()
 	ns.Comm.Send("GUILD", ("NQ~%d~%d"):format(ZoneOf(mapID), UnitLevel("player") or 0), "fellows")
 end

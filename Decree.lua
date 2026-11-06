@@ -243,7 +243,7 @@ function Decree.Send(kind, text)
 		text = ("%s^%s^%s"):format(guid, target, tostring(text or ""):gsub("%^", ""))
 	end
 	lastSent = now
-	local guild = steward and ns.KingGuildName() or GetGuildInfo("player") or ""
+	local guild = steward and ns.KingGuildName() or ns.GuildInfo("player") or ""
 	local rank = steward and 0 or ns.Roster.MyRank()
 	-- Logged (1.0.0): the server keeps its words, so abuse can be reported (Comm.Send).
 	ns.Comm.Send("CHANNEL", ns.Codec.EncodeDecree(kind, mapID, x, y, guild, rank, text), nil, nil, true)
@@ -260,7 +260,7 @@ end
 function Decree.Preview(kind)
 	local mapID, x, y = Where()
 	if not mapID then return end
-	local d = { kind = kind, mapID = mapID, x = x, y = y, guild = GetGuildInfo("player") or "Sylvanistas", rank = 0,
+	local d = { kind = kind, mapID = mapID, x = x, y = y, guild = ns.GuildInfo("player") or "Sylvanistas", rank = 0,
 		text = L.DECREE_PREVIEW_TEXT, sender = ns.DisplayName(ns.me), t = ns.Now() }
 	if kind == "ARMS" then
 		local _, name = Decree.RevenantTarget()
@@ -362,7 +362,7 @@ ns.Comm.Handle("D1", function(dist, sender, text)
 	-- clients its roster says who speaks for it. His Steward's (1.0.0: the signed titles list
 	-- names him, King.IsStewardName) on every client, as the King's. Everyone else: the rank we
 	-- can verify, never the rank written in the message.
-	local mine = GetGuildInfo("player")
+	local mine = ns.GuildInfo("player")
 	local kings = ns.IsKingGuild(d.guild)
 	local king = kings and ns.IsKingCharacter(sender)
 	local steward = kings and not king and ns.King ~= nil and ns.King.IsStewardName(sender)

@@ -92,7 +92,7 @@ function Views.SeenNow(guild, name)
 	return roundIndex.set[guild .. "\0" .. key] == true
 end
 function Views.PresenceNow(e, name, online, days)
-	if type(e) ~= "table" or e.name == GetGuildInfo("player") then return online, days, false end
+	if type(e) ~= "table" or e.name == ns.GuildInfo("player") then return online, days, false end
 	if Views.SeenNow(e.name, name) then return true, 0, false end
 	return online, days, e.fresh == false
 end
@@ -883,7 +883,7 @@ end
 -- Shared tooltips
 ---------------------------------------------------------------------------
 
--- What a guild's guild master is called: the Dark Lady in her own guild and (1.3.0) in its alt
+-- What a guild's guild master is called: the Guild Master in her own guild and (1.3.0) in its alt
 -- branch when it is her alt that leads it, a Darkcaller elsewhere.
 local function LeaderTitle(guild, leader)
 	return (ns.IsKingGuild(guild) or ns.IsKingAltLeader(guild, leader)) and L.KING or L.LORD
@@ -1083,7 +1083,7 @@ local function CensusRow(e)
 	-- (1.2.20: online when /who sees them now, whatever an old report said.)
 	local lordOn, lordDays = Views.PresenceNow(e, g.leader, g.leaderOnline, g.leaderDays)
 	local leader = g.leader and ((lordOn and "|cff40ff40" or "|cff9d9d9d") .. Plain(g.leader) .. "|r") or Grey("?")
-	local own = e.name == GetGuildInfo("player")
+	local own = e.name == ns.GuildInfo("player")
 	local cells = {
 		[1] = { onClick = function() OpenInRealm(e.name) end, hint = L.CELL_GUILD_HINT },
 		[2] = {
@@ -1333,7 +1333,7 @@ local function CensusLines(s, q)
 		-- (1.2.20: names, zones and players with look-alike letters as one, Lookalike.)
 		local lq = Lookalike(q)
 		ZoneLines(lines, s, lq)
-		local own, swept = GetGuildInfo("player"), nil
+		local own, swept = ns.GuildInfo("player"), nil
 		for _, e in ipairs(SortedGuilds(s.guilds)) do
 			if CensusHolds(lq, Plain(e.name), e.g.leader and Plain(e.g.leader)) then
 				lines[#lines + 1] = CensusRow(e)
@@ -1449,7 +1449,7 @@ function Views.MembersOf(guild, g, swept)
 	local skip = {}
 	if g and g.leader then skip[ns.ShortName(g.leader)] = true end
 	for _, o in ipairs(g and g.officers or {}) do if o.name then skip[ns.ShortName(o.name)] = true end end
-	local out, fromWho = {}, guild ~= GetGuildInfo("player")
+	local out, fromWho = {}, guild ~= ns.GuildInfo("player")
 	if not fromWho then
 		for _, m in ipairs(ns.Roster.online or {}) do
 			if not skip[ns.ShortName(m.name)] then out[#out + 1] = m end
@@ -1604,7 +1604,7 @@ local function Known(s, wanted)
 		end
 	end
 	Reports(true)
-	local mine = GetGuildInfo("player")
+	local mine = ns.GuildInfo("player")
 	for _, m in ipairs(mine and ns.Roster.online or {}) do
 		Add(mine, { name = m.name, class = m.class, level = m.level, zone = m.zone, rank = m.rank, online = true })
 	end
@@ -1895,7 +1895,7 @@ local function RealmLines(s, q)
 				expanded[e.name] = not expanded[e.name] or nil
 				-- Opened: a /who for that guild alone lists who of it is online (a click, so the
 				-- game allows it). Our own guild is in our roster already.
-				if expanded[e.name] and e.name ~= GetGuildInfo("player") then ns.SafeCall("guild who", ns.Who.SearchGuild, e.name) end
+				if expanded[e.name] and e.name ~= ns.GuildInfo("player") then ns.SafeCall("guild who", ns.Who.SearchGuild, e.name) end
 				ns.UI.Refresh()
 			end,
 			tooltip = GuildTooltip(e),
@@ -1919,7 +1919,7 @@ local function RealmLines(s, q)
 			lines[#lines + 1] = { indent = 1, text = Gold(OfficersTitle(e.name):format(#officers)),
 				-- (1.1.2: another guild's report names 30 Captains at most, Codec.lua.)
 				tooltip = function(tt)
-					local ours = e.name == GetGuildInfo("player")
+					local ours = e.name == ns.GuildInfo("player")
 					tt:AddLine(OfficersTitle(e.name):format(#officers), 1, 0.82, 0)
 					tt:AddLine(ours and L.CAPTAINS_OWN_TIP or L.CAPTAINS_TIP, 1, 1, 1, true)
 					Why(tt, ours and "count-own-guild-live" or "count-other-guild-report")
@@ -1989,7 +1989,7 @@ local function RealmLines(s, q)
 		end
 		if #(g.ranks or {}) == 0 then lines[#lines + 1] = { indent = 2, text = Grey(L.NONE_REPORTED) } end
 		-- Our own guild's: a click lists them, by name (1.1, Members.lua).
-		local own = g.mine and e.name == GetGuildInfo("player")
+		local own = g.mine and e.name == ns.GuildInfo("player")
 		lines[#lines + 1] = {
 			indent = 1, gapAfter = true,
 			text = own and Gold(L.INACTIVE_LINE:format(g.inactive7 or 0, g.inactive30 or 0) .. "  " .. L.MEMBERS_OPEN)
@@ -2005,7 +2005,7 @@ local function RealmLines(s, q)
 	-- guilds past them counted in `more`, shown on a click.)
 	local ctx, rows, more
 	if q then
-		local own = GetGuildInfo("player")
+		local own = ns.GuildInfo("player")
 		ctx, rows, more = { q = q, own = own, hits = SeenHits(q, own) }, 0, 0
 	end
 	for _, e in ipairs(HouseFirst(s.guilds)) do
@@ -2145,7 +2145,7 @@ local function RealmLines(s, q)
 		lines[#lines + 1] = {
 			text = (layer.mine and Green("> ") or "   ") .. Gold(ns.Layers.Name(layer)) .. Grey(("  #%d"):format(layer.zoneUID)),
 			right = L.LAYER_COUNT:format(layer.count),
-			-- (1.3.0, the user's call: no more joining any layer from here; the Dark Lady's alone, by the
+			-- (1.3.0, the user's call: no more joining any layer from here; the Guild Master's alone, by the
 			-- vortex beside Shadows' search box, Hop.AskKing.)
 			tooltip = function(tt)
 				tt:AddLine(ns.Layers.Name(layer), 1, 0.82, 0)
@@ -2446,7 +2446,7 @@ local function RegaliaLines(q)
 		end
 		if #loyal > 12 then lines[#lines + 1] = { indent = 1, text = Grey(L.AND_MORE:format(#loyal - 12)) } end
 		if #loyal == 0 then Views.GreyRows(lines, L.LOYALISTS_EMPTY:format(I.LOYAL_DAYS), { indent = 1 }) end
-		-- The Dark Lady thanks them in guild chat (her click).
+		-- The Guild Master thanks them in guild chat (her click).
 		if not q and #loyal > 0 and ns.King and (ns.King.IsKing() or ns.King.Preview()) then
 			lines[#lines + 1] = {
 				indent = 1, text = Gold(L.LOYALISTS_THANK_BTN),
@@ -2479,7 +2479,7 @@ end
 -- 1.1: a guild of Sylvanistas whose name the rule leaves out counts once the author's signed
 -- list names it (ns.IsApprovedGuild): its first member pastes that list, from this screen too.
 local function ApprovedHint(lines)
-	local guild = IsInGuild() and GetGuildInfo("player")
+	local guild = ns.InGuild() and ns.GuildInfo("player")
 	if type(guild) ~= "string" or guild == "" then return lines end
 	if lines[#lines] then lines[#lines].gapAfter = true end
 	lines[#lines + 1] = {
@@ -2666,7 +2666,7 @@ function Views.ToggleAlertSettings()
 	if main and main.IsShown and main:IsShown() then f:SetPoint("TOPLEFT", main, "TOPRIGHT", 40, 0) else f:SetPoint("CENTER") end
 	f:Show()
 end
--- 1.3.0: the Dark Lady's layer, one click: a swirling portal beside Shadows' search box.
+-- 1.3.0: the Guild Master's layer, one click: a swirling portal beside Shadows' search box.
 local HOP_VORTEX = {
 	icon = "Interface\\Icons\\Spell_Arcane_PortalUndercity",
 	onClick = function() if ns.Hop and ns.Hop.AskKing then ns.Hop.AskKing() end end,
@@ -2827,10 +2827,10 @@ local BUILD = {
 -- instead of an army that looks empty.
 local function LockedLine()
 	return {
-		text = Red(L.KEY_LOCKED), gapAfter = true,
+		text = Red((ns.Comm.LockedText())), gapAfter = true,
 		tooltip = function(tt)
 			tt:AddLine(L.KEY_LOCKED_TITLE, 1, 0.82, 0)
-			tt:AddLine(L.KEY_LOCKED_TIP, 1, 1, 1, true)
+			tt:AddLine(select(2, ns.Comm.LockedText()), 1, 1, 1, true)
 		end,
 	}
 end

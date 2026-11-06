@@ -99,7 +99,7 @@ local function Ack(w)
 	if w.acked then return end
 	w.acked = true
 	if w.king and w.king ~= ns.me then
-		ns.Comm.Whisper(w.king, ("T6~%d~%s"):format(w.id, GetGuildInfo("player") or ""), "writ ack")
+		ns.Comm.Whisper(w.king, ("T6~%d~%s"):format(w.id, ns.GuildInfo("player") or ""), "writ ack")
 	end
 	ns.Fire("DECREES_CHANGED")
 end
@@ -140,7 +140,7 @@ function Acts.SendWrit(to, text)
 	if preview then
 		ns.Print(L.THRONE_PREVIEW_NOTE)
 	else
-		ns.Comm.Send("CHANNEL", ("T1~W~%d~%s~%s~%s"):format(w.id, GetGuildInfo("player") or "", to, text), "writ")
+		ns.Comm.Send("CHANNEL", ("T1~W~%d~%s~%s~%s"):format(w.id, ns.GuildInfo("player") or "", to, text), "writ")
 	end
 	ns.Print(L.WRIT_SENT:format(Acts.Audience(to)))
 	Acts.ShowWrit(w)
@@ -311,7 +311,7 @@ end
 local function SendGates()
 	if not gates or not gates.mine or gates.preview then return end
 	gates.sentAt = ns.Now()
-	ns.Comm.Send("CHANNEL", ("T1~G~%d~%s~%d~%s"):format(gates.id, GetGuildInfo("player") or "",
+	ns.Comm.Send("CHANNEL", ("T1~G~%d~%s~%d~%s"):format(gates.id, ns.GuildInfo("player") or "",
 		math.max(0, math.floor(gates.at - ns.Now())), gates.guild), "gates")
 end
 
@@ -343,7 +343,7 @@ function Acts.CloseGates()
 	if not gates then return end
 	if not Acts.CanClose() then return ns.Print(L.GATES_ONLY_OPENER) end
 	if not gates.preview then
-		ns.Comm.Send("CHANNEL", ("T1~G~%d~%s~0~"):format(gates.id, GetGuildInfo("player") or ""), "gates")
+		ns.Comm.Send("CHANNEL", ("T1~G~%d~%s~0~"):format(gates.id, ns.GuildInfo("player") or ""), "gates")
 		ns.Chronicle.Add("gates", ns.me, L.ACTS_GATES_CLOSED, { key = "gates", value = "closed" })
 	end
 	gates = nil

@@ -9,6 +9,7 @@ local ADDON, ns = ...
 
 local Comm = {}
 ns.Comm = Comm
+Comm.TYPED_KEY_MIN = 20 -- 1.3.2: characters of a key typed with /syl key <secret> (was 6)
 local Codec = ns.Codec
 
 local HELLO_EVERY = 60
@@ -242,7 +243,7 @@ local function Held(msg)
 	return M ~= nil and not M.missing and M.Blocks(msg) == true
 end
 function Comm.Send(dist, msg, key, urgent, logged)
-	if dist == "GUILD" and not IsInGuild() then return end
+	if dist == "GUILD" and not ns.InGuild() then return end
 	if Held(msg) then return end
 	Enqueue(dist, msg, key, nil, urgent, logged)
 end
@@ -263,7 +264,7 @@ Comm.pieceHooks = {}
 -- over GUILD (1.0.0), where only the types in GUILD_PIECES are put together again.
 function Comm.SendChunked(payload, urgent, dist)
 	dist = dist == "GUILD" and "GUILD" or "CHANNEL"
-	if dist == "GUILD" and not IsInGuild() then return end
+	if dist == "GUILD" and not ns.InGuild() then return end
 	msgId = (msgId + 1) % 1000
 	for _, c in ipairs(Codec.Chunk(payload, tostring(msgId))) do Enqueue(dist, c, nil, nil, urgent) end
 end
@@ -322,6 +323,7 @@ end
 -- Player text goes through the logged API, Blizzard's function for plain text payloads
 -- (receivers get CHAT_MSG_ADDON_LOGGED). Clients without it use the usual one.
 local function SendNow(dist, msg, logged, whisperTo)
+	if ns.Demo() then return true end -- (1.3.2: /syl demo sends nothing, quietly)
 	-- (A whisper goes to the name the server finds: ns.TellName.)
 	local target = dist == "CHANNEL" and channelIndex or ns.TellName(whisperTo)
 	local send = logged and C_ChatInfo.SendAddonMessageLogged or C_ChatInfo.SendAddonMessage
@@ -468,6 +470,13 @@ function Comm.KeyLocked()
 	return not (type(key) == "string" and key ~= "")
 end
 
+-- 1.3.2: the locked line and its tip. On the Guild Leader's realm group the key comes from them; on
+-- any other (no leader pinned there) the guild seals its own channel.
+function Comm.LockedText()
+	if ns.KingCharacter() then return ns.L.KEY_LOCKED, ns.L.KEY_LOCKED_TIP end
+	return ns.L.KEY_LOCKED_AWAY, ns.L.KEY_LOCKED_AWAY_TIP
+end
+
 function Comm.ChannelSpec()
 	local horde = ns.faction == "Horde"
 	local key = ns.rdb and ns.rdb.realmKey
@@ -568,7 +577,7 @@ local function Protected()
 	local pinned = ns.KING_CHARACTER
 	if type(pinned) == "table" then pinned = pinned[ns.faction or "Alliance"] end
 	Add(pinned)
-	if ns.IsKingGuild and ns.IsKingGuild(GetGuildInfo("player")) and ns.Roster and type(ns.Roster.byName) == "table" then
+	if ns.IsKingGuild and ns.IsKingGuild(ns.GuildInfo("player")) and ns.Roster and type(ns.Roster.byName) == "table" then
 		for name, rank in pairs(ns.Roster.byName) do
 			if rank == 0 then Add(name) break end
 		end
@@ -793,10 +802,22 @@ function Comm.GuardStats()
 	}
 end
 
+-- 1.3.2: the game rejoins at login the channels it was in, so a client that moved to the sealed
+-- channel (or is locked) lingers on the public ones: left whenever we find ourselves there.
+local function LeavePublic()
+	for _, public in ipairs({ ns.CHANNEL_HORDE, ns.CHANNEL }) do
+		if public and (GetChannelName(public) or 0) > 0 then
+			LeaveChannelByName(public)
+			ns.Log("left the public channel %s: %s", public, Comm.KeyLocked() and "no key (key required)" or "sealed")
+		end
+	end
+end
+
 function Comm.JoinChannel()
-	if not ns.IsMember() then return end
+	if ns.Demo() or not ns.IsMember() then return end -- (1.3.2: no channel in /syl demo)
 	-- 1.2.2: locked without the key (ns.REQUIRE_KEY): off the public channel, and not on any.
 	if Comm.KeyLocked() then
+		LeavePublic()
 		if joinedName and GetChannelName(joinedName) > 0 then LeaveChannelByName(joinedName) end
 		if joinedName then ns.Log("channel %s left: no key (key required)", joinedName) end
 		joinedName, channelIndex, watch = nil, 0, nil
@@ -804,6 +825,7 @@ function Comm.JoinChannel()
 		return
 	end
 	local name, password = Comm.ChannelSpec()
+	if password then LeavePublic() end
 	if joinedName and joinedName ~= name then
 		-- Another channel (the realm key arrived or changed). The chat lines still waiting were
 		-- written for the old one's audience: dropped, never sent on this one, and their writer is
@@ -846,6 +868,17 @@ function Comm.JoinChannel()
 end
 
 function Comm.ChannelName() return joinedName end
+
+-- 1.3.2: for the network key in the window's header: "sealed" (on our key's channel), "public" (no
+-- key: on the public channel), "joining" (not on our channel yet), "locked" (key required, none
+-- here) or "off" (outside a Sylvanistas guild, or /syl demo).
+function Comm.NetworkState()
+	if ns.Demo() or not ns.IsMember() then return "off" end
+	if Comm.KeyLocked() then return "locked" end
+	local name, password = Comm.ChannelSpec()
+	if joinedName ~= name or (GetChannelName(name) or 0) <= 0 then return "joining" end
+	return password and "sealed" or "public"
+end
 function Comm.DeliveredLogged() return deliveredLogged end
 
 -- Who can read the channel, as the privacy questions tell the player (Layers, Channels):
@@ -882,8 +915,18 @@ function Comm.SetRealmKey(secret)
 		ns.Print(ns.L.KEY_OFFICERS_ONLY)
 		return
 	end
+	-- 1.3.2: once sealed, only the house re-keys (the Guild Leader, the officers of its two guilds): a
+	-- branch officer's key would reach the main guild through keys saved per account (K1). Each realm
+	-- group on its own: off the Guild Leader's (no leader pinned there), the house is that realm's
+	-- Sylvanistas guilds, led by their own rank 0.
+	if ns.rdb.realmKey and not (ns.IsKingCharacter(ns.me) or ns.IsHouseGuild((ns.GuildInfo("player")))) then
+		ns.Print(ns.L.KEY_HOUSE_ONLY)
+		return
+	end
 	secret = (secret or ""):gsub("[~|\n]", "")
-	if #secret < 6 then
+	-- 1.3.2: a typed key at least TYPED_KEY_MIN long (the channel name comes from it by a public
+	-- rule, so a short one can be guessed). Keys received stay as they are (ValidKey, K1).
+	if #secret < Comm.TYPED_KEY_MIN then
 		ns.Print(ns.L.KEY_TOO_SHORT)
 		return
 	end
@@ -992,7 +1035,7 @@ end
 local lastHello = 0
 -- force: now, whatever the above (the player changed what the hello says).
 function Comm.Hello(force)
-	if not IsInGuild() then return end
+	if not ns.InGuild() then return end
 	local now, before = ns.Now(), 0
 	for name, t in pairs(Comm.Electable(now)) do
 		if now - t <= PEER_WINDOW and name < (ns.me or "") then before = before + 1 end
@@ -1299,7 +1342,7 @@ function Comm.ResetAdmission() wipe(admit); admitCount = 0 end
 -- is checked like any other (Workshop.TakeTitles: the signature, the budgets of checks).
 local outsiderAsm = Codec.NewAssembler()
 function Comm.Outsider(sender, text)
-	if not IsInGuild() or type(text) ~= "string" or not text:match("^C%w+:") then return end
+	if not ns.InGuild() or type(text) ~= "string" or not text:match("^C%w+:") then return end
 	if (ns.db.blocked[sender:lower()] and not ns.IsProtectedOfficer(sender)) or not Comm.Admit(sender, ns.Now()) then return end
 	stats.outsider = (stats.outsider or 0) + 1
 	local full = Codec.Feed(outsiderAsm, sender, text, ns.Now())
@@ -1308,7 +1351,7 @@ end
 function Comm.ResetOutsider() outsiderAsm = Codec.NewAssembler() end -- (tests)
 
 local function OnAddonMessage(prefix, text, dist, sender, target, zoneChannelID, localID, channelName)
-	if prefix ~= ns.PREFIX then return end
+	if prefix ~= ns.PREFIX or ns.Demo() then return end -- (1.3.2: /syl demo hears nothing)
 	if type(sender) ~= "string" or sender == "" or type(text) ~= "string" then return end
 	-- Nothing another player sends reaches a screen, a tooltip, the map, a popup or a copy box
 	-- with an escape code in it (0.9.2): every message but a chat line loses its "|" and its
@@ -1373,7 +1416,12 @@ local function OnAddonMessage(prefix, text, dist, sender, target, zoneChannelID,
 		local rank = ns.Roster.RankOf(sender)
 		if rank and rank <= ns.CAPTAIN_RANK then
 			local key = text:sub(4)
-			if key ~= "" and key ~= ns.rdb.realmKey then
+			if key ~= "" and key ~= ns.rdb.realmKey and ns.rdb.realmKey then
+				-- 1.3.2: holding a key, an undated K1 changes nothing: key changes come dated (K3: a
+				-- rotation, or a typed key, Keys.Typed), where the newest wins. A branch officer's key
+				-- answered from an account shared with ours can no longer pull our guild over.
+				ns.Log("realm key from officer %s ignored: we hold one (changes come dated)", sender)
+			elseif key ~= "" and key ~= ns.rdb.realmKey then
 				-- 1.1 (Keys.lua): a key a newer one replaced here (the King's rotation, an officer's
 				-- 1.1 /syl key) no longer comes back without an epoch; any other still does.
 				if ns.Keys.TakesLegacy and ns.Keys.TakesLegacy(key) == false then
@@ -1465,7 +1513,7 @@ local function OnAddonMessage(prefix, text, dist, sender, target, zoneChannelID,
 		Count(stats.reportRealms, r.from or "old")
 		if r.from and r.from ~= ns.realm then ns.rdb.shared = { realm = r.from, to = ns.realm, t = now } end
 		-- Our guild's reporter is heard: the election guard (MaybeBroadcast) leaves it in.
-		local own = GetGuildInfo("player")
+		local own = ns.GuildInfo("player")
 		if own and r.guild:lower() == own:lower() then
 			local short = ns.ShortName(sender)
 			heardOwn[short] = now

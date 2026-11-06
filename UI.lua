@@ -21,7 +21,7 @@ local UI = {}
 ns.UI = UI
 
 local DEFAULT_W, DEFAULT_H = 338, 424
-UI.WIDTH_SCALE = 1.35 -- 1.3.0: the window this much wider than the Social window, so names and columns fit
+UI.WIDTH_SCALE = 1.55 -- 1.3.0: the window this much wider than the Social window, so names and columns fit (1.3.2: 1.35 -> 1.55)
 local DETAIL_H = 78
 local HD_TABS_W, PANEL_GAP = 32, 32 -- RightSideTab.xml (32 wide); UIPanelLayoutFrame.lua PANEl_SPACING_X
 local HD_TABS_REACH = 40            -- a side tab and its art, past the window's right edge
@@ -757,7 +757,7 @@ end
 UI.HELP_ICON = "Interface\\Common\\help-i"
 
 -- The help button in the title bar, just left of the close button, where Blizzard puts a
--- window's minimize button (0.9.9, asked for by Max of the Dark Lady's moderators). A plain button:
+-- window's minimize button (0.9.9, asked for by Max of the Guild Master's moderators). A plain button:
 -- a click opens the copy box (UI.ShowHelp), which already keeps to the gamepad UI's rules.
 local function HelpButton(f)
 	local close = f.CloseButton or _G[f:GetName() .. "CloseButton"]
@@ -838,12 +838,13 @@ local function CreateMain(style)
 		return false
 	end
 
+	local title = L.TITLE .. (ns.Demo() and L.DEMO_TITLE_TAG or "") -- (1.3.2: /syl demo says so)
 	if f.SetTitle then
-		f:SetTitle(L.TITLE)
+		f:SetTitle(title)
 	elseif f.TitleText then
-		f.TitleText:SetText(L.TITLE)
+		f.TitleText:SetText(title)
 	elseif f.TitleContainer and f.TitleContainer.TitleText then
-		f.TitleContainer.TitleText:SetText(L.TITLE)
+		f.TitleContainer.TitleText:SetText(title)
 	end
 	if f.hasPortrait then
 		local portrait = f.portrait or f.Portrait or (f.PortraitContainer and f.PortraitContainer.portrait)
@@ -912,6 +913,54 @@ local function CreateMain(style)
 	end)
 	hover:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.headerHover = hover
+
+	-- 1.3.2: the network key, right of the header on every tab: gold on the sealed channel, grey
+	-- otherwise (Comm.NetworkState). Its frame is never hidden (a hidden frame runs no OnUpdate):
+	-- outside a Sylvanistas guild only the icon and the mouse go.
+	local key = CreateFrame("Frame", nil, f)
+	key:SetSize(16, 16)
+	key:SetPoint("TOPRIGHT", f, "TOPRIGHT", -HEADER_RIGHT, -29)
+	local icon = key:CreateTexture(nil, "OVERLAY")
+	icon:SetAllPoints()
+	icon:SetTexture("Interface\\Icons\\INV_Misc_Key_03")
+	icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	key.icon = icon
+	local function Paint(self)
+		local state = ns.Comm.NetworkState and ns.Comm.NetworkState() or "off"
+		self.state = state
+		if state == "off" then
+			icon:Hide()
+			self:EnableMouse(false)
+			return
+		end
+		icon:Show()
+		self:EnableMouse(true)
+		icon:SetDesaturated(true)
+		if state == "sealed" then icon:SetVertexColor(1, 0.82, 0.2) else icon:SetVertexColor(0.55, 0.55, 0.55) end
+	end
+	local since = 1
+	key:SetScript("OnUpdate", function(self, elapsed)
+		since = since + elapsed
+		if since < 1 then return end
+		since = 0
+		Paint(self)
+	end)
+	key:SetScript("OnEnter", function(self)
+		local state = self.state or "off"
+		local title, tip
+		if state == "locked" then
+			title = L.KEY_LOCKED_TITLE
+			tip = select(2, ns.Comm.LockedText())
+		else
+			title, tip = L["NET_KEY_" .. state:upper()], L["NET_KEY_" .. state:upper() .. "_TIP"]
+		end
+		GameTooltip:SetOwner(self, "ANCHOR_BOTTOMLEFT")
+		GameTooltip:AddLine(title or "?", 1, 0.82, 0)
+		if tip then GameTooltip:AddLine(tip, 1, 1, 1, true) end
+		GameTooltip:Show()
+	end)
+	key:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	f.netKey = key
 
 	-- Column titles
 	f.colHeader = CreateFrame("Frame", nil, f)
@@ -1304,11 +1353,27 @@ function UI.LayoutTabs()
 	local gaps = gap * (#shown - 1)
 	local room = (main:GetWidth() or 0) - first - 6
 	if room <= 0 or total + gaps <= room then return end
-	local scale = (room - gaps) / total
+	-- 1.3.2 (from Guild Master Forever): too wide, the longest tabs give way first. Each keeps its
+	-- own width up to one cap, as high as the room allows (never below 44), so short labels stay
+	-- whole instead of every tab shrinking by the same share ("C...").
+	local budget, sorted = room - gaps, {}
+	for i = 1, #natural do sorted[i] = natural[i] end
+	table.sort(sorted)
+	local cap, used = nil, 0
+	for i, w in ipairs(sorted) do
+		local rest = #sorted - i + 1
+		if used + w * rest > budget then
+			cap = (budget - used) / rest
+			break
+		end
+		used = used + w
+	end
+	cap = math.max(44, math.floor(cap or budget))
 	for i, tab in ipairs(shown) do
-		local width = math.max(44, math.floor(natural[i] * scale))
-		if resize and not tab.isFallback then pcall(resize, tab, 0, width) end
-		tab:SetWidth(width)
+		if natural[i] > cap then
+			if resize and not tab.isFallback then pcall(resize, tab, 0, cap) end
+			tab:SetWidth(cap)
+		end
 	end
 end
 
@@ -1316,9 +1381,10 @@ end
 -- line with a long realm name is just over the width of Forever's window.
 local function FitHeader()
 	local room = main:GetWidth() - main.headerX
-	FitText(main.total, room - HEADER_RIGHT, { "GameFontNormalLarge", "GameFontNormal" })
+	-- (1.3.2: 20 more on the right for the network key)
+	FitText(main.total, room - HEADER_RIGHT - 20, { "GameFontNormalLarge", "GameFontNormal" })
 	FitText(main.sub, room - SUB_RIGHT, { "GameFontHighlightSmall", "GameFontWhiteTiny" })
-	if main.headerHover then main.headerHover:SetWidth(math.max(40, room - HEADER_RIGHT)) end
+	if main.headerHover then main.headerHover:SetWidth(math.max(40, room - HEADER_RIGHT - 20)) end
 end
 
 -- Positions that depend on the window width (buttons, columns, list width) and on
@@ -1815,6 +1881,7 @@ local function SendWhisper(name, text)
 		ns.Print(L.WHISPER_LOCKDOWN)
 		return false
 	end
+	if ns.DemoBlocked() then return false end -- (1.3.2: /syl demo sends nothing)
 	SendChatMessage(text:sub(1, 255), "WHISPER", nil, name)
 	return true
 end
@@ -1916,6 +1983,7 @@ local function Whisper(name)
 end
 
 local function Invite(name)
+	if ns.DemoBlocked() then return end -- (1.3.2: /syl demo sends nothing)
 	name = ns.TellName(name)
 	if C_PartyInfo and C_PartyInfo.InviteUnit then C_PartyInfo.InviteUnit(name) elseif InviteUnit then InviteUnit(name) end
 end
@@ -2174,11 +2242,11 @@ function UI.WindowStyle() return main and main.style end
 function UI.Frame() return main end -- (1.3.0: the window in use, to place the alert settings beside it)
 
 function UI.StatusLine()
-	local guild = GetGuildInfo("player")
+	local guild = ns.GuildInfo("player")
 	if not guild then return L.STATUS_NOGUILD end
 	if not ns.IsFederation(guild) then return L.STATUS_NOTFED:format(guild) end
 	local c = ns.Comm
-	if c.KeyLocked and c.KeyLocked() then return L.KEY_LOCKED end
+	if c.KeyLocked and c.KeyLocked() then return (c.LockedText()) end
 	local users = c.PeerCount() + 1
 	if c.isReporter or not c.reporterName then return L.STATUS_REPORTER:format(guild, users) end
 	return L.STATUS_PEER:format(guild, c.reporterName, users)
@@ -2266,9 +2334,10 @@ ns.RegisterEvent("UI_SCALE_CHANGED", function() ns.SafeCall("relayout", Relayout
 
 -- The bug report, with "Send to <author>" while the addon's author is online (Workshop.lua).
 function UI.ShowBugReport()
-	local text = ns.BuildBugReport()
+	-- 1.3.2: where to post it, on its first line and in the hint (GitHub issues).
+	local text = L.BUG_WHERE:format(UI.LINKS.issues) .. "\n\n" .. ns.BuildBugReport()
 	UI.ShowCopy(L.REPORT_BUG, text, ns.Workshop and ns.Workshop.BugAction and ns.Workshop.BugAction(text) or nil,
-		{ clear = function() ns.ShowDialog("SYLVANISTAS_BUG_CLEAR", L.BUG_CLEAR_WORD) end })
+		{ clear = function() ns.ShowDialog("SYLVANISTAS_BUG_CLEAR", L.BUG_CLEAR_WORD) end, hint = L.BUG_COPY_HINT })
 end
 
 -- 1.3.0 (the user's call): Clear report empties what earlier sessions left in it (the errors, the calls
@@ -2324,10 +2393,10 @@ StaticPopupDialogs["SYLVANISTAS_BUG_CLEAR"] = {
 	preferredIndex = 3,
 }
 
--- Where the addon lives: its CurseForge page (bugs and questions as comments there).
--- (Sylvanistas: no public code repository; bugs and questions go to the CurseForge page.)
+-- Where the addon lives: its CurseForge page, and (1.3.2) bug reports as issues on GitHub.
 UI.LINKS = {
 	curseforge = "https://www.curseforge.com/wow/addons/sylvanistas-guild",
+	issues = "https://github.com/swiftyPigeon/Sylvanistas_Addon/issues",
 }
 
 -- The help button's page: the version, the tabs in a line each, then the lines /syl help prints
@@ -2369,6 +2438,7 @@ function UI.ShowHelp()
 		"",
 		L.HELP_LINKS,
 		"  CurseForge: " .. UI.LINKS.curseforge,
+		"  " .. L.HELP_LINK_ISSUES .. ": " .. UI.LINKS.issues,
 	}
 	UI.ShowCopy(L.HELP_TITLE, table.concat(lines, "\n"), { label = L.REPORT_BUG, fn = function() UI.ShowBugReport() end })
 end
@@ -2460,6 +2530,7 @@ function UI.ShowCopy(title, text, action, opts)
 	opts = type(opts) == "table" and opts or {}
 	local key = type(opts.key) == "string" and opts.key or "copy"
 	local copyFrame = CopyFrame(key, opts.big)
+	copyFrame.hint:SetText(type(opts.hint) == "string" and opts.hint or L.COPY_HINT) -- (1.3.2: opts.hint)
 	local button = copyFrame.action
 	button.fn = action and action.fn or nil
 	button:SetShown(action ~= nil)

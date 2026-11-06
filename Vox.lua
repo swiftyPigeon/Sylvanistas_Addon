@@ -63,7 +63,7 @@ local function Gold(s) return "|cffffd200" .. s .. "|r" end
 local placed = {}   -- [guild] = { online, votes } for the question open, refreshed each minute
 local placedAt = -math.huge
 local function Placed(sender, guild)
-	local mine = GetGuildInfo("player")
+	local mine = ns.GuildInfo("player")
 	if ns.Roster.RankOf(sender) then return true end
 	if mine and guild == mine then return false end -- says our guild, not in our roster
 	local now = ns.Now()
@@ -171,7 +171,7 @@ local function Close(id)
 		voters = poll.voters, others = poll.others, t = poll.t }
 	while #history > Vox.MAX_HISTORY do table.remove(history, 1) end
 	if not poll.preview then
-		ns.Comm.Send("CHANNEL", ("T1~E~%d~%s~%d~%s"):format(poll.id, GetGuildInfo("player") or "", poll.voters,
+		ns.Comm.Send("CHANNEL", ("T1~E~%d~%s~%d~%s"):format(poll.id, ns.GuildInfo("player") or "", poll.voters,
 			table.concat(poll.counts, "~")), "voxend", true)
 	end
 	ns.Print(L.VOX_RESULT:format(poll.q, Vox.Verdict(poll.answers, poll.counts, poll.voters, poll.multi),
@@ -220,7 +220,7 @@ function Vox.AskWith(opts)
 		ns.Print(L.THRONE_PREVIEW_NOTE)
 		Vox.Show(ns.me, poll.id, seconds, q, answers, multi, true) -- how the army sees it
 	else
-		local msg = ("T1~V~%d~%s~%d~%s~%s~%s"):format(poll.id, GetGuildInfo("player") or "", seconds, multi and "M" or "1", q,
+		local msg = ("T1~V~%d~%s~%d~%s~%s~%s"):format(poll.id, ns.GuildInfo("player") or "", seconds, multi and "M" or "1", q,
 			table.concat(answers, "~"))
 		-- Ahead of the census (every soldier's countdown starts when it arrives); a long one
 		-- goes in pieces.
@@ -309,11 +309,11 @@ local function Vote()
 	for i = 1, #shown.answers do if shown.picks[i] then digits[#digits + 1] = tostring(i) end end
 	if #digits == 0 then return end
 	shown.voted = table.concat(digits)
-	local msg = ("Y1~%d~%s~%s"):format(shown.id, shown.voted, GetGuildInfo("player") or "")
+	local msg = ("Y1~%d~%s~%s"):format(shown.id, shown.voted, ns.GuildInfo("player") or "")
 	if shown.asker ~= ns.me then
 		ns.Comm.Whisper(shown.asker, msg, "vote", true)
 	elseif poll and poll.id == shown.id then
-		Vox.HandleVote("WHISPER", ns.me, ("Y1~%d~%s~%s"):format(shown.id, shown.voted, GetGuildInfo("player") or "Sylvanistas"))
+		Vox.HandleVote("WHISPER", ns.me, ("Y1~%d~%s~%s"):format(shown.id, shown.voted, ns.GuildInfo("player") or "Sylvanistas"))
 	end
 	Vox.Refresh()
 end

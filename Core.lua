@@ -8,23 +8,23 @@ local L = ns.L
 ---------------------------------------------------------------------------
 ns.FACTION_ONLY = "Horde"                      -- the addon runs for this faction alone (ns.IsMember)
 ns.GUILD_NAME = "Sylvanistas"                  -- the main guild's exact name (case counts: not SYLVANISTAS)
-ns.GM_CHARACTER = "Steveo Rino"                -- the guild master (the Dark Lady): her character's exact name
-ns.GM_REALM = nil                              -- her realm group (e.g. "ClassicBetaPvE"); nil: learned from her first message, see /syl status
-ns.GM_DISPLAY = "Dark Lady"                   -- what the addon calls her on the lines and the crown
+ns.GM_CHARACTER = "Steveo Rino"                -- the Guild Master: their character's exact name
+ns.GM_REALM = "CAMWOWUS2Realm7PvE"             -- their realm group (1.3.2: pinned, so another realm's or region's Sylvanistas leads itself); nil: learned from their first message
+ns.GM_DISPLAY = "Guild Master"                -- what the addon calls them on the lines and the crown (1.3.2: was "Dark Lady")
 ns.ALT_GUILD_NAME = "Sylvanistas Underground" -- the alt branch: the main guild's alternate characters, one house with it (exact name)
-ns.GM_ALT_CHARACTER = "Foreverana Sylvanista" -- its guild master: the Dark Lady's alt, exactly as the game writes it (her title, not her powers)
+ns.GM_ALT_CHARACTER = "Gage Gloomvein"        -- its guild master, exactly as the game writes it (the leader's title there, not the Guild Master's powers)
 ns.AUTHOR_CHARACTER = "Danzig Gloomvein"        -- the addon keeper's character (the Workshop tab, bug reports, signed lists)
-ns.REALM_GROUP = "CAMWOWUS2Realm5PvE"          -- the author's and Treasurer's realm group (e.g. "ClassicBetaPvP")
+ns.REALM_GROUP = "CAMWOWUS2Realm7PvE"          -- the author's and Treasurer's realm group (e.g. "ClassicBetaPvP")
 ns.TREASURER_CHARACTER = "CHANGEME_Treasurer"  -- the Treasurer (in the main guild)
 ns.TREASURER_MAIL_CHARACTER = "CHANGEME_TreasurerMail" -- where dues and treasury mail go (any guild)
 ns.TREASURY_OFF = true                        -- true turns the Treasury and Bank off (1.3.0: off in beta; on at launch, the Treasurer a guild rank)
-ns.REQUIRE_KEY = false                        -- true: a guild without the channel key (/syl key, from the Dark Lady) gets no network, only its own roster. Seal the channel first.
+ns.REQUIRE_KEY = false                        -- true: a guild without the channel key (/syl key, from the Guild Master) gets no network, only its own roster. Seal the channel first.
 ns.PVP_REALM = nil                            -- true: a PvP realm (the Board offers PvP flags); false: not; nil: guessed from the realm's name ("...PvP...")
-ns.BLOCKED_GUILDS = {                          -- guilds cut off for good, whatever their name: exact names, e.g. ["Sylvanistas Whatever"] = true (never the Dark Lady's)
+ns.BLOCKED_GUILDS = {                          -- guilds cut off for good, whatever their name: exact names, e.g. ["Sylvanistas Whatever"] = true (never the Guild Master's)
 }
 
 ns.NAME = "Sylvanistas"
-ns.VERSION = "1.3.1"
+ns.VERSION = "1.3.2"
 ns.PREFIX = "SYLVANISTAS"        -- addon message prefix (max 16 chars)
 ns.CHANNEL = "SylvanistasNet"    -- hidden chat channel (Alliance: unused, the addon is Horde-only)
 ns.CHANNEL_HORDE = "SylvanistasNetH" -- the Horde's hidden chat channel, shared by every Sylvanistas guild
@@ -200,7 +200,10 @@ end
 ---------------------------------------------------------------------------
 
 local SEED_BETA = "ClassicBetaPvP+ClassicBetaPvP2"
-local SEED = { ClassicBetaPvP = SEED_BETA, ClassicBetaPvP2 = SEED_BETA }
+-- 1.3.2: the live home pair (/syl status, 2026-11-06), so a fresh install knows the Guild Leader's group.
+local SEED_LIVE = "CAMWOWUS1Realm1PvE+CAMWOWUS2Realm7PvE"
+local SEED = { ClassicBetaPvP = SEED_BETA, ClassicBetaPvP2 = SEED_BETA,
+	CAMWOWUS1Realm1PvE = SEED_LIVE, CAMWOWUS2Realm7PvE = SEED_LIVE }
 
 -- A realm name in the form the server uses in "Name-Realm", or nil when unusable.
 local function CleanRealm(realm)
@@ -237,6 +240,7 @@ end
 -- Our faction: "Horde" or "Alliance". Sylvanistas started on the Alliance, so anything unknown
 -- (reports of older versions, a client that can't tell yet) counts as Alliance.
 function ns.Faction()
+	if ns.Demo and ns.Demo() then return "Horde" end -- (1.3.2: /syl demo plays the Horde)
 	local f = UnitFactionGroup and UnitFactionGroup("player")
 	return f == "Horde" and "Horde" or "Alliance"
 end
@@ -244,6 +248,11 @@ end
 -- Each faction keeps its census, realm key and inspections apart: the Alliance in the
 -- top-level db.realms (as before), the Horde in db.horde.realms.
 local function Stores(db)
+	-- 1.3.2: /syl demo keeps saved data of its own, apart from the real census and key.
+	if ns.Demo and ns.Demo() then
+		if type(db.demoStore) ~= "table" then db.demoStore = {} end
+		return db.demoStore
+	end
 	if ns.faction ~= "Horde" then return db end
 	if type(db.horde) ~= "table" then db.horde = {} end
 	return db.horde
@@ -1061,6 +1070,8 @@ local function KingRealm()
 end
 ns.KingRealm = KingRealm
 function ns.KingCharacter()
+	local demo = ns.Demo and ns.Demo()
+	if demo then return demo.rank == 0 and UnitName("player") or "" end -- (1.3.2: /syl demo 0 plays the leader)
 	local realm = KingRealm()
 	if realm and ns.GroupOf(ns.realm or ns.CurrentRealm()) ~= ns.GroupOf(realm) then return nil end
 	return ns.KING_CHARACTER[ns.faction or "Alliance"]
@@ -1068,6 +1079,7 @@ end
 function ns.IsKingCharacter(name)
 	local pin = ns.KingCharacter()
 	if pin == nil or type(name) ~= "string" or ns.ShortName(name) ~= pin then return false end
+	if ns.Demo and ns.Demo() then return true end -- (1.3.2: /syl demo plays the leader on any realm)
 	local realm = KingRealm()
 	return realm == nil or OfGroup(name, realm)
 end
@@ -1133,7 +1145,7 @@ end
 function ns.IsHouseOfficer(name)
 	if type(name) ~= "string" or name == "" then return false end
 	local full = ns.FullName(name)
-	local mine = IsInGuild and IsInGuild() and GetGuildInfo("player")
+	local mine = ns.InGuild and ns.InGuild() and ns.GuildInfo("player")
 	if full == ns.me then
 		return ns.IsMember() == true and ns.IsHouseGuild(mine) and (ns.Roster.MyRank() or 99) <= ns.CAPTAIN_RANK
 	end
@@ -1149,8 +1161,8 @@ function ns.IsHouseOfficer(name)
 	end
 	return false
 end
--- 1.3.0 (the user's rule): an officer nobody but the Dark Lady may block, mute or take off the
--- network: the Dark Lady, her Valkyr and Deathstalkers, the Dreadguards, and any Sylvanistas guild's
+-- 1.3.0 (the user's rule): an officer nobody but the Guild Master may block, mute or take off the
+-- network: the Guild Master, her Valkyr and Banshees, the Dreadguards, and any Sylvanistas guild's
 -- guild master or Dark Rangers (rank 0-1: our roster; any other guild's report of them once the
 -- channel is sealed).
 function ns.IsProtectedOfficer(name)
@@ -1175,7 +1187,7 @@ function ns.IsProtectedOfficer(name)
 	end
 	return false
 end
--- Our own client: are we the Dark Lady (who alone may silence an officer)?
+-- Our own client: are we the Guild Master (who alone may silence an officer)?
 function ns.IAmDarkLady() return ns.King ~= nil and not ns.King.missing and ns.King.IsKing() == true end
 
 function ns.HasDreadguardPowers(name)
@@ -1424,25 +1436,30 @@ end
 -- Our guild is a Sylvanistas guild by the signed list alone (its name would not make it one): its
 -- members may not hold the list yet, and hear it only over GUILD (Comm.lua, Workshop.RelayGuild).
 function ns.ApprovedOnly()
-	local guild = IsInGuild and IsInGuild() and GetGuildInfo("player")
+	local guild = ns.InGuild and ns.InGuild() and ns.GuildInfo("player")
 	return type(guild) == "string" and ns.IsApprovedGuild(guild) and not ns.IsHouseGuild(guild) and not ns.NamedSylvanistas(guild)
 end
 
--- 1.3.0 (the user's call): the Valkyr are the Dark Lady's ambassadors, recruiters only, not
+-- 1.3.0 (the user's call): the Valkyr are the Guild Master's ambassadors, recruiters only, not
 -- officers: the signed titles list still names them (ns.IsValkyr, their title and the portal for
 -- recruits), but none of the Steward's powers is theirs any more: ns.IsSteward answers no for
 -- everyone, and every tool that asked it (the Throne, the treasury, net-off, the filter, the key's
--- rotation, the decrees...) goes to the Dark Lady and her Deathstalkers alone.
+-- rotation, the decrees...) goes to the Guild Master and her Banshees alone.
 function ns.IsSteward(name) return false end
 
 -- 1.3.0 (the user's call, in beta): a Valkyr is a member of any Sylvanistas guild whose guild rank
 -- is named Valkyr (rank 2 in the user's guilds), the game's own rank: ours by
 -- GetGuildInfo, a guildmate's by our roster (another guild's ranks never reach us). The signed
 -- titles list's Valkyr still count (ns.IsValkyr, below).
-local function ValkyrRankName(rank) return type(rank) == "string" and rank:lower():find("valkyr", 1, true) ~= nil end
+-- 1.3.2: "Val'kyr" counts too (straight or curly apostrophe), as in the launch rank "Ranger/Val'kyr"
+local function ValkyrRankName(rank)
+	if type(rank) ~= "string" then return false end
+	local bare = rank:lower():gsub("'", ""):gsub("\226\128\153", "")
+	return bare:find("valkyr", 1, true) ~= nil
+end
 function ns.IsValkyrRank(name)
 	if type(name) ~= "string" or name == "" then return false end
-	local mine, rankName = GetGuildInfo("player")
+	local mine, rankName = ns.GuildInfo("player")
 	if not ns.IsFederation(mine) then return false end
 	local full = ns.FullName(name)
 	if full == ns.me then return ValkyrRankName(rankName) end
@@ -1472,13 +1489,13 @@ end
 
 -- The King's guild as a Steward's decree names it: ours when we are in it, else its own name.
 function ns.KingGuildName()
-	local mine = GetGuildInfo and GetGuildInfo("player")
+	local mine = ns.GuildInfo and ns.GuildInfo("player")
 	if ns.IsKingGuild(mine) then return mine end
 	return ns.KING_GUILD[ns.faction or "Alliance"] or ""
 end
 
--- The King's own screen (0.9.9, the author's, for the Dark Lady's stream): the King's client, or the
--- author's "the Dark Lady's view" (King.Preview) so he can try it. Nobody else's.
+-- The King's own screen (0.9.9, the author's, for the Guild Master's stream): the King's client, or the
+-- author's "the Guild Master's view" (King.Preview) so he can try it. Nobody else's.
 function ns.KingsScreen()
 	local K = ns.King
 	if type(K) ~= "table" or type(K.IsKing) ~= "function" then return false end
@@ -1567,11 +1584,11 @@ end
 function ns.IsCrownRank(guild, rankIndex)
 	if not guild or not rankIndex then return false end
 	if rankIndex == 0 then return true end
-	return ns.IsHouseGuild(guild) and rankIndex <= ns.CAPTAIN_RANK and guild == GetGuildInfo("player")
+	return ns.IsHouseGuild(guild) and rankIndex <= ns.CAPTAIN_RANK and guild == ns.GuildInfo("player")
 end
 
 function ns.IsCrown()
-	local guild, _, rankIndex = GetGuildInfo("player")
+	local guild, _, rankIndex = ns.GuildInfo("player")
 	return ns.IsFederation(guild) and ns.IsCrownRank(guild, rankIndex)
 end
 
@@ -1637,7 +1654,8 @@ end
 
 -- The addon only works for members of a Sylvanistas guild, of ns.FACTION_ONLY.
 function ns.IsMember()
-	return (ns.faction or UnitFactionGroup("player")) == ns.FACTION_ONLY and IsInGuild() and ns.IsFederation(GetGuildInfo("player"))
+	if ns.Demo and ns.Demo() then return true end -- (1.3.2: /syl demo)
+	return (ns.faction or UnitFactionGroup("player")) == ns.FACTION_ONLY and ns.InGuild() and ns.IsFederation(ns.GuildInfo("player"))
 end
 
 ---------------------------------------------------------------------------
@@ -2268,7 +2286,7 @@ SlashCmdList.SYLVANISTAS = function(input)
 		elseif cmd == "officer" then
 			ns.Print(ns.L.OFFICER_FIXED)
 		elseif cmd == "demo" then
-			ns.Print(ns.L.DEMO_REMOVED)
+			ns.DemoCommand(rest)
 		elseif cmd == "bug" then
 			ns.UI.ShowBugReport()
 		elseif cmd == "status" then
@@ -2289,7 +2307,7 @@ SlashCmdList.SYLVANISTAS = function(input)
 				elseif ns.Keys.CanRotate() then
 					ns.Keys.RotatePrompt()
 				elseif ns.Keys.CanGuildRotate and ns.Keys.CanGuildRotate() then
-					ns.Keys.GuildRotatePrompt() -- (Sylvanistas: any Dreadguard, for the Dark Lady's guild)
+					ns.Keys.GuildRotatePrompt() -- (Sylvanistas: any Dreadguard, for the Guild Master's guild)
 				else
 					ns.Print(L.KEY_ROTATE_ONLY_KING)
 				end

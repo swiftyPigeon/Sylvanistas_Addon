@@ -35,7 +35,7 @@ local L = ns.L
 -- keyboard and waits out a fight.
 --   V7~<id>                 check: what version do you run?        (whisper)
 --   V8~<id>~<version>       the answer                             (whisper)
---   V9~<version>            "please update": the newest the sender knows  (whisper: the Dark Lady, Valkyr, moderators; 1.2.20)
+--   V9~<version>            "please update": the newest the sender knows  (whisper: the Guild Master, Valkyr, moderators; 1.2.20)
 
 local Versions = {}
 ns.Versions = Versions
@@ -67,7 +67,7 @@ local function W() return ns.Workshop end
 local function Newer(a, b) return W().Newer(a, b) == true end
 local function Full(name) return ns.FullName(ns.Normal(tostring(name or ""))) end
 local function IsAuthor() local w = W() return w.IsAuthor ~= nil and w.IsAuthor() == true end
--- 1.2.20 (from Olympus 1.2.1): who may ask a player to update: the author, the Dark Lady, her
+-- 1.2.20 (from Olympus 1.2.1): who may ask a player to update: the author, the Guild Master, her
 -- Valkyr and the moderators (High Council), by the name the server stamps (a sender) or our own.
 -- Every client drops anyone else's ask, which older versions still send; the menu line shows
 -- for them alone.
@@ -441,7 +441,7 @@ end
 -- is his, and being on it (or newer) is being up to date; without it, no number of theirs is shown.
 function Versions.HandleAsk(dist, sender, text)
 	if dist ~= "WHISPER" then return end
-	-- (1.2.20: from the author, the Dark Lady, her Valkyr or a moderator alone.)
+	-- (1.2.20: from the author, the Guild Master, her Valkyr or a moderator alone.)
 	if not MayAsk(Full(sender)) then return end
 	local latest = tostring(text or ""):match("^V9~(%d+%.%d+%.%d+)$")
 	if not latest or #latest > 12 or not Newer(latest, ns.VERSION) or Ignored(sender) then return end
@@ -547,11 +547,11 @@ function Versions.HasSylvanistas(name)
 	return state == "current" or state == "outdated" or state == "newer" or state == "sylvanistas"
 end
 
--- 1.3.0 (the user's call): the Dark Lady's simple roll call on the Sanctum: her guild's add-on
+-- 1.3.0 (the user's call): the Guild Master's simple roll call on the Sanctum: her guild's add-on
 -- users heard lately (their hellos, Comm.Peers), how many are up to date, who is behind (a click
 -- asks that one to update, Versions.AskUpdate, with its limits), and one line to ask them all.
 function Versions.SanctumLines(Line, INK, TITLE)
-	local guild = IsInGuild() and GetGuildInfo("player") or "?"
+	local guild = ns.InGuild() and ns.GuildInfo("player") or "?"
 	local current, behind = 1, {} -- (ourselves: up to date by definition)
 	for _, name in ipairs(ns.Comm.Peers and ns.Comm.Peers() or {}) do
 		local state, version = Versions.Status(name)

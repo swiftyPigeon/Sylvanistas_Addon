@@ -31,8 +31,8 @@ local function RequestServerRoster()
 end
 
 local function DaysOffline(i, isOnline)
-	if isOnline or not GetGuildRosterLastOnline then return 0 end
-	local y, m, d, h = GetGuildRosterLastOnline(i)
+	if isOnline or not ns.GuildRosterLastOnline then return 0 end
+	local y, m, d, h = ns.GuildRosterLastOnline(i)
 	if not y then return 0 end
 	return (y or 0) * 365 + (m or 0) * 30 + (d or 0) + (h or 0) / 24
 end
@@ -46,11 +46,11 @@ end
 
 function Roster.Scan()
 	-- The 4th return is the guild's home realm, nil when it is ours.
-	local guild, _, _, home = GetGuildInfo("player")
+	local guild, _, _, home = ns.GuildInfo("player")
 	if not guild then return nil end
 	home = type(home) == "string" and home:gsub("[%s%-]", "") or ""
 	local started = debugprofilestop and debugprofilestop() or 0
-	local numTotal, numOnline = GetNumGuildMembers()
+	local numTotal, numOnline = ns.NumGuildMembers()
 	numTotal = numTotal or 0
 	local officerRank = ns.CAPTAIN_RANK
 	local r = {
@@ -60,8 +60,8 @@ function Roster.Scan()
 		ranks = {}, officers = {}, inactive7 = 0, inactive30 = 0, avgLevel = 0, top = {},
 	}
 	-- Rank names in rank order (1 = guild master).
-	local numRanks = GuildControlGetNumRanks and GuildControlGetNumRanks() or 0
-	for i = 1, numRanks do r.ranks[i] = { name = GuildControlGetRankName(i) or ("Rank " .. i), count = 0 } end
+	local numRanks = ns.GuildRankCount and ns.GuildRankCount() or 0
+	for i = 1, numRanks do r.ranks[i] = { name = ns.GuildRankName(i) or ("Rank " .. i), count = 0 } end
 
 	local seen, seenOffline, zoneCount, levelSum = 0, 0, 0, 0
 	local everyone = {}
@@ -69,7 +69,7 @@ function Roster.Scan()
 	local byName = {}
 	local rawRealms, servers, sample = {}, {}, nil -- for /syl status (names raw)
 	for i = 1, numTotal do
-		local name, rankName, rankIndex, level, _, zone, _, _, isOnline, _, classFile, _, _, _, _, _, guid = GetGuildRosterInfo(i)
+		local name, rankName, rankIndex, level, _, zone, _, _, isOnline, _, classFile, _, _, _, _, _, guid = ns.GuildRosterInfo(i)
 		if name then
 			seen = seen + 1
 			local rawRealm = name:match("%-(.+)$")
@@ -165,12 +165,12 @@ end
 
 -- Our own rank index (0 = guild master), used for layer names and decree permission.
 function Roster.MyRank()
-	local _, _, rankIndex = GetGuildInfo("player")
+	local _, _, rankIndex = ns.GuildInfo("player")
 	return rankIndex or 9
 end
 
 function Roster.IsOfficer()
-	return IsInGuild() and Roster.MyRank() <= ns.CAPTAIN_RANK
+	return ns.InGuild() and Roster.MyRank() <= ns.CAPTAIN_RANK
 end
 
 function Roster.TryScan()
@@ -196,7 +196,7 @@ function Roster.TryScan()
 end
 
 function Roster.RequestScan(force)
-	if not IsInGuild() then return end
+	if not ns.InGuild() then return end
 	if force then lastScan = 0 end
 	pending = true
 	RequestServerRoster()

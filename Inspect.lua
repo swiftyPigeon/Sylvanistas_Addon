@@ -153,7 +153,7 @@ local function Enqueue(unit, force, gear)
 		end
 	end
 	if queued[guid] or (pending and pending.guid == guid) then return end
-	local guild = GetGuildInfo(unit)
+	local guild = ns.GuildInfo(unit)
 	if not force and not ns.IsFederation(guild) then return end
 	-- Sylvanistas guilds of the other faction are not ours to inspect (the Horde has its own too).
 	if not force and UnitFactionGroup and UnitFactionGroup(unit) ~= UnitFactionGroup("player") then return end
@@ -245,7 +245,7 @@ local function OnInspectReady(guid)
 		end
 		local _, classFile = UnitClass(unit)
 		local name = ns.UnitFullName(unit)
-		local p = Inspect.Record(name, GetGuildInfo(unit), classFile, UnitLevel(unit),
+		local p = Inspect.Record(name, ns.GuildInfo(unit), classFile, UnitLevel(unit),
 			GetInventoryItemID(unit, TABARD_SLOT), anyGear)
 		-- An officer's click (Inspect.InspectGear): the gear kept with the inspection.
 		if gear and p then
@@ -417,13 +417,14 @@ function Inspect.Assembly()
 	return { at = assembly.at, n = n }
 end
 
--- The Dark Lady's thanks: the Loyalists named in guild chat, from her click (casual).
+-- The Guild Master's thanks: the Loyalists named in guild chat, from her click (casual).
 Inspect.THANKS_NAMES = 8
 function Inspect.ThankLoyal()
 	local r = Inspect.Regalia()
 	if #r.loyalists == 0 then return ns.Print(L.LOYALISTS_NONE) end
 	local names = {}
 	for i = 1, math.min(Inspect.THANKS_NAMES, #r.loyalists) do names[#names + 1] = ns.ShortName(r.loyalists[i].name) end
+	if ns.DemoBlocked() then return end -- (1.3.2: /syl demo sends nothing)
 	SendChatMessage(L.LOYALISTS_THANKS:format(table.concat(names, ", ")), "GUILD")
 end
 
@@ -451,7 +452,7 @@ local function OnTooltipUnit(tooltip)
 	local line = Inspect.TooltipLine(name)
 	if line then tooltip:AddLine(line) end
 	-- The Treasurer of Sylvanistas: his name and the game's own word on his guild.
-	if ns.IsTreasurer(name, GetGuildInfo(unit)) then tooltip:AddLine(ns.COIN .. L.TREASURER_TITLE, 1, 0.82, 0) end
+	if ns.IsTreasurer(name, ns.GuildInfo(unit)) then tooltip:AddLine(ns.COIN .. L.TREASURER_TITLE, 1, 0.82, 0) end
 	if patrol then Enqueue(unit) end
 end
 

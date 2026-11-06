@@ -321,11 +321,11 @@ local function Send(e, fresh)
 	local left = math.floor(e.at - ns.Now())
 	if left < 30 then return end
 	e.sentAt = ns.Now()
-	ns.Comm.Send("CHANNEL", ("T1~D~%d~%s~%d~%d~%s~%s"):format(e.id, GetGuildInfo("player") or "", left, fresh and 1 or 0, e.zone or "", e.title),
+	ns.Comm.Send("CHANNEL", ("T1~D~%d~%s~%d~%d~%s~%s"):format(e.id, ns.GuildInfo("player") or "", left, fresh and 1 or 0, e.zone or "", e.title),
 		"week" .. e.id)
 end
 
--- The King, his Steward or a Hand puts an entry on the week (the Dark Lady's view: on his screen alone).
+-- The King, his Steward or a Hand puts an entry on the week (the Guild Master's view: on his screen alone).
 function Week.SetEntry(input)
 	local seconds, title = Week.Parse(input)
 	if not seconds then
@@ -370,7 +370,7 @@ function Week.Cancel(id)
 	local K = ns.King
 	if not e.preview and not K.Preview() and (e.mine or K.CanCommand()) then
 		if not e.mine and SelfOff() then return false end
-		ns.Comm.Send("CHANNEL", ("T1~D~%d~%s~0~0~~"):format(id, GetGuildInfo("player") or ""), "week" .. id)
+		ns.Comm.Send("CHANNEL", ("T1~D~%d~%s~0~0~~"):format(id, ns.GuildInfo("player") or ""), "week" .. id)
 	end
 	entries[id] = nil
 	Save()
@@ -497,7 +497,7 @@ end
 -- "Guild event".
 function Week.GuildEvents(now)
 	now = now or ns.Now()
-	if not IsInGuild() or not Week.CalendarAllowed() then return {} end
+	if not ns.InGuild() or not Week.CalendarAllowed() then return {} end
 	local ok, n = pcall(C_Calendar.GetNumGuildEvents)
 	if not ok or type(n) ~= "number" then return {} end
 	local out, realmNow = {}, RealmNowSeconds()
@@ -520,7 +520,7 @@ end
 -- shows, once every CALENDAR_ASK at most. Its answer (CALENDAR_UPDATE_GUILD_EVENTS) redraws it.
 function Week.AskCalendar(now)
 	now = now or ns.Now()
-	if now - lastCalendarAsk < Week.CALENDAR_ASK or not IsInGuild() or not Week.CalendarAllowed() or not C_Calendar.OpenCalendar then return false end
+	if now - lastCalendarAsk < Week.CALENDAR_ASK or not ns.InGuild() or not Week.CalendarAllowed() or not C_Calendar.OpenCalendar then return false end
 	lastCalendarAsk = now
 	pcall(C_Calendar.OpenCalendar)
 	return true
@@ -761,7 +761,7 @@ function Week.Sign(id, role)
 	local now = ns.Now()
 	if now - lastSign < Week.SIGN_GAP then return false end
 	lastSign = now
-	local msg = ("Y2~%d~%s~%s"):format(id, role, GetGuildInfo("player") or "")
+	local msg = ("Y2~%d~%s~%s"):format(id, role, ns.GuildInfo("player") or "")
 	if e.mine then
 		Week.HandleSignup("WHISPER", ns.me, msg)
 	else
@@ -796,7 +796,7 @@ local function GuildSize(guild)
 end
 local function Placed(s, sender, guild)
 	if sender == ns.me or ns.Roster.RankOf(sender) then return true end
-	local own = GetGuildInfo("player")
+	local own = ns.GuildInfo("player")
 	if not guild or (own and guild == own) then return false end
 	local size = GuildSize(guild)
 	return size ~= nil and (s.byGuild[guild] or 0) < math.max(size, 1)
@@ -876,7 +876,7 @@ function Week.SendSheet(soon)
 	-- (Its pace changed: the army hears it now, or the last sheet's time would run out first.)
 	if not soon and every == lastEvery and now - lastSheet < every then return false end
 	lastSheet, lastEvery = now, every
-	local msg = ("T1~R~%d~%s~%s~%d"):format(K.NewId(), GetGuildInfo("player") or "", table.concat(parts, ","), every / 60)
+	local msg = ("T1~R~%d~%s~%s~%d"):format(K.NewId(), ns.GuildInfo("player") or "", table.concat(parts, ","), every / 60)
 	if #msg <= 250 then ns.Comm.Send("CHANNEL", msg, "sheet") else ns.Comm.SendChunked(msg) end
 	return true
 end

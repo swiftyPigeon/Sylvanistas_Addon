@@ -431,7 +431,7 @@ function Crafters.SendListing(force)
 	if not ns.IsMember() or SelfOff() then return false end
 	local listed = Crafters.Listed()
 	if #listed == 0 then return false end
-	local head = ("W1~%s~"):format(Clean(GetGuildInfo("player"), 72))
+	local head = ("W1~%s~"):format(Clean(ns.GuildInfo("player"), 72))
 	local parts, keys, size = {}, {}, #head
 	for i = 1, math.min(#listed, Crafters.PROFS_MAX) do
 		local p = listed[i]
@@ -592,7 +592,7 @@ function Crafters.HandleAsk(dist, sender, text)
 	answerTimes[#answerTimes + 1] = now
 	local entries = {}
 	for _, r in ipairs(best.found) do entries[#entries + 1] = ("%d:%d"):format(r.r or 0, r.i or 0) end
-	local msg = ("WA~%s~%s~%s~%d~%s"):format(askId, Clean(GetGuildInfo("player"), 72), best.p.name, best.p.rank or 0, table.concat(entries, ","))
+	local msg = ("WA~%s~%s~%s~%d~%s"):format(askId, Clean(ns.GuildInfo("player"), 72), best.p.name, best.p.rank or 0, table.concat(entries, ","))
 	Crafters.after(1 + Crafters.random() * 7, "crafter answer", function()
 		ns.Comm.Whisper(sender, ns.Cut(msg, 250), "crafteranswer " .. sender)
 	end)

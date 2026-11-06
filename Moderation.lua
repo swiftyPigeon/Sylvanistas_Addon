@@ -122,7 +122,7 @@ Moderation.CharName = CharName
 -- takes the guild of the player's target.
 local function GuildName(input, target)
 	local name = tostring(input or ""):gsub("^%s+", ""):gsub("%s+$", ""):gsub("^<(.*)>$", "%1")
-	if name == "" and target and GetGuildInfo then name = GetGuildInfo("target") or "" end
+	if name == "" and target and ns.GuildInfo then name = ns.GuildInfo("target") or "" end
 	if name == "" then return nil end
 	local clean = ns.King and ns.King.CleanGuild and ns.King.CleanGuild(name)
 	if not clean then return nil end
@@ -302,7 +302,7 @@ end
 function Moderation.GuildOf(sender)
 	if type(sender) ~= "string" or sender == "" then return nil end
 	local who = ns.FullName(sender)
-	if ns.Roster and ns.Roster.RankOf and ns.Roster.RankOf(who) then return GetGuildInfo("player") end
+	if ns.Roster and ns.Roster.RankOf and ns.Roster.RankOf(who) then return ns.GuildInfo("player") end
 	return guildOf[who]
 end
 
@@ -330,7 +330,7 @@ end
 
 -- Our own guild is off: the word, or nil.
 function Moderation.OwnGuildOff()
-	return Moderation.Guild(GetGuildInfo and GetGuildInfo("player") or nil)
+	return Moderation.Guild(ns.GuildInfo and ns.GuildInfo("player") or nil)
 end
 
 -- This client's own character (or a name its player linked), or its guild, is off: the word, or
@@ -430,7 +430,7 @@ end
 local function AboutMe(e)
 	if ns.me and IsKing(ns.me) then return false end
 	if e.kind == "g" then
-		local mine = GetGuildInfo and GetGuildInfo("player")
+		local mine = ns.GuildInfo and ns.GuildInfo("player")
 		return type(mine) == "string" and Key("g", mine) == Key("g", e.name)
 	end
 	if not ns.me then return false end
@@ -631,7 +631,7 @@ function Moderation.Set(kind, input, off, reason)
 		name = CharName(input, true)
 		if not name then ns.Print(L.NETOFF_WHO_BAD) return false end
 		if IsKing(name) or ns.IsKingAltCharacter(name) then ns.Print(L.NETOFF_NOT_KING) return false end
-		-- 1.3.0 (the user's rule): an officer is taken off by the Dark Lady alone.
+		-- 1.3.0 (the user's rule): an officer is taken off by the Guild Master alone.
 		if ns.IsProtectedOfficer(name) and not ns.IAmDarkLady() then ns.Print(L.NETOFF_NOT_OFFICER) return false end
 		if Key("c", name) == Key("c", ns.me) then ns.Print(L.NETOFF_NOT_SELF) return false end
 		-- One who gives words (or a name his player linked): only from higher up.
@@ -814,7 +814,7 @@ StaticPopupDialogs["SYLVANISTAS_NETOFF_WHO"] = WhoDialog(L.NETOFF_WHO_PROMPT, 24
 	return target and ns.DisplayName(target) or ""
 end)
 StaticPopupDialogs["SYLVANISTAS_NETOFF_GUILD"] = WhoDialog(L.NETOFF_GUILD_PROMPT, 240, 40, function()
-	local guild = GetGuildInfo and GetGuildInfo("target")
+	local guild = ns.GuildInfo and ns.GuildInfo("target")
 	return guild and ns.IsFederation(guild) and guild or ""
 end)
 

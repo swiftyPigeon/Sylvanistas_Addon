@@ -309,7 +309,7 @@ end
 local function RealmLines()
 	local guid = Try(UnitGUID, "player")
 	local serverID = type(guid) == "string" and guid:match("^Player%-(%d+)%-") or nil
-	local guild, _, _, guildRealm = GetGuildInfo("player")
+	local guild, _, _, guildRealm = ns.GuildInfo("player")
 	-- Connected realms, other than ours. The global GetAutoCompleteRealms only exists with
 	-- Blizzard's deprecation fallbacks on, so its "none" meant nothing.
 	local auto = Try(C_AutoComplete and C_AutoComplete.GetAutoCompleteRealms)
@@ -391,7 +391,7 @@ end
 function ns.StatusText()
 	local lines = {}
 	local function add(fmt, ...) lines[#lines + 1] = fmt:format(...) end
-	local guild = GetGuildInfo("player")
+	local guild = ns.GuildInfo("player")
 	add("Sylvanistas v%s  |  %s", ns.VERSION, ClientInfo())
 	-- (1.1) The addon's language: the game's, when Sylvanistas has lines for it (Locales.lua).
 	add("language: %s", ns.LocaleReport and ns.LocaleReport() or "?")
@@ -413,7 +413,7 @@ function ns.StatusText()
 		add("channel %s = #%s  sealed=%s  |  peers in guild=%d  |  reporter=%s (me: %s)", c.sealed and "(sealed channel)" or ("'" .. tostring(c.channelName) .. "'"),
 			tostring(c.channel), tostring(c.sealed), c.peers, tostring(c.reporter), tostring(c.isReporter))
 		-- 1.2.2: key required, and none here: no channel (ns.REQUIRE_KEY).
-		if ns.Comm.KeyLocked and ns.Comm.KeyLocked() then add("%s", L.KEY_LOCKED) end
+		if ns.Comm.KeyLocked and ns.Comm.KeyLocked() then add("%s", (ns.Comm.LockedText())) end
 		add("sent=%d recv=%d reports=%d sendFails=%d badMsgs=%d queue=%d lastFail=%s", c.sent, c.recv, c.reports, c.fails, c.bad, c.queue, tostring(c.lastFail))
 		local types = {}
 		for k, v in pairs(c.byType or {}) do types[#types + 1] = k .. "=" .. v end
@@ -475,7 +475,7 @@ function ns.StatusText()
 				v == true and "shared" or (v == false and "private" or "not chosen (private)"), tostring(b and b.epoch or "-"), tostring(b and b.opening or "-"))
 		end
 		if ns.faction == "Horde" then
-			add("Horde Dark Lady: %s, realm %s", tostring(ns.KING_CHARACTER.Horde), tostring(ns.KingRealm and ns.KingRealm() or "?"))
+			add("Horde Guild Master: %s, realm %s", tostring(ns.KING_CHARACTER.Horde), tostring(ns.KingRealm and ns.KingRealm() or "?"))
 		end
 		-- 1.1: the switch for all alert sounds, and the kinds silenced on their own.
 		add("alerts: %s", ns.AlertStatus and ns.AlertStatus() or "?")
@@ -512,7 +512,7 @@ function ns.StatusText()
 			end
 			add("windows open: %s", #open > 0 and table.concat(open, ", ") or "none")
 		end
-		add("the Dark Lady's week: %s", ns.Week and ns.Week.StatusLine and ns.Week.StatusLine() or "not loaded")
+		add("the Guild Master's week: %s", ns.Week and ns.Week.StatusLine and ns.Week.StatusLine() or "not loaded")
 	end
 	local n = 0
 	for _ in pairs(ns.rdb.guilds) do n = n + 1 end
@@ -539,7 +539,7 @@ function ns.StatusText()
 	add("realm key: %s", ns.Keys and ns.Keys.StatusLine and ns.Keys.StatusLine() or "not loaded")
 	-- 1.1: the guilds the author's signed list makes Sylvanistas guilds (our faction's), and whether ours is one.
 	if ns.ApprovedGuilds then
-		local list, guild = ns.ApprovedGuilds(), GetGuildInfo("player")
+		local list, guild = ns.ApprovedGuilds(), ns.GuildInfo("player")
 		add("approved guilds: %s%s", #list > 0 and table.concat(list, ", ") or "none", (guild and ns.IsApprovedGuild(guild))
 			and (ns.NamedSylvanistas(guild) and "  |  ours is on it" or "  |  ours is Sylvanistas by the list alone") or "")
 	end

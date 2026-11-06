@@ -283,7 +283,7 @@ function Log.Share(where)
 	local text = Log.ShareText()
 	if not text then return ns.Print(L.WEEKLOG_NOTHING) end
 	if where == "guild" then
-		if not IsInGuild() then return end
+		if not ns.InGuild() or ns.DemoBlocked() then return end
 		SendChatMessage(text, "GUILD")
 	elseif ns.Channels and ns.Channels.Send then
 		ns.Channels.Send("A", text)

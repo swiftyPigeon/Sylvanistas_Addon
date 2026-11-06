@@ -39,7 +39,7 @@ local L = ns.L
 -- none of the borders he ships. `/syl borders test <tier>` (a tier's name, as /syl status prints
 -- it) shows that border round his own portrait, turned round as a holder sees his own, and on his
 -- target or focus frame while that is himself; `/syl borders test off` ends it. His alone
--- (Workshop.Visible: his character, or his test build, as the Dark Lady's and the Treasurer's views):
+-- (Workshop.Visible: his character, or his test build, as the Guild Master's and the Treasurer's views):
 -- anyone else's command gets what /syl borders prints, and changes nothing. His screen alone:
 -- nothing is sent, nothing is saved (a /reload forgets it), nobody else's border changes. It goes
 -- through the same Refresh as a real border, so the same rules hold: none while the borders are
@@ -77,7 +77,7 @@ ns.BORDERS_COUNCIL_GOLD = false
 --            guild's: our roster)
 --   officer  its officers: the census's (the same way, two senders), or our own guild's officer
 --            ranks (Roster.lua)
---   hand     the Dark Lady's Dark Rangers (1.3.0: King.IsHandName, her list or a Valkyr's)
+--   hand     the Guild Master's Dark Rangers (1.3.0: King.IsHandName, her list or a Valkyr's)
 --   ranks    a member of a Sylvanistas guild whose rank name holds one of these words (any case, a
 --            whole word): rank names are what each guild master wrote, as the game shows them
 local WINGED = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Gold-Winged"
@@ -88,10 +88,10 @@ Borders.TIERS = {
 	{ name = "gold-elite", atlas = WINGED, x = 11, y = -4, king = true, council = "BORDERS_COUNCIL_GOLD" },
 	{ name = "silver-elite", atlas = "UI-HUD-UnitFrame-Target-PortraitOn-Boss-Rare-Silver-Winged", x = 8, y = -7,
 		council = true },
-	-- 1.3.0 (the user's order): Dark Rangers (officers) and Deathstalkers (her named helpers, `hand`) gold,
+	-- 1.3.0 (the user's order): Dark Rangers (officers) and Banshees (her named helpers, `hand`) gold,
 	-- Raiders silver, Darkcallers (the other guilds' guild masters) bronze wings; the house's guild
-	-- masters are the Dark Lady's (gold wings, `king`). Silver wings stay the moderators' (Dreadguards).
-	{ name = "gold", atlas = PLAIN, x = 0, y = 1, hand = true, officer = true }, -- (Dark Rangers and Deathstalkers)
+	-- masters are the Guild Master's (gold wings, `king`). Silver wings stay the moderators' (Dreadguards).
+	{ name = "gold", atlas = PLAIN, x = 0, y = 1, hand = true, officer = true }, -- (Dark Rangers and Banshees)
 	{ name = "silver", atlas = "ui-hud-unitframe-target-portraiton-boss-rare-silver", x = 0, y = 1, ranks = { "raider" } },
 	{ name = "bronze-elite", atlas = WINGED, bronze = true, x = 11, y = -4, leader = true }, -- (Darkcallers)
 	{ name = "bronze", atlas = PLAIN, bronze = true, x = 0, y = 1, ranks = { "veteran", "veterano", "veterana" } },
@@ -146,7 +146,7 @@ local function Facts(unit)
 	if not UnitExists(unit) or not UnitIsPlayer(unit) then return nil end
 	local faction = UnitFactionGroup(unit)
 	local name, realm = UnitFullName(unit)
-	local guild, rankName, rankIndex = GetGuildInfo(unit)
+	local guild, rankName, rankIndex = ns.GuildInfo(unit)
 	if Secret(faction, name, realm, guild, rankName, rankIndex) then return nil end
 	if faction ~= (ns.faction or "Alliance") then return nil end
 	local who = ns.UnitFullName(unit)
@@ -163,7 +163,7 @@ local function Facts(unit)
 	local guilds = ns.rdb and ns.rdb.guilds
 	local report = type(guilds) == "table" and guilds[f.guild] or nil
 	f.report = report
-	local mine = GetGuildInfo("player")
+	local mine = ns.GuildInfo("player")
 	if mine and f.guild == mine then
 		-- Our own guild: the rank the server gives (our roster's if it gives none).
 		local rank = type(rankIndex) == "number" and rankIndex or (ns.Roster and ns.Roster.RankOf(who))
@@ -214,7 +214,7 @@ end
 -- the High Council's list, our roster when his rank came from it (our own guild's, the server
 -- giving none; Roster.lua makes a new table at each scan), and for a High Councillor whether the
 -- council's names were hidden (the King's screen while he streams, ns.CouncilMasked: the eye in
--- the Realm, the Dark Lady's view, becoming the King); and (1.1) his name, and whether a net-off word hid him.
+-- the Realm, the Guild Master's view, becoming the King); and (1.1) his name, and whether a net-off word hid him.
 local function Inputs(f)
 	local report = f and f.report
 	local row = type(report) == "table"
@@ -300,12 +300,12 @@ function Borders.MarkOfName(who, guild)
 	if guild and ns.IsFederation(guild) then
 		f.sylvanistas = true
 		local rank
-		local mine = GetGuildInfo("player")
+		local mine = ns.GuildInfo("player")
 		if mine and guild == mine then
 			rank = ns.Roster and ns.Roster.RankOf(who)
 			f.proven = type(rank) == "number"
-			if f.proven and type(GuildControlGetRankName) == "function" then
-				local ok, name = pcall(GuildControlGetRankName, rank + 1)
+			if f.proven and type(ns.GuildRankName) == "function" then
+				local ok, name = pcall(ns.GuildRankName, rank + 1)
 				if ok and type(name) == "string" and not Secret(name) then f.rankName = name end
 			end
 		elseif not (mine and guild:lower() == mine:lower()) and not (ns.Roster and ns.Roster.RankOf(who)) then
@@ -592,8 +592,9 @@ function Borders.PreviewLines(lines)
 	for _, name in ipairs(names) do
 		local on = preview == name
 		lines[#lines + 1] = {
-			indent = 1, text = (on and Gold(name) or name) .. "  " .. Grey(Who(name)),
-			right = on and Green(L.BORDERS_PREVIEW_SHOWN) or nil,
+			-- (1.3.2: "shown" ends the line instead of sitting on the right, where the longer
+			-- descriptions ran under it.)
+			indent = 1, text = (on and Gold(name) or name) .. "  " .. Grey(Who(name)) .. (on and ("  " .. Green(L.BORDERS_PREVIEW_SHOWN)) or ""),
 			onClick = function() Borders.SetPreview(on and "off" or name) end,
 			tooltip = function(tt)
 				tt:AddLine(L.BORDERS_PREVIEW_TITLE, 1, 0.82, 0)

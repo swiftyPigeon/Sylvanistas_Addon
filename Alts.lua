@@ -287,7 +287,7 @@ function Alts.Send(force)
 	lastSent = ns.Now()
 	a.told[key] = at
 	stats.sent = stats.sent + 1
-	ns.Comm.Send("CHANNEL", Wire(at, role, GetGuildInfo("player"), names), "alts")
+	ns.Comm.Send("CHANNEL", Wire(at, role, ns.GuildInfo("player"), names), "alts")
 	return true
 end
 
@@ -525,7 +525,7 @@ function Alts.LinkTo(main)
 end
 local houseAsked = false
 function Alts.OfferHouse()
-	if houseAsked or not ns.me or not ns.IsAltGuild(IsInGuild() and GetGuildInfo("player") or nil) then return false end
+	if houseAsked or not ns.me or not ns.IsAltGuild(ns.InGuild() and ns.GuildInfo("player") or nil) then return false end
 	local a = Account()
 	local key = Key(ns.me)
 	if type(a.links[key]) == "table" or #AccountAlts(ns.me) > 0 then return false end
@@ -614,7 +614,7 @@ ns.On("LOGIN", function()
 	-- This character's guild, for the census's count once the account's links are counted.
 	ns.After(10, "alt guild", function()
 		local key = ns.me and Key(ns.me)
-		local guild = GetGuildInfo and GetGuildInfo("player")
+		local guild = ns.GuildInfo and ns.GuildInfo("player")
 		if key and Account().guilds[key] ~= guild then
 			Account().guilds[key] = guild
 			Bump()

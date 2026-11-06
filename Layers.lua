@@ -5,7 +5,7 @@ local L = ns.L
 -- NPC GUIDs (Creature-0-server-instance-zoneUID-npc-spawn): players who see the same
 -- zoneUID in the same zone share a layer. Each addon user announces its layer and rank on
 -- SylvanistasNet, and a layer is named after the highest ranked Sylvanistas member on it:
--- "the Dark Lady's layer". Experimental until tested on a live realm.
+-- "the Guild Master's layer". Experimental until tested on a live realm.
 
 local Layers = {}
 ns.Layers = Layers
@@ -69,7 +69,7 @@ end
 local retryQueued = false
 
 local function Announce(force)
-	if not mine or not IsInGuild() or not Announces() then return end
+	if not mine or not ns.InGuild() or not Announces() then return end
 	local now = ns.Now()
 	local K = ns.King
 	local every = (K and K.IsKing and K.IsKing()) and Layers.KING_EVERY or ANNOUNCE_EVERY
@@ -87,7 +87,7 @@ local function Announce(force)
 		return
 	end
 	lastAnnounce = now
-	local guild = GetGuildInfo("player")
+	local guild = ns.GuildInfo("player")
 	if not ns.IsFederation(guild) then return end
 	-- With thousands of users only officers and a stable 1 in 8 sample announce, which is
 	-- enough to see the layers and to name each one after its highest rank. (The King is an
@@ -312,7 +312,7 @@ function Layers.ForMap(mapID)
 		local isMine = mine and mine.mapID == mapID and mine.zoneUID == zoneUID
 		if isMine then
 			count = count + 1
-			local me = { name = ns.DisplayName(ns.me), rank = ns.Roster.MyRank(), guild = GetGuildInfo("player") or "" }
+			local me = { name = ns.DisplayName(ns.me), rank = ns.Roster.MyRank(), guild = ns.GuildInfo("player") or "" }
 			if not best or Better(me, best, sizes) then best = me end
 		end
 		if count > 0 then
@@ -322,7 +322,7 @@ function Layers.ForMap(mapID)
 	if mine and mine.mapID == mapID and not (source[mapID] and source[mapID][mine.zoneUID]) then
 		out[#out + 1] = {
 			zoneUID = mine.zoneUID, count = 1, mine = true,
-			head = { name = ns.DisplayName(ns.me), rank = ns.Roster.MyRank(), guild = GetGuildInfo("player") or "" },
+			head = { name = ns.DisplayName(ns.me), rank = ns.Roster.MyRank(), guild = ns.GuildInfo("player") or "" },
 		}
 	end
 	table.sort(out, function(a, b)

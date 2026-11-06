@@ -339,7 +339,7 @@ function Data.Receive(r, sender)
 	-- 1.1: a guild the moderators took off (net-off): its report counts for nothing, not even as a vote.
 	if ns.Moderation.Report and ns.Moderation.Report(r, sender) then return false end
 	-- Our own guild comes straight from our roster, never from someone else's claim (in any spelling).
-	local mine = GetGuildInfo("player")
+	local mine = ns.GuildInfo("player")
 	if mine and r.guild:lower() == mine:lower() then return false end
 	local who = ns.FullName(sender)
 	-- The other faction's Sylvanistas guilds are not ours to count (their channel is another one;
@@ -420,7 +420,7 @@ end
 -- theirs included (1.0.0: the borders ask two for any rank, Borders.lua).
 function Data.KnownRank(sender, guild, soft)
 	local who = ns.FullName(sender)
-	if guild == GetGuildInfo("player") then return ns.Roster.RankOf(who) end
+	if guild == ns.GuildInfo("player") then return ns.Roster.RankOf(who) end
 	if NetOff(guild) then return nil end -- (1.1: a guild off the network ranks nobody on another's client)
 	local g = Data.Guild(guild)
 	local now = ns.Now()
@@ -432,7 +432,7 @@ function Data.KnownRank(sender, guild, soft)
 	-- they all agree on counts), named by someone else too: a report never proves its own
 	-- sender's rank. The Crown (every guild master, the officers of <Sylvanistas>) needs two
 	-- senders naming them (theirs may be one).
-	-- A sender is itself by its name alone: "the Dark Lady-OtherRealm" can't vouch for "the Dark Lady-Realm".
+	-- A sender is itself by its name alone: "the Guild Master-OtherRealm" can't vouch for "the Guild Master-Realm".
 	local self = ns.ShortName(who)
 	local bySig, total, named, others = {}, 0, 0, 0
 	for src, v in pairs(votes) do

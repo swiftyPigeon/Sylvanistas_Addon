@@ -55,7 +55,7 @@ function Court.Holding() return holding end
 local function Send()
 	if not holding or holding.preview then return end
 	holding.sentAt = ns.Now()
-	ns.Comm.Send("CHANNEL", ("T1~C~%d~%s~%d~%s"):format(holding.id, GetGuildInfo("player") or "", holding.mapID or 0,
+	ns.Comm.Send("CHANNEL", ("T1~C~%d~%s~%d~%s"):format(holding.id, ns.GuildInfo("player") or "", holding.mapID or 0,
 		Clean(holding.zone, 40)), "court")
 end
 
@@ -63,7 +63,7 @@ function Court.Toggle()
 	local preview = ns.King.Preview()
 	if not ns.King.IsKing() and not preview then return ns.Print(L.THRONE_ONLY_KING) end
 	if holding then
-		if not holding.preview then ns.Comm.Send("CHANNEL", ("T1~Z~%d~%s"):format(holding.id, GetGuildInfo("player") or ""), "court") end
+		if not holding.preview then ns.Comm.Send("CHANNEL", ("T1~Z~%d~%s"):format(holding.id, ns.GuildInfo("player") or ""), "court") end
 		holding = nil
 		ns.Print(L.COURT_CLOSED)
 	else
@@ -99,7 +99,7 @@ function Court.Request(sender, id, guild)
 	local now = ns.Now()
 	if now - (holding.dismissed[sender] or -math.huge) < Court.DISMISSED then return end
 	local shown
-	if ns.Roster.RankOf(sender) then shown = GetGuildInfo("player")
+	if ns.Roster.RankOf(sender) then shown = ns.GuildInfo("player")
 	elseif ns.King.Verified(sender, clean) then shown = clean end
 	local entry = { name = sender, guild = shown, t = now }
 	holding.queue[#holding.queue + 1] = entry
@@ -237,7 +237,7 @@ function Court.Seek()
 	if not c or not Court.InMyZone() then return end
 	if not CanAsk(c) then return ns.Print(L.COURT_ASKED_ALREADY) end
 	c.askedAt = ns.Now()
-	ns.Comm.Whisper(c.king, ("T4~%d~%s"):format(c.id, GetGuildInfo("player") or ""), "court ask")
+	ns.Comm.Whisper(c.king, ("T4~%d~%s"):format(c.id, ns.GuildInfo("player") or ""), "court ask")
 	ns.Print(L.COURT_ASKED:format(ns.KingName(c.king)))
 	ns.Fire("COURT_CHANGED")
 end

@@ -6,7 +6,7 @@ ns.OfficerMuster = Muster
 -- Officer musters (1.2.21, after Olympus 1.2.1-1.2.3's OfficerMuster.lua): a quiet call to one zone
 -- for 20 minutes, apart from the map's Screams: no alert, no sound, no map pin; a page of the Realm
 -- tab lists the calls standing now, with how many Forsaken the census has in that zone. Who may call:
---   CHANNEL  every Sylvanistas guild: the Dark Lady (her pinned name), her Valkyr and her Dark Rangers
+--   CHANNEL  every Sylvanistas guild: the Guild Master (her pinned name), her Valkyr and her Dark Rangers
 --            (by name; the server stamps every sender)
 --   GUILD    their own guild alone: its officers (the guild master and the officer rank below), as
 --            each receiver's own roster has them (the server carries GUILD between that guild's
@@ -53,7 +53,7 @@ local function Authorized(by, guild, dist)
 	local M = ns.Moderation
 	if M and M.Hides and M.Hides(by, guild) then return false end
 	if dist == "GUILD" then
-		local rank = guild == GetGuildInfo("player") and ns.Roster.RankOf(by)
+		local rank = guild == ns.GuildInfo("player") and ns.Roster.RankOf(by)
 		return type(rank) == "number" and rank <= ns.CAPTAIN_RANK
 	end
 	if ns.IsKingCharacter(by) then return true end
@@ -66,7 +66,7 @@ Muster.Authorized = Authorized -- (tests)
 -- Whether this player may call, their guild, and where it goes: "CHANNEL" (every guild) or "GUILD".
 function Muster.CanPost()
 	if not ns.IsMember() or not Scope() then return false end
-	local guild = GetGuildInfo("player")
+	local guild = ns.GuildInfo("player")
 	if Authorized(ns.me, guild, "CHANNEL") then return true, guild, "CHANNEL" end
 	if Authorized(ns.me, guild, "GUILD") then return true, guild, "GUILD" end
 	return false, guild
