@@ -61,6 +61,27 @@ Wing({ "Darkmaster Gandling" }, "Darkmaster Gandling")
 Wing({ "The Unforgiven", "Hearthsinger Forresten", "Timmy the Cruel", "Willey Hopebreaker", "Commander Malor", "Instructor Galford",
 	"Balnazzar", "Baroness Anastari", "Nerub'enkan", "Maleki the Pallid", "Magistrate Barthilas", "Ramstein the Gorger", "Lord Aurius Rivendare" },
 	"Balnazzar", "Lord Aurius Rivendare")
+-- Forever's new dungeons (1.3.3). Forever sends ENCOUNTER_END in 5-player dungeons too (a Ruins of
+-- Lordaeron run, 2026-11-10: all six bosses by name), so the names below matter most for their last
+-- boss, which ends the run. Only where a guide names it (Warcraft Tavern, 2026-11-11). The Drowned
+-- City, Krol'dok Stronghold, Alcaz Prison, Blackmaw Hold and Shaper's Terrace: their guides are still
+-- datamined and name no last boss, so their runs show "not completed" until one is added here.
+Wing({ "Faldrim Anvilmar", "Magmatus", "Plunder", "Durgen Dirgehammer" }, "Durgen Dirgehammer") -- Hall of Thanes
+Wing({ "Witherfang", "The Butcher", "The Baron", "Viktor the Vile", "The Abandoned", "Bjork", "Rath'mael" }, "Rath'mael") -- Ruins of Lordaeron
+Wing({ "Saltspine", "Shadetooth", "Highland Horror", "Relic Guardian" }, "Relic Guardian") -- Excavation Site
+Wing({ "Atrexis the Grave Knight", "Lyn the Ignored", "Mana Devourer", "Arcane Anomaly", "Fel Ancient", "Arcanic Enigma",
+	"Unstable Sentry", "Shade of the Archmage" }, "Shade of the Archmage") -- City of Dalaran
+
+-- A run is completed once any of its bosses is a last boss: read from its bosses each time (1.3.3),
+-- so a run saved before its dungeon's last boss was known here shows completed too.
+function Log.Done(r)
+	if type(r) ~= "table" then return false end
+	if r.done then return true end
+	for _, b in ipairs(type(r.bosses) == "table" and r.bosses or {}) do
+		if type(b) == "string" and LAST[b:lower()] then return true end
+	end
+	return false
+end
 
 ---------------------------------------------------------------------------
 -- The store: ns.db.weekLog = { [week] = { runs = { ... }, places = { ... }, mates = { [name] = { s, by } } } }
@@ -350,7 +371,7 @@ function Log.Summary()
 	local done, loot, places = 0, 0, #t.places
 	local cleared = {}
 	for _, r in ipairs(t.runs) do
-		if r.done then done = done + 1 cleared[#cleared + 1] = r.where end
+		if Log.Done(r) then done = done + 1 cleared[#cleared + 1] = r.where end
 		loot = loot + #(r.loot or {})
 	end
 	local mates = Mates(t)
@@ -388,7 +409,7 @@ function Log.Lines(lines, q)
 	for i = #t.runs, 1, -1 do
 		local r = t.runs[i]
 		if Want(r.where, r.char) then
-			local state = r.done and Green(L.WEEKLOG_COMPLETED) or Grey(L.WEEKLOG_NOT_DONE)
+			local state = Log.Done(r) and Green(L.WEEKLOG_COMPLETED) or Grey(L.WEEKLOG_NOT_DONE)
 			lines[#lines + 1] = { indent = 1, text = Gold(r.where) .. "  " .. Grey("(" .. r.char .. ")"),
 				right = state .. "  " .. Grey(L.WEEKLOG_BOSSES:format(#r.bosses)),
 				tooltip = function(tt)
