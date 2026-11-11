@@ -24,7 +24,7 @@ ns.BLOCKED_GUILDS = {                          -- guilds cut off for good, whate
 }
 
 ns.NAME = "Sylvanistas"
-ns.VERSION = "1.3.2"
+ns.VERSION = "1.3.3"
 ns.PREFIX = "SYLVANISTAS"        -- addon message prefix (max 16 chars)
 ns.CHANNEL = "SylvanistasNet"    -- hidden chat channel (Alliance: unused, the addon is Horde-only)
 ns.CHANNEL_HORDE = "SylvanistasNetH" -- the Horde's hidden chat channel, shared by every Sylvanistas guild
