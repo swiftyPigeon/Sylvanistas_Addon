@@ -202,6 +202,92 @@ end
 -- Guild Life
 ---------------------------------------------------------------------------
 
+-- A plain string the addon may read: never a secret value (Forever), never empty.
+local function Plain(v)
+	if issecretvalue and issecretvalue(v) then return false end
+	return type(v) == "string" and v ~= ""
+end
+Log.Plain = Plain -- (tests)
+
+-- In our own roster, by the name alone: Forever names are one per region, and the game may give a
+-- party member's name without the realm the roster's names carry.
+local function InRoster(name)
+	if ns.Roster.RankOf(ns.FullName(name)) ~= nil then return true end
+	local byName, short = ns.Roster.byName, ns.ShortName(name)
+	if type(byName) ~= "table" then return false end
+	for full in pairs(byName) do
+		if ns.ShortName(full) == short then return true end
+	end
+	return false
+end
+
+-- The other branch, while the game won't say: it gives no guild for a party member far away
+-- (another continent: GetGuildInfo is nil). Who the game last showed in a house guild is
+-- remembered (ns.db.houseSeen, by short name, HOUSE_SEEN_KEEP); the King's pinned character and
+-- the other branch's leader and officers are known from the census reports (Data.KnownRank).
+Log.HOUSE_SEEN_KEEP = 60 * 24 * 3600
+local function Now() return (time and time()) or 0 end
+local function HouseSeen()
+	local db = ns.db
+	if not db then return nil end
+	if type(db.houseSeen) ~= "table" then db.houseSeen = {} end
+	return db.houseSeen
+end
+local function Remember(name, guild)
+	local seen = HouseSeen()
+	if not seen then return end
+	local short = ns.ShortName(name)
+	if ns.IsHouseGuild(guild) then seen[short] = { g = guild, t = Now() } else seen[short] = nil end
+end
+local function KnownInHouse(name)
+	local seen = HouseSeen()
+	local e = seen and seen[ns.ShortName(name)]
+	if type(e) == "table" and ns.IsHouseGuild(e.g) and Now() - (tonumber(e.t) or 0) <= Log.HOUSE_SEEN_KEEP then return true end
+	local full = ns.FullName(name)
+	if ns.IsKingCharacter and ns.IsKingCharacter(full) then return true end
+	local mine = ns.GuildInfo and ns.GuildInfo("player")
+	for _, g in ipairs({ ns.GUILD_NAME, ns.ALT_GUILD_NAME }) do
+		if type(g) == "string" and g ~= "" and g ~= mine and ns.Data and ns.Data.KnownRank then
+			local ok, rank = pcall(ns.Data.KnownRank, full, g)
+			if ok and rank ~= nil then return true end
+		end
+	end
+	return false
+end
+function Log.ForgetOldSeen()
+	local seen, now = HouseSeen(), Now()
+	if not seen then return end
+	for short, e in pairs(seen) do
+		if type(e) ~= "table" or now - (tonumber(e.t) or 0) > Log.HOUSE_SEEN_KEEP then seen[short] = nil end
+	end
+end
+
+-- 1.3.3: the guildmate in a group slot, by full name, or nil. Forever names are two words and
+-- UnitName can give the first alone, which no roster entry matches ("grouped with" stayed empty):
+-- the full name comes from GetUnitName(unit, true), or UnitFullName. One of us is anyone in either
+-- branch of the house (<Sylvanistas>, <Sylvanistas Underground>: ns.IsHouseGuild) by the guild the
+-- game shows, or, when it shows none (far away), anyone in our roster or known to be of the house
+-- (KnownInHouse). Secret values are skipped, never read.
+function Log.GroupMate(unit)
+	local ok, name, guild = pcall(function()
+		if not UnitExists(unit) or not UnitIsPlayer(unit) then return nil end
+		local full = GetUnitName and GetUnitName(unit, true)
+		if not Plain(full) or not full:find(" ", 1, true) then
+			local first, realm = UnitFullName(unit)
+			if Plain(first) then full = Plain(realm) and (first .. "-" .. realm) or first end
+		end
+		return full, (GetGuildInfo(unit))
+	end)
+	if not ok or not Plain(name) then return nil end
+	name = ns.Normal(name)
+	if Plain(guild) then
+		Remember(name, guild)
+		return ns.IsHouseGuild(guild) and name or nil
+	end
+	if InRoster(name) or KnownInHouse(name) then return name end
+	return nil
+end
+
 function Log.SampleGroup()
 	if not (IsInGroup and IsInGroup()) then return end
 	local t = Store()
@@ -209,10 +295,11 @@ function Log.SampleGroup()
 	local raid = IsInRaid and IsInRaid()
 	local n = GetNumGroupMembers and GetNumGroupMembers() or 0
 	local c = Char()
+	Log.ForgetOldSeen()
 	for i = 1, n do
 		local unit = raid and ("raid" .. i) or (i <= 4 and ("party" .. i))
-		local ok, name = pcall(function() return unit and UnitName(unit) end)
-		if ok and type(name) == "string" and name ~= "" and ns.Roster.RankOf(ns.FullName(name)) ~= nil then
+		local name = unit and Log.GroupMate(unit)
+		if name then
 			local key = ns.ShortName(name)
 			if key ~= c then
 				local m = t.mates[key] or { s = 0, by = {} }
