@@ -144,8 +144,10 @@ local function Entered()
 	run = { char = c, where = name, t = now, last = now, bosses = {}, loot = {} }
 	t.runs[#t.runs + 1] = run
 end
+-- A secret value (Forever: a unit's name, an encounter's) is never read: skipped (1.3.3).
+local function Secret(v) return issecretvalue ~= nil and issecretvalue(v) == true end
 local function Boss(name)
-	if not run or type(name) ~= "string" or name == "" then return end
+	if not run or Secret(name) or type(name) ~= "string" or name == "" then return end
 	for _, b in ipairs(run.bosses) do if b == name then return end end
 	run.bosses[#run.bosses + 1] = name
 	run.last = ns.Now()
@@ -165,7 +167,7 @@ function Log.LookForBosses()
 		local ok, name = pcall(function()
 			if UnitExists(u) and UnitIsDead(u) and not UnitIsPlayer(u) then return UnitName(u) end
 		end)
-		if ok and type(name) == "string" and BOSS[name:lower()] then Boss(name) end
+		if ok and not Secret(name) and type(name) == "string" and BOSS[name:lower()] then Boss(name) end
 	end
 end
 

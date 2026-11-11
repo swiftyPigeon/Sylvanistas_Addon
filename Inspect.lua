@@ -447,8 +447,10 @@ end
 local function OnTooltipUnit(tooltip)
 	if tooltip ~= GameTooltip then return end
 	local _, unit = tooltip:GetUnit()
-	if not unit or not UnitIsPlayer(unit) then return end
+	-- 1.3.3: Forever can hand the tooltip's unit over as a secret value; UnitIsPlayer then errors.
+	if not unit or (issecretvalue and issecretvalue(unit)) or not UnitIsPlayer(unit) then return end
 	local name = ns.UnitFullName(unit)
+	if type(name) ~= "string" or (issecretvalue and issecretvalue(name)) then return end
 	local line = Inspect.TooltipLine(name)
 	if line then tooltip:AddLine(line) end
 	-- The Treasurer of Sylvanistas: his name and the game's own word on his guild.
