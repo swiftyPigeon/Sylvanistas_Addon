@@ -1242,11 +1242,10 @@ function Crafters.Lines(q, view)
 					tt:AddLine(L.CRAFTER_ROW_TIP:format(p.name, p.rank, p.n, ns.Ago(c.t)), 1, 1, 1, true)
 				end }
 			if opened then
-				-- A whisper already written asking them to link this profession (the user, 2026-11-13): the
-				-- game's own window then shows every recipe, with or without the add-on's list.
+				-- A whisper already written asking them to open this profession (the user, 2026-11-13).
 				lines[#lines + 1] = { indent = 2, text = Gold(L.CRAFTER_WHISPER_TO:format(who)),
 					onClick = function()
-						if ns.UI and ns.UI.WhisperText then ns.UI.WhisperText(ns.TellName(c.name), L.CRAFTER_LINK_ASK:format(p.name, p.name)) else Whisper(c.name) end
+						if ns.UI and ns.UI.WhisperText then ns.UI.WhisperText(ns.TellName(c.name), L.CRAFTER_LINK_ASK:format(p.name)) else Whisper(c.name) end
 					end,
 					tooltip = function(tt) tt:AddLine(L.CRAFTER_WHISPER_TO:format(who), 1, 0.82, 0); tt:AddLine(L.CRAFTER_LINK_ASK_TIP, 1, 1, 1, true) end }
 				local recipes, l = Crafters.ListOf(c.name, p.key)
