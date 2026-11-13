@@ -764,6 +764,18 @@ function Crafters.AskList(crafter, key)
 	listStats.asked = listStats.asked + 1
 	ns.Log("crafters: asked %s for their %s recipes", crafter, key)
 	ns.Comm.Whisper(crafter, "WR~" .. key, "crafterlistask " .. k)
+	-- 3b (2026-11-13, seen in game): a crafter still on 1.3.3 answers each asker once per 2 minutes
+	-- whatever the profession, in silence: asked again by itself once, just after that window.
+	local mine = lists[k]
+	if not busyRetried[k] then
+		Crafters.after(Crafters.LIST_SAME + 5, "crafter list retry after silence", function()
+			if lists[k] == mine and not mine.n and not mine.busy and not busyRetried[k] then
+				busyRetried[k] = true
+				asked[k] = nil
+				Crafters.AskList(crafter, key)
+			end
+		end)
+	end
 	Changed()
 	return true
 end
@@ -1230,7 +1242,13 @@ function Crafters.Lines(q, view)
 					tt:AddLine(L.CRAFTER_ROW_TIP:format(p.name, p.rank, p.n, ns.Ago(c.t)), 1, 1, 1, true)
 				end }
 			if opened then
-				lines[#lines + 1] = { indent = 2, text = Gold(L.CRAFTER_WHISPER_TO:format(who)), onClick = function() Whisper(c.name) end }
+				-- A whisper already written asking them to link this profession (the user, 2026-11-13): the
+				-- game's own window then shows every recipe, with or without the add-on's list.
+				lines[#lines + 1] = { indent = 2, text = Gold(L.CRAFTER_WHISPER_TO:format(who)),
+					onClick = function()
+						if ns.UI and ns.UI.WhisperText then ns.UI.WhisperText(ns.TellName(c.name), L.CRAFTER_LINK_ASK:format(p.name)) else Whisper(c.name) end
+					end,
+					tooltip = function(tt) tt:AddLine(L.CRAFTER_WHISPER_TO:format(who), 1, 0.82, 0); tt:AddLine(L.CRAFTER_LINK_ASK_TIP, 1, 1, 1, true) end }
 				local recipes, l = Crafters.ListOf(c.name, p.key)
 				if not recipes or (l.busy and #recipes == 0) then
 					-- (His addon busy with other players' lists: he said so; a click asks again.)
