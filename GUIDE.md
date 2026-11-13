@@ -167,6 +167,16 @@ without:
 Your own add-on spots your names; nothing extra is sent. Turn the cards off in the Chat tab's cog
 (**Mentions beside the minimap**) or with `/syl mentions off`; the sound alone in the Screams cog.
 
+**See-through.** Pick **100% 85% 70% 55% 40%** on the line above the messages, or click the **Chat**
+tab again while it's open to step through. The window's background and the bubbles fade; the text,
+names and borders stay solid. Other tabs stay solid.
+
+**The small chat (1.3.4).** The round Sylvanistas button with a chat bubble, by the game's chat
+(above PUG Social's, if you have it), opens the chat on its own in a small window over your chat:
+just the lines and the box to write in. Drag it, size it from its corner; it remembers. The
+**Professions** icon in its title bar opens the **Crafters** board beside it (its X closes it; the
+chat's X closes both). The round logo, or a right-click on the button, opens the whole add-on.
+
 ### Screams (map calls)
 Officers and the Guild Master send **Screams**. You'll see a message, hear a sound and see a map marker:
 - **Revenant Call:** any member targets a **rare** (or tougher) enemy and calls (`/syl rise`, or the Screams tab). Everyone sees a **skull** on the map; members in that zone or the next one over get an alert window. The skull goes when the target dies, or after 5 minutes.
@@ -193,7 +203,9 @@ All current Screams are on the **Screams** tab (`/syl screams`).
 | Share a camp | light a campfire and click **Share camp**, or **Board** → **Drop a camp**. A campfire shows where you stand on every guildmate's world map and minimap. **Take down my camp** removes it; `/syl camps ask off` stops the question |
 | See the guild's week | `/syl week` (events, and signups for them); **The week** on the Board has the numbers |
 | Your week at a glance | `/syl brief`: **Your week, in five lines** (next event, what's open, guildmates online, a sister guild on your layer, whether you're up to date) |
-| Find a crafter | **Shadows** → **Crafters** → **Ask who can make an item…**, or `/syl craft <item>`; click a crafter to whisper them or see their recipes |
+| Find a crafter | **Shadows** → **Crafters** → **Ask who can make an item…**, or `/syl craft <item>`; click a crafter to see their recipes. Names in parchment are Sylvanistas, in blood red Sylvanistas Underground |
+| See what a recipe takes | hover its item: **Materials**, with how many you hold (bags and bank) |
+| Ask a crafter for a recipe | click its item under them: a whisper opens already written (item, recipe, materials) for you to send. With the small chat open, **shift-click** puts "@name [item]" in its box instead. **Whisper <name>** under a profession asks them to open it, so their recipes show |
 | List your professions | just open a profession: it's listed. The Sylvanistas icon on the profession window (top right) lists or unlists that one; **Go private** on the Crafters page (type PRIVACY) takes you off |
 | Link your alts | a character in **Sylvanistas Underground** is asked once, at login, to link with your Sylvanistas character (one click). Otherwise `/syl alt add <name>` on your main, then log the alt and confirm. Linked alts show "Ana's alt" in the lists |
 | See Raid Loot (raid decisions and points) | `/syl loot` |
