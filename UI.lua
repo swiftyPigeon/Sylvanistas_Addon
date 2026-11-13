@@ -1101,7 +1101,7 @@ local function CreateMain(style)
 			tab:SetID(i)
 			tab:SetFrameLevel(level)
 			tab:SetPoint(UI.TabAnchor("side", i, f, f.tabs[i - 1]))
-			local function Select() ns.SafeCall("tab " .. t.key, UI.SelectTab, t.key) end
+			local function Select() ns.SafeCall("tab " .. t.key, UI.TabClicked, t.key, tab) end
 			-- Hooked: the template's own click (its sound, the check) runs first.
 			if template == "fallback" then tab:SetScript("OnClick", Select) else tab:HookScript("OnClick", Select) end
 			f.tabs[i] = tab
@@ -1140,7 +1140,7 @@ local function CreateMain(style)
 			if PanelTemplates_TabResize then pcall(PanelTemplates_TabResize, tab, 0) end
 			UI.tabStyle = UI.TabStyle(tab)
 			tab:SetPoint(UI.TabAnchor(UI.tabStyle, i, f, f.tabs[i - 1]))
-			tab:SetScript("OnClick", function() ns.SafeCall("tab " .. t.key, UI.SelectTab, t.key) end)
+			tab:SetScript("OnClick", function(self) ns.SafeCall("tab " .. t.key, UI.TabClicked, t.key, self) end)
 			tab.key = t.key
 			f.tabs[i] = tab
 		end
@@ -1629,6 +1629,20 @@ end
 -- and slash commands, never from a timer: the game takes /who from a hardware event only.
 function UI.Clicked()
 	ns.SafeCall("auto who", ns.Who.Auto)
+end
+
+-- A tab clicked by the player. The Chat tab while Chat already shows: the chat's background a
+-- step more see-through (ChatWindow.CycleOpacity; 2026-11-13), not the tab again. How it works: the
+-- chat's settings (the cog) say so.
+function UI.TabClicked(key, tab)
+	local CW = ns.ChatWindow
+	if key == "chat" and main and main:IsShown() and main.tab == "chat" and CW and type(CW.CycleOpacity) == "function" then
+		CW.CycleOpacity()
+		-- (A side tab is a check button: its own click just unchecked it. Chat stays the tab shown.)
+		if tab and tab.SetChecked then tab:SetChecked(true) end
+		return
+	end
+	UI.SelectTab(key)
 end
 
 -- Opening the window picks its look again, from the guild window in use (UI.Style).
@@ -2251,6 +2265,9 @@ function UI.StatusLine()
 	if c.isReporter or not c.reporterName then return L.STATUS_REPORTER:format(guild, users) end
 	return L.STATUS_PEER:format(guild, c.reporterName, users)
 end
+
+-- The tab the window was last on (ChatDock.lua's switch opens the window there).
+function UI.LastTab() return main and main.tab or nil end
 
 function UI.Toggle()
 	if main and main:IsShown() then

@@ -285,7 +285,9 @@ local function ItemButton(r, k)
 		-- player opened; it never opens one (what tainted the chat box was opening it: Board.Whisper).
 		if not it or not IsShiftKeyDown or not IsShiftKeyDown() or ns.GamepadUI() or not ChatEdit_InsertLink then return end
 		local link = it.link
-		if not link and GetItemInfo then local okInfo, _, l = pcall(GetItemInfo, it.id); if okInfo then link = l end end
+		-- (2026-11-13: Forever has no global GetItemInfo; C_Item first.)
+		local info = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+		if not link and info then local okInfo, _, l = pcall(info, it.id); if okInfo then link = l end end
 		if link then pcall(ChatEdit_InsertLink, link) end
 	end)
 	b:SetScript("OnEnter", function(self)
@@ -298,6 +300,8 @@ local function ItemButton(r, k)
 		if not ok then GameTooltip:AddLine("#" .. tostring(it.id), 1, 1, 1) end
 		if (it.n or 0) > 1 then GameTooltip:AddLine("x" .. it.n, 0.8, 0.8, 0.8) end
 		if it.gone then GameTooltip:AddLine(L.BANK_GONE_SLOT, 1, 0.4, 0.4, true) end
+		-- More lines from the page that drew it (a crafter's recipe: its materials, Crafters.AddReagents).
+		if type(it.tip) == "function" then ns.SafeCall("item tooltip", it.tip, GameTooltip, it) end
 		local row = self.GetParent and self:GetParent()
 		local hint = not it.gone and row and row.line and row.line.itemHint
 		if hint then GameTooltip:AddLine(hint, 0.6, 1, 0.6, true) end

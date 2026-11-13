@@ -139,6 +139,109 @@ function Crafters.Mine() return Saved("crafterData") end
 
 local function Id(link, kind) return type(link) == "string" and tonumber(link:match(kind .. ":(%d+)")) or nil end
 
+---------------------------------------------------------------------------
+-- A recipe's materials (the user, 2026-11-13: the board showed what a recipe makes, never what it
+-- takes). Read from the game, never sent: our own as we read a profession, anyone else's by its
+-- recipe id where the client tells (Forever's C_TradeSkillUI.GetRecipeSchematic, as ForeverChef
+-- reads Cooking). Kept per account: ns.db.crafterReagents[recipe id] = { { i = item, n = count } }.
+---------------------------------------------------------------------------
+
+Crafters.REAGENTS_MAX = 8          -- materials a recipe keeps, at most
+Crafters.REAGENTS_RETRY = 30       -- a recipe the game told nothing of is asked again this much later
+
+local reagentTried = {} -- [recipe id] = when we last asked the game and got nothing
+local namesWaiting = {} -- [item id] = true: a material shown by number, its name on its way
+local namesOwner        -- the item button whose tooltip showed it
+
+local function ReagentStore()
+	ns.db.crafterReagents = type(ns.db.crafterReagents) == "table" and ns.db.crafterReagents or {}
+	return ns.db.crafterReagents
+end
+
+local function ReagentItem(reagent)
+	if type(reagent) ~= "table" then return nil end
+	local id = reagent.itemID or (type(reagent.item) == "table" and reagent.item.itemID)
+	if not id and reagent.itemLink then id = Id(reagent.itemLink, "item") end
+	return tonumber(id)
+end
+
+-- The game's materials for a recipe id, required slots only, one item per slot (a slot may list
+-- other qualities of the same material): { { i, n } }, or nil.
+local function ReadSchematic(recipe)
+	local T = C_TradeSkillUI
+	if not recipe or not T or type(T.GetRecipeSchematic) ~= "function" then return nil end
+	local ok, s = pcall(T.GetRecipeSchematic, recipe, false)
+	if not ok or type(s) ~= "table" or type(s.reagentSlotSchematics) ~= "table" then return nil end
+	local out = {}
+	for _, slot in ipairs(s.reagentSlotSchematics) do
+		if type(slot) == "table" and slot.required ~= false and type(slot.reagents) == "table" then
+			local id = ReagentItem(slot.reagents[1])
+			local n = math.floor(tonumber(slot.quantityRequired) or 1)
+			if id and n > 0 and #out < Crafters.REAGENTS_MAX then out[#out + 1] = { i = id, n = n } end
+		end
+	end
+	return #out > 0 and out or nil
+end
+
+-- Classic's trade skill (or craft) window: the materials of its line `i`.
+local function ReadClassicReagents(craft, i)
+	local num = craft and GetCraftNumReagents or GetTradeSkillNumReagents
+	local info = craft and GetCraftReagentInfo or GetTradeSkillReagentInfo
+	local link = craft and GetCraftReagentItemLink or GetTradeSkillReagentItemLink
+	if type(num) ~= "function" or type(link) ~= "function" then return nil end
+	local okn, count = pcall(num, i)
+	local out = {}
+	for j = 1, math.min(okn and tonumber(count) or 0, Crafters.REAGENTS_MAX) do
+		local okl, l = pcall(link, i, j)
+		local id = okl and Id(l, "item") or nil
+		local n = 1
+		if type(info) == "function" then
+			local oki, _, _, c = pcall(info, i, j)
+			n = oki and math.floor(tonumber(c) or 1) or 1
+		end
+		if id and n > 0 then out[#out + 1] = { i = id, n = n } end
+	end
+	return #out > 0 and out or nil
+end
+
+-- A stored list, checked (saved data may be anything).
+local function GoodReagents(g)
+	if type(g) ~= "table" or #g == 0 then return nil end
+	for _, m in ipairs(g) do
+		if type(m) ~= "table" or not tonumber(m.i) or not tonumber(m.n) then return nil end
+	end
+	return g
+end
+
+-- A recipe's materials: { { i, n } }, or nil where neither we nor the game know them.
+function Crafters.ReagentsOf(recipe)
+	recipe = tonumber(recipe)
+	if not recipe then return nil end
+	local store = ReagentStore()
+	local g = GoodReagents(store[recipe])
+	if g then return g end
+	store[recipe] = nil
+	local now = ns.Now()
+	if now - (reagentTried[recipe] or -math.huge) < Crafters.REAGENTS_RETRY then return nil end
+	g = ReadSchematic(recipe)
+	if g then store[recipe] = g else reagentTried[recipe] = now end
+	return g
+end
+
+local function ItemIcon(id)
+	local fn = (C_Item and C_Item.GetItemIconByID) or GetItemIcon
+	if type(fn) ~= "function" then return nil end
+	local ok, icon = pcall(fn, id)
+	return ok and icon or nil
+end
+
+local function ItemCount(id)
+	local fn = (C_Item and C_Item.GetItemCount) or GetItemCount
+	if type(fn) ~= "function" then return nil end
+	local ok, n = pcall(fn, id, true) -- (the bank too)
+	return ok and tonumber(n) or nil
+end
+
 -- Someone else's profession shown in the window (a link, a guild's list, an NPC's): not ours.
 local function External()
 	local T = C_TradeSkillUI
@@ -184,7 +287,7 @@ local function ReadModern()
 				local oko, out = pcall(T.GetRecipeOutputItemData, id)
 				if oko and type(out) == "table" then item = out.itemID end
 			end
-			recipes[#recipes + 1] = { r = id, i = item, n = info.name }
+			recipes[#recipes + 1] = { r = id, i = item, n = info.name, g = ReadSchematic(id) }
 		end
 	end
 	local skill = child or base
@@ -209,7 +312,7 @@ local function ReadClassic(craft)
 		if rname and kind ~= "header" and kind ~= "subheader" then
 			local link = type(itemLink) == "function" and itemLink(i) or nil
 			local rlink = type(recipeLink) == "function" and recipeLink(i) or nil
-			recipes[#recipes + 1] = { r = Id(rlink, "enchant") or Id(link, "enchant"), i = Id(link, "item"), n = rname }
+			recipes[#recipes + 1] = { r = Id(rlink, "enchant") or Id(link, "enchant"), i = Id(link, "item"), n = rname, g = ReadClassicReagents(craft, i) }
 		end
 	end
 	return { key = Clean(name, 24), name = name, rank = rank, max = max, recipes = recipes }
@@ -224,6 +327,13 @@ function Crafters.Read(craft)
 	p.key = Clean(p.key, 24)
 	if p.name == "" or p.key == "" then return nil end
 	p.rank, p.max, p.t = math.floor(tonumber(p.rank) or 0), math.floor(tonumber(p.max) or 0), ns.Now()
+	-- Their materials, kept by recipe id (for every character of this account, and for the same
+	-- recipe on anyone's list); not in the listing, which carries ids only.
+	local store = ReagentStore()
+	for _, r in ipairs(p.recipes) do
+		if r.r and r.g then store[r.r] = r.g end
+		r.g = nil
+	end
 	return p
 end
 
@@ -521,10 +631,16 @@ end
 -- "Who can make this?": our ask, the crafters' answers
 ---------------------------------------------------------------------------
 
+-- (2026-11-13, seen in game: Forever has no global GetItemInfo, so every name came out "item N".
+-- C_Item first, as Treasury.lua does; the global for clients that still have it.)
 local function ItemName(id)
-	if GetItemInfo then
-		local ok, name = pcall(GetItemInfo, id)
-		if ok and type(name) == "string" then return name end
+	local fns = { C_Item and C_Item.GetItemNameByID or false, C_Item and C_Item.GetItemInfo or false, GetItemInfo or false }
+	for k = 1, 3 do
+		local fn = fns[k]
+		if type(fn) == "function" then
+			local ok, name = pcall(fn, id)
+			if ok and type(name) == "string" and name ~= "" then return name end
+		end
 	end
 	return L.CRAFTER_ITEM_N:format(id)
 end
@@ -786,12 +902,128 @@ function Crafters.Link()
 	}
 end
 
+-- Under an item's own tooltip on the page (Views' ItemButton, it.tip): the materials of the recipe
+-- that makes it, with how many we hold (bags and bank). An item not yet in the client's cache is
+-- named by number and asked for, so the next hover names it.
+function Crafters.AddReagents(tt, it)
+	if not it or not it.recipe then return end
+	local g = Crafters.ReagentsOf(it.recipe)
+	tt:AddLine(" ")
+	if not g then
+		tt:AddLine(L.CRAFTER_MATS_UNKNOWN, 0.6, 0.6, 0.6, true)
+		return
+	end
+	tt:AddLine(L.CRAFTER_MATS, 1, 0.82, 0)
+	for _, m in ipairs(g) do
+		local id, need = tonumber(m.i), tonumber(m.n)
+		if C_Item and type(C_Item.RequestLoadItemDataByID) == "function" then pcall(C_Item.RequestLoadItemDataByID, id) end
+		local icon = ItemIcon(id)
+		local have = ItemCount(id)
+		local left = (icon and ("|T%s:14:14|t "):format(tostring(icon)) or "") .. ItemName(id)
+		local right = have and L.CRAFTER_MATS_HAVE:format(have, need) or ("x%d"):format(need)
+		local enough = have and have >= need
+		tt:AddDoubleLine(left, right, 1, 1, 1, enough and 0.25 or 0.8, enough and 1 or 0.8, enough and 0.25 or 0.8)
+		if left:find(L.CRAFTER_ITEM_N:format(id), 1, true) then
+			-- (Named by number: the client hasn't the item yet. Redrawn when it comes, below.)
+			namesWaiting[id] = true
+			namesOwner = tt.GetOwner and tt:GetOwner() or nil
+		end
+	end
+end
+
+-- An item the tooltip named by number has come (the game's GET_ITEM_INFO_RECEIVED): the tooltip,
+-- still over the same recipe, is drawn again, once for every item that came together.
+local redrawSoon = false
+function Crafters.ItemInfoReceived(itemID)
+	itemID = tonumber(itemID)
+	if not itemID or not namesWaiting[itemID] then return end
+	namesWaiting[itemID] = nil
+	if redrawSoon then return end
+	redrawSoon = true
+	Crafters.after(0.1, "crafter materials names", function()
+		redrawSoon = false
+		local owner = namesOwner
+		if not owner or not GameTooltip:IsShown() or (GameTooltip.GetOwner and GameTooltip:GetOwner() ~= owner) then return end
+		if not (owner.item and owner.item.tip == Crafters.AddReagents) then return end
+		local onEnter = owner.GetScript and owner:GetScript("OnEnter")
+		if onEnter then onEnter(owner) end
+	end)
+end
+pcall(ns.RegisterEvent, "GET_ITEM_INFO_RECEIVED", function(itemID) Crafters.ItemInfoReceived(itemID) end)
+
 local function RecipeItems(recipes)
 	local items, others = {}, 0
 	for _, r in ipairs(recipes) do
-		if r.i then items[#items + 1] = { id = r.i } else others = others + 1 end
+		if r.i then items[#items + 1] = { id = r.i, recipe = r.r, tip = Crafters.AddReagents } else others = others + 1 end
 	end
 	return items, others
+end
+
+---------------------------------------------------------------------------
+-- Asking a crafter for one recipe (the user, 2026-11-13): a click on a recipe's item under a crafter
+-- opens Sylvanistas's whisper window to them, written: the item's link, the recipe's link and its
+-- materials. The player reads, edits and sends it himself (UI.WhisperText); nothing goes on its own.
+---------------------------------------------------------------------------
+
+Crafters.WHISPER_MAX = 255 -- a whisper's bytes; a link is never cut (the server drops a broken one)
+
+-- An item's link from the game (Forever: C_Item; no global GetItemInfo there), or nil if not loaded.
+function Crafters.ItemLink(id)
+	local fns = { C_Item and C_Item.GetItemInfo or false, GetItemInfo or false }
+	for k = 1, 2 do
+		local fn = fns[k]
+		if type(fn) == "function" then
+			local ok, _, link = pcall(fn, id)
+			if ok and type(link) == "string" and link:find("|H", 1, true) then return link end
+		end
+	end
+	return nil
+end
+
+-- A recipe's own link (the profession's line, e.g. "[Engineering: Gold Power Core]"), or nil.
+function Crafters.RecipeLink(recipe)
+	if not recipe then return nil end
+	local fns = { C_TradeSkillUI and C_TradeSkillUI.GetRecipeLink or false, C_Spell and C_Spell.GetSpellLink or false, GetSpellLink or false }
+	for k = 1, 3 do
+		local fn = fns[k]
+		if type(fn) == "function" then
+			local ok, link = pcall(fn, recipe)
+			if ok and type(link) == "string" and link:find("|H", 1, true) then return link end
+		end
+	end
+	return nil
+end
+
+-- The whisper, longest form that fits: item + recipe + materials, then without the materials, then
+-- without the recipe's link.
+function Crafters.AskText(it)
+	local item = Crafters.ItemLink(it.id) or ItemName(it.id)
+	local recipe = Crafters.RecipeLink(it.recipe)
+	local mats = {}
+	for _, m in ipairs(Crafters.ReagentsOf(it.recipe) or {}) do
+		mats[#mats + 1] = ("%d %s"):format(tonumber(m.n) or 1, ItemName(tonumber(m.i)))
+	end
+	local base = L.CRAFTER_ASK_WHISPER:format(item)
+	local tries = {}
+	if recipe and #mats > 0 then tries[#tries + 1] = base .. " " .. recipe .. " " .. L.CRAFTER_ASK_MATS:format(table.concat(mats, ", ")) end
+	if recipe then tries[#tries + 1] = base .. " " .. recipe end
+	if #mats > 0 then tries[#tries + 1] = base .. " " .. L.CRAFTER_ASK_MATS:format(table.concat(mats, ", ")) end
+	tries[#tries + 1] = base
+	for _, text in ipairs(tries) do
+		if #text <= Crafters.WHISPER_MAX then return text end
+	end
+	return base:sub(1, Crafters.WHISPER_MAX) -- (an item's name alone that long: never in practice)
+end
+
+function Crafters.AskFor(crafter, it)
+	if not crafter or not it or not it.id then return end
+	if ns.UI and ns.UI.WhisperText then return ns.UI.WhisperText(ns.TellName(crafter), Crafters.AskText(it)) end
+end
+
+-- A crafter's recipes as an items row: a click on one asks them for it.
+function Crafters.AskRow(crafter, items)
+	return { indent = 2, items = items, itemHint = L.CRAFTER_ITEM_HINT:format(ns.DisplayName(crafter)),
+		onItem = function(it) Crafters.AskFor(crafter, it) end }
 end
 
 -- The page's lines; `q`, the Realm's search: crafters whose name, guild or profession holds it.
@@ -893,7 +1125,7 @@ function Crafters.Lines(q)
 						tt:AddLine(L.CRAFTER_WHISPER_TIP:format(who), 0.6, 0.6, 0.6, true)
 					end }
 				local items = RecipeItems(x.e.recipes)
-				if #items > 0 then lines[#lines + 1] = { indent = 2, items = items } end
+				if #items > 0 then lines[#lines + 1] = Crafters.AskRow(x.name, items) end
 			end
 			lines[#lines].gapAfter = true
 		end
@@ -950,7 +1182,7 @@ function Crafters.Lines(q)
 						tooltip = function(tt) tt:AddLine(L.CRAFTER_SHOW_RECIPES, 1, 0.82, 0); tt:AddLine(L.CRAFTER_SHOW_RECIPES_TIP, 1, 1, 1, true) end }
 				else
 					local items, others = RecipeItems(recipes)
-					if #items > 0 then lines[#lines + 1] = { indent = 2, items = items } end
+					if #items > 0 then lines[#lines + 1] = Crafters.AskRow(c.name, items) end
 					local got = 0
 					for part = 1, l.n or 0 do if l.parts[part] then got = got + 1 end end
 					if #recipes == 0 or got < (l.n or 1) then
@@ -1179,6 +1411,7 @@ function Crafters.Reset()
 	wipe(askTimes); wipe(answered); wipe(answerTimes); wipe(listSent); wipe(listTimes); wipe(lists); wipe(asked); wipe(open); wipe(questioned)
 	lastListing, lastListingText, lastListingKeys, changedWaiting, loginWait = -math.huge, nil, nil, false, false
 	wipe(listJobs); wipe(busyTimes); listPumping = false
+	wipe(reagentTried); wipe(namesWaiting); namesOwner = nil
 end
 
 -- 1.3.0: the privacy page's line (/syl privacy): listed by default, private with one switch.

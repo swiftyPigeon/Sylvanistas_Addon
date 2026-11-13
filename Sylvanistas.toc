@@ -75,5 +75,6 @@ GuildFrame.lua
 Borders.lua
 Nameplates.lua
 ChatWindow.lua
+ChatDock.lua
 Mentions.lua
 Party.lua

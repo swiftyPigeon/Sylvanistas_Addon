@@ -202,8 +202,70 @@ local function PutTabLineAway()
 	ns.db.chatWin = p
 end
 
+-- The chat's backgrounds, see-through to the world (the user, 2026-11-13): ns.db.chatWin.opacity, 0.4
+-- to 1 (1: as before). While the Chat tab shows, the window's background, the box of lines and the
+-- bubbles take it; the text, names, borders and title bar never do. Other tabs: solid as always.
+ChatWindow.OPACITY_STEPS = { 1, 0.85, 0.7, 0.55, 0.4 }
+function ChatWindow.Opacity()
+	local p = Saved()
+	local v = p and tonumber(p.opacity)
+	if not v or v < 0.4 or v > 1 then return 1 end
+	return v
+end
+-- The next step (from the last back to solid).
+function ChatWindow.NextOpacity()
+	local now, steps = ChatWindow.Opacity(), ChatWindow.OPACITY_STEPS
+	local nextV = steps[1]
+	for k, v in ipairs(steps) do
+		if math.abs(v - now) < 0.01 then nextV = steps[k + 1] or steps[1] break end
+	end
+	if ns.db then
+		local p = Saved() or {}
+		p.opacity = nextV < 1 and nextV or nil
+		ns.db.chatWin = p
+	end
+	return nextV
+end
+-- One level, picked on the line over the lines (its levels, 2026-11-13).
+ChatWindow.PICK_W = 30 -- a level's width there
+function ChatWindow.SetOpacity(v)
+	v = tonumber(v)
+	if not v or v < 0.4 or v > 1 or not ns.db then return end
+	local p = Saved() or {}
+	p.opacity = v < 1 and v or nil
+	ns.db.chatWin = p
+	if host and frame then ChatWindow.FadeBackgrounds(host, frame, v) end
+	ChatWindow.Render() -- (not the local Render: it is defined below, so here it would be a missing global)
+end
+
+-- The Chat tab clicked while it shows (UI.TabClicked; the user, 2026-11-13: not buried in the
+-- settings): the next step, on the window at once.
+function ChatWindow.CycleOpacity()
+	local v = ChatWindow.NextOpacity()
+	if host and frame then ChatWindow.FadeBackgrounds(host, frame, v) end
+	ChatWindow.Render() -- (not the local Render: it is defined below, so here it would be a missing global)
+	return v
+end
+
+-- The window's own background textures (PortraitFrameTemplate's Bg; a basic frame's Inset) and the
+-- box of lines' (InsetFrameTemplate's Bg): faded by `a` (1 puts them back).
+function ChatWindow.FadeBackgrounds(h, p, a) -- (a field: this file is at Lua's 200 locals)
+	local parts = {}
+	if h then
+		parts[#parts + 1] = h.Bg
+		parts[#parts + 1] = h.Inset and h.Inset.Bg
+		parts[#parts + 1] = h.TopTileStreaks
+	end
+	if p and p.box then parts[#parts + 1] = p.box.Bg or p.box.bg end
+	for k = 1, 6 do
+		local t = parts[k]
+		if t and type(t.SetAlpha) == "function" then pcall(t.SetAlpha, t, a) end
+	end
+end
+
 local function MarkDirty() dirty = true end
 
+function ChatWindow.Host() return host end
 function ChatWindow.IsShown()
 	return frame ~= nil and frame:IsShown() and host ~= nil and host:IsShown() and true or false
 end
@@ -708,6 +770,7 @@ local function Bubble(i, e, start, y, maxInner, hides)
 	local named = not mine and not hidden and M ~= nil and not M.missing and M.Matches(e.text)
 	if named then r, g, bl, er, eg, eb = 0.20, 0.15, 0.04, 1, 0.82, 0 end
 	if veiled then er, eg, eb = 0.5, 0.5, 0.5 end
+	if not (host and host.compact) then a = a * ChatWindow.Opacity() end -- (see-through: the main window only; the border stays solid)
 	if b.SetBackdropColor then
 		b:SetBackdropColor(r, g, bl, a)
 		b:SetBackdropBorderColor(er, eg, eb, 1)
@@ -976,6 +1039,15 @@ end
 -- than one channel (never a row of its own; one channel, nothing); the search box in the rest.
 -- The settings: their title there instead.
 local function DrawTop(tiers, on)
+	-- The narrow chat window (ChatDock.lua, host.compact): no top row at all, the lines and the box.
+	if host and host.compact then
+		for _, k in ipairs({ "gear", "help", "at", "answers", "switch", "search", "searchLabel", "setTitle" }) do
+			if frame[k] then frame[k]:Hide() end
+		end
+		CloseMenu()
+		PlaceInput(frame)
+		return
+	end
 	local s = frame.places.search
 	local lines = on and not settings
 	frame.gear:ClearAllPoints()
@@ -1340,20 +1412,25 @@ end
 local function DrawGuide(y)
 	local g = frame.guide
 	local C = ns.Channels
-	if not TabReady() or not C.ChatOn() or C.TabState() == "open" or not GuideWanted() then
+	-- (2026-11-13: the line always shows, with the see-through levels at its right end; the tab's
+	-- words only while they're wanted, as before.)
+	if host and host.compact then -- (the narrow window: neither the tab's line nor the levels)
 		g:Hide()
 		return 0
 	end
-	local text
-	if watching then
-		text = Grey(TabSteps())
-	else
-		text = Green("+ " .. L.CHATS_TAB_ADD)
-	end
+	local wanted = TabReady() and C.ChatOn() and C.TabState() ~= "open" and GuideWanted()
+	g.wanted = wanted
+	local text = ""
+	if wanted then text = watching and Grey(TabSteps()) or Green("+ " .. L.CHATS_TAB_ADD) end
 	g.text:SetText(text)
-	local width = StripWidth() - GUIDE_X -- (clear of its x)
+	local width = StripWidth() - ChatWindow.PICK_W * #ChatWindow.OPACITY_STEPS - 4
 	g.text:SetWidth(width)
-	local h = math.min(TextHeight(g.text, width), GUIDE_LINES * LINE_H)
+	local h = wanted and math.min(TextHeight(g.text, width), GUIDE_LINES * LINE_H) or 0
+	h = math.max(h, 14)
+	local now = ChatWindow.Opacity()
+	for _, b in ipairs(g.levels or {}) do
+		if math.abs(b.value - now) < 0.01 then b.label:SetTextColor(1, 0.82, 0) else b.label:SetTextColor(0.5, 0.5, 0.5) end
+	end
 	g:SetHeight(h)
 	Strip(g, y)
 	g:Show()
@@ -1449,6 +1526,8 @@ function ChatWindow.SettingsLines()
 		V.PublicLines(public)
 		for _, l in ipairs(public) do Add({ indent = true, text = l.text, tip = l.tooltip, onClick = l.onClick }) end
 	end
+	-- How the see-through works (2026-11-13: told here, set on the Chat tab, not a setting here).
+	Add({ indent = true, text = Grey(L.CHATSET_SEE_THROUGH:format(math.floor(ChatWindow.Opacity() * 100 + 0.5))) })
 	out[#out].gap = true
 	-- 1.3.0: the mentions' feed by the minimap and its sound (Mentions.lua).
 	local M = ns.Mentions
@@ -2345,38 +2424,40 @@ local function Build(h)
 	p.guide = StripButton(p, GUIDE_LINES)
 	p.guide:SetScript("OnClick", function()
 		ns.SafeCall("sylvanistas tab", function()
+			if not p.guide.wanted then return end
 			if watching then StepsAgain() else ChatWindow.AddTab() end
 			Render()
 		end)
 	end)
 	p.guide.tip = function(tt)
+		if not p.guide.wanted then return tt:AddLine(L.CHATSET_SEE_THROUGH:format(math.floor(ChatWindow.Opacity() * 100 + 0.5)), 1, 1, 1, true) end
 		tt:AddLine(L.CHATS_TAB_ADD, 1, 0.82, 0)
 		tt:AddLine(L.CHATS_TAB_ADD_TIP, 1, 1, 1, true)
 	end
-	-- Its x: the line put away for good (the review of the Chat tab: a player who keeps his chats
-	-- in the main window had it there always); the pointer goes, and the game's chat windows are no
-	-- longer read. The settings (the gear) and /syl chatwindow tab still make the Sylvanistas tab.
-	local away = CreateFrame("Button", nil, p.guide)
-	away:SetSize(16, 16)
-	away:SetPoint("TOPRIGHT", p.guide, "TOPRIGHT", 2, 2)
-	away.label = away:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	away.label:SetPoint("CENTER", away, "CENTER", 0, 1)
-	away.label:SetText("x")
-	away:SetScript("OnClick", function()
-		ns.SafeCall("sylvanistas tab", function()
-			PutTabLineAway()
-			StopWatching()
-			Render()
+	-- The see-through levels at the line's right end, 100% first (2026-11-13, in place of its x: the
+	-- line stays). A click picks one; the one in use lit (DrawGuide). The Chat tab steps through them too.
+	p.guide.levels = {}
+	local prev
+	local steps = ChatWindow.OPACITY_STEPS
+	for k = #steps, 1, -1 do
+		local v = steps[k]
+		local b = CreateFrame("Button", nil, p.guide)
+		b:SetSize(ChatWindow.PICK_W, 14)
+		if prev then b:SetPoint("RIGHT", prev, "LEFT", 0, 0) else b:SetPoint("TOPRIGHT", p.guide, "TOPRIGHT", 0, 0) end
+		b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		b.label:SetPoint("CENTER")
+		b.label:SetText(("%d%%"):format(math.floor(v * 100 + 0.5)))
+		b.value = v
+		b:SetScript("OnClick", function() ns.SafeCall("chat see-through", ChatWindow.SetOpacity, v) end)
+		b:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:AddLine(L.CHATSET_SEE_THROUGH:format(math.floor(ChatWindow.Opacity() * 100 + 0.5)), 1, 1, 1, true)
+			GameTooltip:Show()
 		end)
-	end)
-	away:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:AddLine(L.CHATS_TAB_AWAY, 1, 0.82, 0)
-		GameTooltip:AddLine(L.CHATS_TAB_AWAY_TIP, 1, 1, 1, true)
-		GameTooltip:Show()
-	end)
-	away:SetScript("OnLeave", function() GameTooltip:Hide() end)
-	p.guide.away = away
+		b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		p.guide.levels[k] = b
+		prev = b
+	end
 
 	-- The box of lines (the Communities chat pane's inset), its scroll frame and its lines: over
 	-- the list's and the detail box's room.
@@ -2386,6 +2467,7 @@ local function Build(h)
 		local bg = box:CreateTexture(nil, "BACKGROUND")
 		bg:SetAllPoints()
 		bg:SetColorTexture(0, 0, 0, 0.4)
+		box.bg = bg
 	end
 	p.box = box
 	-- (Blizzard's thin scroll bar, else the older one where a client has no ScrollFrameTemplate.)
@@ -2539,8 +2621,15 @@ end
 function ChatWindow.Attach(h, places)
 	if not h or type(places) ~= "table" then return nil end
 	local p = Build(h)
+	-- The chat moved to another window (the narrow one, ChatDock.lua, or back): the one it left
+	-- closes if it asked to (host.onChatTaken), so one window holds the chat at a time.
+	local prev = host
+	if prev and prev ~= h and prev:IsShown() and type(prev.onChatTaken) == "function" then
+		ns.SafeCall("chat moved", prev.onChatTaken, prev)
+	end
 	frame, host = p, h
 	Place(p, places)
+	ChatWindow.FadeBackgrounds(h, p, h.compact and 1 or ChatWindow.Opacity())
 	if not p:IsShown() then
 		tier = Pick()
 		if tier then Remember(tier) end
@@ -2558,6 +2647,7 @@ end
 function ChatWindow.Detach(h)
 	local p = h and panes[h]
 	if p and p:IsShown() then p:Hide() end
+	ChatWindow.FadeBackgrounds(h, p, 1) -- (the other tabs: solid)
 end
 
 -- The Sylvanistas window on its Chat tab, on `want` (a channel: "A", "C", "L"), else the one last
