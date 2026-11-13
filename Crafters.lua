@@ -66,13 +66,14 @@ local askTimes = {}     -- our asks' times (the last 10 minutes)
 local askCounter = 0
 local answered = {}     -- [asker] = when we last answered him
 local answerTimes = {}  -- our answers' times (the last minute)
-local listSent = {}     -- [player] = when we last sent him a list
+local listSent = {}     -- [player .. "~" .. profession] = when we last sent him that list (3b, 2026-11-13: per profession)
 local listTimes = {}
 local listJobs = {}     -- { { to, key, parts, i, stalls } }: our lists going out, a part each LIST_PACE
 local listPumping = false
 local busyTimes = {}    -- our "busy" answers' times (the last minute)
 local lists = {}        -- [crafter .. "~" .. key] = { parts = {}, n, t, recipes }: lists asked for
 local asked = {}        -- [crafter .. "~" .. key] = when we asked
+local busyRetried = {}  -- [crafter .. "~" .. key] = true: asked again by itself after a "busy" (once, 3b)
 local lastListing, lastListingText = -math.huge, nil
 -- What shows opened, per view: the Realm tab's page (main) and the small Crafters window (dock,
 -- ChatDock.lua), each its own: [crafter .. "~" .. key] = true, and .mine (our own listing, 1.3.0).
@@ -807,16 +808,21 @@ function Crafters.HandleListAsk(dist, sender, text)
 	end
 	sender = ns.FullName(sender)
 	local now = ns.Now()
-	if now - (listSent[sender] or -math.huge) < Crafters.LIST_SAME or Recent(listTimes, 60) >= Crafters.LISTS_PER_MIN then return end
-	if #listJobs >= Crafters.LIST_JOBS then
-		-- Busy with other players' lists: he is told so (and may ask again in a minute).
+	-- 3b (2026-11-13): once per asker AND profession each LIST_SAME (it was once per asker, so a second
+	-- profession asked within 2 min got silence and hung on "asking..."). The same list again that
+	-- soon: silence (the asker's own wait stops it anyway).
+	local sentKey = sender .. "~" .. key
+	if now - (listSent[sentKey] or -math.huge) < Crafters.LIST_SAME then return end
+	-- Busy (lists going out, or LISTS_PER_MIN sent this minute): he is told so, not left waiting
+	-- (3b: the minute's cap was silence too); his add-on asks again by itself once.
+	if #listJobs >= Crafters.LIST_JOBS or Recent(listTimes, 60) >= Crafters.LISTS_PER_MIN then
 		if Recent(busyTimes, 60) < Crafters.BUSY_PER_MIN then
 			busyTimes[#busyTimes + 1] = now
 			ns.Comm.Whisper(sender, ("WL~%s~0/0~"):format(key), "crafterbusy " .. sender)
 		end
 		return
 	end
-	listSent[sender] = now
+	listSent[sentKey] = now
 	listTimes[#listTimes + 1] = now
 	-- Parts of LIST_BYTES of entries each (a message holds 255 bytes), LIST_PARTS at most.
 	local parts, cur = {}, {}
@@ -855,13 +861,26 @@ function Crafters.HandleList(dist, sender, text)
 	end
 	if part == 0 and parts == 0 and not l.n then
 		listStats.busy = listStats.busy + 1
-		-- He is busy sending other players' lists: asked again, on a click, BUSY_WAIT later.
+		-- He is busy sending other players' lists: asked again by itself once, BUSY_WAIT (and a few
+		-- random seconds) later (3b); after that, on a click, BUSY_WAIT later.
+		local k = sender .. "~" .. key
 		l.busy = now
-		asked[sender .. "~" .. key] = now - Crafters.LIST_SAME + Crafters.BUSY_WAIT
+		asked[k] = now - Crafters.LIST_SAME + Crafters.BUSY_WAIT
+		if not busyRetried[k] then
+			busyRetried[k] = true
+			Crafters.after(Crafters.BUSY_WAIT + Crafters.random() * 10, "crafter list retry", function()
+				local cur = lists[k]
+				if cur and cur.busy and not cur.n then
+					asked[k] = nil
+					Crafters.AskList(sender, key)
+				end
+			end)
+		end
 		return Changed()
 	end
 	if part < 1 or part > parts then return end
 	l.parts[part] = Recipes(list, Crafters.LIST_PER_MSG)
+	busyRetried[sender .. "~" .. key] = nil -- (it came: a later "busy" may be retried again)
 	listStats.parts = listStats.parts + 1
 	l.n, l.last, l.busy = parts, now, nil
 	Changed()
@@ -1447,7 +1466,7 @@ ns.On("LOGIN", function() Crafters.OnLogin() end)
 function Crafters.Reset()
 	wipe(board); boardCount = 0
 	myAsk, askCounter, pendingRead = nil, 0, nil
-	wipe(askTimes); wipe(answered); wipe(answerTimes); wipe(listSent); wipe(listTimes); wipe(lists); wipe(asked); wipe(openBy.main); wipe(openBy.dock); wipe(questioned)
+	wipe(askTimes); wipe(answered); wipe(answerTimes); wipe(listSent); wipe(listTimes); wipe(lists); wipe(asked); wipe(busyRetried); wipe(openBy.main); wipe(openBy.dock); wipe(questioned)
 	lastListing, lastListingText, lastListingKeys, changedWaiting, loginWait = -math.huge, nil, nil, false, false
 	wipe(listJobs); wipe(busyTimes); listPumping = false
 	wipe(reagentTried); wipe(namesWaiting); namesOwner = nil
