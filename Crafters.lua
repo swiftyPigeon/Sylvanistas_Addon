@@ -74,8 +74,9 @@ local busyTimes = {}    -- our "busy" answers' times (the last minute)
 local lists = {}        -- [crafter .. "~" .. key] = { parts = {}, n, t, recipes }: lists asked for
 local asked = {}        -- [crafter .. "~" .. key] = when we asked
 local lastListing, lastListingText = -math.huge, nil
-local open = {}         -- [crafter] = true: shown opened on the page
-local mineOpen = false  -- 1.3.0: our own listing shown opened on the page
+-- What shows opened, per view: the Realm tab's page (main) and the small Crafters window (dock,
+-- ChatDock.lua), each its own: [crafter .. "~" .. key] = true, and .mine (our own listing, 1.3.0).
+local openBy = { main = {}, dock = {} }
 local pendingRead       -- a profession read waiting for its data
 -- 1.3.0: what the recipe lists did this session, for /syl bug (a list that never comes, traced).
 local listStats = { asked = 0, askedOfUs = 0, refused = 0, sent = 0, stalled = 0, parts = 0, late = 0, busy = 0 }
@@ -92,6 +93,12 @@ local function Num(s, max)
 	local n = tonumber(s)
 	if not n or n ~= math.floor(n) or n < 0 or n > max then return nil end
 	return n
+end
+
+-- Both views drawn again: the window's page and the small Crafters window (ChatDock.lua).
+function Crafters.Redraw()
+	if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+	if ns.ChatDock and ns.ChatDock.RedrawCrafters then ns.SafeCall("crafters window", ns.ChatDock.RedrawCrafters) end
 end
 
 local function Changed()
@@ -661,7 +668,8 @@ function Crafters.Ask(what)
 	myAsk = { id = askId, t = now, item = id, label = id and ItemName(id) or words, answers = {}, count = 0 }
 	ns.Comm.Send("CHANNEL", id and ("WQ~%s~i~%d"):format(askId, id) or ("WQ~%s~t~%s"):format(askId, ns.Fold(words)), "crafterask", true)
 	ns.Print(L.CRAFTER_ASKED:format(myAsk.label))
-	ns.Views.ShowPage("crafters")
+	-- (Asked from the small Crafters window: the answers show there; the window's page is left as it is.)
+	if not (ns.ChatDock and ns.ChatDock.CraftersShown and ns.ChatDock.CraftersShown()) then ns.Views.ShowPage("crafters") end
 	Changed()
 	return myAsk
 end
@@ -1015,6 +1023,16 @@ function Crafters.AskText(it)
 	return base:sub(1, Crafters.WHISPER_MAX) -- (an item's name alone that long: never in practice)
 end
 
+-- Shift-click on a crafter's recipe while the small chat shows (ChatDock.lua, the user, 2026-11-13):
+-- "@Crafter [item] " in its box, the rest for the player to write (the name in the line is a mention
+-- for them, Mentions.lua). True when it went there; else the game's own shift-click (a chat link).
+function Crafters.TagInChat(crafter, it)
+	local D = ns.ChatDock
+	if not crafter or not it or not it.id or not (D and D.IsShown and D.IsShown()) then return false end
+	local link = Crafters.ItemLink(it.id) or ("[" .. ItemName(it.id) .. "]")
+	return ns.ChatWindow.InsertText(("@%s %s "):format(ns.DisplayName(crafter), link)) == true
+end
+
 function Crafters.AskFor(crafter, it)
 	if not crafter or not it or not it.id then return end
 	if ns.UI and ns.UI.WhisperText then return ns.UI.WhisperText(ns.TellName(crafter), Crafters.AskText(it)) end
@@ -1023,13 +1041,34 @@ end
 -- A crafter's recipes as an items row: a click on one asks them for it.
 function Crafters.AskRow(crafter, items)
 	return { indent = 2, items = items, itemHint = L.CRAFTER_ITEM_HINT:format(ns.DisplayName(crafter)),
-		onItem = function(it) Crafters.AskFor(crafter, it) end }
+		onItem = function(it) Crafters.AskFor(crafter, it) end,
+		onShiftItem = function(it) return Crafters.TagInChat(crafter, it) end }
+end
+
+-- A crafter's name on the page, its colour saying the branch (the user, 2026-11-13: the guild only on
+-- hover, the narrow window cut it): soft parchment for Sylvanistas, blood red for Sylvanistas
+-- Underground (the user's picks: no Forever class has either; the first pink read as a Paladin's);
+-- any other guild grey, its name still beside it (no colour of its own). Tooltips keep the guild.
+Crafters.MAIN_COLOUR = "|cffe8dcc0"
+Crafters.UNDERGROUND_COLOUR = "|cffc0392b"
+function Crafters.NameIn(name, guild)
+	local who = ns.DisplayName(name)
+	if guild == ns.GUILD_NAME then return Crafters.MAIN_COLOUR .. who .. "|r" end
+	if guild == ns.ALT_GUILD_NAME then return Crafters.UNDERGROUND_COLOUR .. who .. "|r" end
+	return Grey(who) .. "  " .. Grey("<" .. tostring(guild) .. ">")
 end
 
 -- The page's lines; `q`, the Realm's search: crafters whose name, guild or profession holds it.
-function Crafters.Lines(q)
-	local lines = { { text = Gold(L.CHATS_BACK), onClick = function() ns.Views.ShowPage(nil) end, gapAfter = true } }
-	lines[#lines + 1] = { header = true, text = L.CRAFTER_TITLE,
+-- `view`: "dock" for the small Crafters window (ChatDock.lua): what shows opened is its own, and no
+-- "Back" line (it is a window, not a page); else the Realm tab's page.
+function Crafters.Lines(q, view)
+	local open = openBy[view == "dock" and "dock" or "main"]
+	local lines = {}
+	if view ~= "dock" then lines[1] = { text = Gold(L.CHATS_BACK), onClick = function() ns.Views.ShowPage(nil) end, gapAfter = true } end
+	-- The title says the colours (2026-11-13): "Sylvanistas" in the main guild's, "(Underground)" in the alt's.
+	local title = L.CRAFTER_TITLE:gsub("Sylvanistas", Crafters.MAIN_COLOUR .. "Sylvanistas|r", 1)
+	title = title .. " " .. Crafters.UNDERGROUND_COLOUR .. L.CRAFTER_UNDERGROUND_TAG .. "|r"
+	lines[#lines + 1] = { header = true, text = title,
 		tooltip = function(tt) tt:AddLine(L.CRAFTER_TITLE, 1, 0.82, 0); tt:AddLine(L.CRAFTER_ABOUT, 1, 1, 1, true) end }
 	if not q then
 		lines[#lines + 1] = { text = Green(L.CRAFTER_ASK), onClick = function() Crafters.AskPrompt() end,
@@ -1060,15 +1099,15 @@ function Crafters.Lines(q)
 			table.sort(off, function(a, b) return (a.name or "") < (b.name or "") end)
 			local offNames = {}
 			for _, p in ipairs(off) do offNames[#offNames + 1] = p.name end
-			lines[#lines + 1] = { text = (mineOpen and "[-] " or "[+] ") .. Grey(L.CRAFTER_YOU:format(table.concat(names, ", "))
+			lines[#lines + 1] = { text = (open.mine and "[-] " or "[+] ") .. Grey(L.CRAFTER_YOU:format(table.concat(names, ", "))
 				.. (#off > 0 and ("  ·  " .. L.CRAFTER_YOU_OFF:format(table.concat(offNames, ", "))) or "")),
 				actions = { { text = L.CRAFTER_GO_PRIVATE, tooltip = L.CRAFTER_UNLIST_TIP, onClick = function() Crafters.AskUnlist() end } },
 				onClick = function()
-					mineOpen = not mineOpen
-					if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+					open.mine = not open.mine or nil
+					Crafters.Redraw()
 				end,
 				tooltip = function(tt) tt:AddLine(L.CRAFTER_YOU_TITLE, 1, 0.82, 0); tt:AddLine(L.CRAFTER_YOU_TIP, 1, 1, 1, true) end }
-			if mineOpen then
+			if open.mine then
 				for _, p in ipairs(listed) do
 					local recipes = type(p.recipes) == "table" and p.recipes or {}
 					lines[#lines + 1] = { indent = 1, text = Gold(p.name),
@@ -1115,10 +1154,10 @@ function Crafters.Lines(q)
 			for _, x in ipairs(answers) do
 				local who = ns.DisplayName(x.name)
 				lines[#lines + 1] = { indent = 1, key = x.name,
-					text = who .. "  " .. Grey("<" .. x.e.guild .. ">"), right = Gold(L.CRAFTER_WHISPER) .. "  " .. Grey(("%s %d"):format(x.e.prof, x.e.rank)),
+					text = Crafters.NameIn(x.name, x.e.guild), right = Gold(L.CRAFTER_WHISPER) .. "  " .. Grey(("%s %d"):format(x.e.prof, x.e.rank)),
 					onClick = function() Whisper(x.name) end,
 					tooltip = function(tt)
-						tt:AddLine(who, 1, 0.82, 0)
+						tt:AddLine(who .. "  <" .. x.e.guild .. ">", 1, 0.82, 0)
 						for _, r in ipairs(x.e.recipes) do
 							if r.i then tt:AddLine(ItemName(r.i), 1, 1, 1) end
 						end
@@ -1161,11 +1200,11 @@ function Crafters.Lines(q)
 			local id = c.name .. "~" .. p.key
 			local opened = open[id] == true
 			lines[#lines + 1] = { indent = 1, key = c.name,
-				text = (opened and "[-] " or "[+] ") .. who .. "  " .. Grey("<" .. c.guild .. ">"),
+				text = (opened and "[-] " or "[+] ") .. Crafters.NameIn(c.name, c.guild),
 				right = Grey(L.CRAFTER_SKILL:format(p.rank, p.max, p.n)),
 				onClick = function()
 					open[id] = not opened or nil
-					if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+					Crafters.Redraw()
 				end,
 				tooltip = function(tt)
 					tt:AddLine(who .. "  <" .. c.guild .. ">", 1, 0.82, 0)
@@ -1220,9 +1259,9 @@ function Crafters.AskUnlist()
 	ns.ShowDialog("SYLVANISTAS_CRAFTER_REMOVE", L.CRAFTER_PRIVATE_WORD)
 end
 function Crafters.GoPrivate()
-	mineOpen = false
+	openBy.main.mine, openBy.dock.mine = nil, nil
 	Crafters.Choose(nil, false)
-	if ns.UI and ns.UI.Refresh then ns.UI.Refresh() end
+	Crafters.Redraw()
 end
 -- (The game's popup greys its button until the word is typed; Sylvanistas's own window, Dialog.lua,
 -- can't: there a wrong word keeps the dialog up, with a line that says why.)
@@ -1408,7 +1447,7 @@ ns.On("LOGIN", function() Crafters.OnLogin() end)
 function Crafters.Reset()
 	wipe(board); boardCount = 0
 	myAsk, askCounter, pendingRead = nil, 0, nil
-	wipe(askTimes); wipe(answered); wipe(answerTimes); wipe(listSent); wipe(listTimes); wipe(lists); wipe(asked); wipe(open); wipe(questioned)
+	wipe(askTimes); wipe(answered); wipe(answerTimes); wipe(listSent); wipe(listTimes); wipe(lists); wipe(asked); wipe(openBy.main); wipe(openBy.dock); wipe(questioned)
 	lastListing, lastListingText, lastListingKeys, changedWaiting, loginWait = -math.huge, nil, nil, false, false
 	wipe(listJobs); wipe(busyTimes); listPumping = false
 	wipe(reagentTried); wipe(namesWaiting); namesOwner = nil

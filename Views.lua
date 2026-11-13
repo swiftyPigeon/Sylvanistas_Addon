@@ -280,6 +280,13 @@ local function ItemButton(r, k)
 		if it and not it.gone and line and line.onItem and not (IsShiftKeyDown and IsShiftKeyDown()) then
 			return ns.SafeCall("view item", line.onItem, it)
 		end
+		-- A line that takes the shift-click itself (a crafter's recipe into the small chat, 2026-11-13):
+		-- done when it says so; else the link into the game's chat, below.
+		if it and line and line.onShiftItem and IsShiftKeyDown and IsShiftKeyDown() then
+			local ok, done = pcall(line.onShiftItem, it) -- (ns.SafeCall would give "ran", not its answer)
+			if not ok and ns.CaptureError then ns.CaptureError("view item shift", done) end
+			if ok and done == true then return end
+		end
 		-- Shift-click: the link into the chat box, as in a bag (not with the gamepad UI: its
 		-- chat box would be blocked, see Dialog.lua). ChatEdit_InsertLink only adds it to a box the
 		-- player opened; it never opens one (what tainted the chat box was opening it: Board.Whisper).

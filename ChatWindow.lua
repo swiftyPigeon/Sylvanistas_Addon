@@ -429,6 +429,17 @@ local function InsertLink(text)
 	if eb.Insert then eb:Insert(text) else eb:SetText((eb:GetText() or "") .. text) end
 end
 
+-- Text put in the box to write in from elsewhere (the small Crafters window's shift-click,
+-- ChatDock.lua): only while the chat shows; the keyboard goes to the box, to write the rest.
+function ChatWindow.InsertText(text)
+	if type(text) ~= "string" or not ChatWindow.IsShown() then return false end
+	local eb = frame.input
+	if not eb or not eb:IsShown() then return false end
+	if eb.Insert then eb:Insert(text) else eb:SetText((eb:GetText() or "") .. text) end
+	if eb.SetFocus then eb:SetFocus() end
+	return true
+end
+
 local function LinkTip(owner, link)
 	local kind = type(link) == "string" and link:match("^(%a+):")
 	if not kind or not LINK_TIPS[kind] then return end
