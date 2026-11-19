@@ -95,9 +95,18 @@ end
 -- Who is who
 ---------------------------------------------------------------------------
 
--- His name, on his realm group (Forever's PvP realms).
+-- His name, on his realm group (Forever's PvP realms). ns.AUTHOR is a whole name ("Danzig Gloomvein"),
+-- or "~ " and a second name ("~ Gloomvein", 1.3.5.1): any of the keeper's characters, a first name and
+-- that second name (Forever keeps a second name to one account).
+function Workshop.NameIsAuthor(short)
+	if type(short) ~= "string" or type(ns.AUTHOR) ~= "string" then return false end
+	local family = ns.AUTHOR:match("^~%s+(%S+)$")
+	if not family then return short == ns.AUTHOR end
+	local first, second = short:match("^(%S+)%s+(%S+)$")
+	return first ~= nil and second == family
+end
 local function IsAuthorName(name)
-	if type(name) ~= "string" or ns.ShortName(name) ~= ns.AUTHOR then return false end
+	if type(name) ~= "string" or not Workshop.NameIsAuthor(ns.ShortName(name)) then return false end
 	local realm = ns.RealmOf(ns.FullName(name))
 	return realm ~= nil and ns.GroupOf(realm) == ns.GroupOf(ns.AUTHOR_REALM)
 end
