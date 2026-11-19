@@ -178,7 +178,7 @@ names and borders stay solid. Other tabs stay solid.
 just the lines and the box to write in. Drag it, size it from its corner; it remembers. The
 **Professions** icon in its title bar opens the **Crafters** board beside it (its X closes it; the
 chat's X closes both). The round logo, or a right-click on the button, opens the whole add-on.
-The button's bubble turns **red** when someone writes while the chat is closed.
+The button's bubble **pulses red** when someone writes while the chat is closed, until you open it.
 
 **Talk without /sy (1.3.5).** Press **Ctrl+Enter**: the small chat opens with the cursor in its box.
 Type, press Enter; it goes to [Sylvanistas]. Tick **Auto-close** in its title bar (right of the

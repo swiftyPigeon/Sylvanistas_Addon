@@ -430,14 +430,35 @@ function Dock.Paint()
 	end
 end
 
--- 1.3.5 (user): the bubble on the button's corner turns red when a line from someone else comes in
+-- 1.3.5 (user): the bubble on the button's corner pulses white to red when a line from someone else comes in
 -- while the chat shows nowhere (neither the small window nor the main one's Chat tab), and white
 -- again once the chat is seen (CHAT_SEEN, ChatWindow.Attach).
+-- (1.3.5.1, the user: not a static red, a slow fade white -> red -> white until the chat is seen;
+-- the OnUpdate runs only while it pulses.)
 local unseen = false
+Dock.PULSE_SECONDS = 1.6 -- one white -> red -> white
+local pulseAt = 0
+local function Pulse(self, elapsed)
+	pulseAt = (pulseAt + (elapsed or 0)) % Dock.PULSE_SECONDS
+	local red = (1 - math.cos(pulseAt / Dock.PULSE_SECONDS * 2 * math.pi)) / 2 -- 0 white .. 1 red
+	local gb = 1 - red * 0.85
+	self.badge:SetVertexColor(1, gb, gb)
+end
 function Dock.PaintBubble()
 	if not (button and button.badge) then return end
 	if unseen and ns.ChatWindow.IsShown() then unseen = false end
-	if unseen then button.badge:SetVertexColor(1, 0.15, 0.15) else button.badge:SetVertexColor(1, 1, 1) end
+	if unseen then
+		if not button.pulsing then
+			button.pulsing, pulseAt = true, 0
+			button:SetScript("OnUpdate", Pulse)
+		end
+	else
+		if button.pulsing then
+			button.pulsing = nil
+			button:SetScript("OnUpdate", nil)
+		end
+		button.badge:SetVertexColor(1, 1, 1)
+	end
 end
 function Dock.Unseen() return unseen end
 ns.On("CHAT_LINE", function(t)
