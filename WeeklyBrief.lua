@@ -194,8 +194,13 @@ end
 function Brief.PersonalPage(q)
 	if not ns.IsMember() then return {} end
 	local V = ns.Views
-	local lines = { { text = V.Gold(L.BRIEF_PERSONAL_BACK), onClick = function() ns.Views.ShowPage(nil) end, gapAfter = true },
-		{ header = true, text = L.BRIEF_PERSONAL_TITLE } }
+	local log = ns.WeekLog
+	-- 1.3.5 (the user): Share beside Back, at the line's right end.
+	local lines = { { text = V.Gold(L.BRIEF_PERSONAL_BACK), onClick = function() ns.Views.ShowPage(nil) end, gapAfter = true,
+		actions = log and log.ShareActions and log.ShareActions() or nil } }
+	-- 1.3.5 (the user): Guild Life first, above the five lines, then the rest.
+	if log and log.MatesLines then log.MatesLines(lines, q) end
+	lines[#lines + 1] = { header = true, text = L.BRIEF_PERSONAL_TITLE }
 	V.GreyRows(lines, L.BRIEF_PERSONAL_NOTE)
 	lines[#lines].gapAfter = true
 	local titles = { L.BRIEF_NEXT_TITLE, L.BRIEF_OPEN_TITLE, L.BRIEF_ONLINE_TITLE, L.BRIEF_COMPANION_TITLE, L.BRIEF_VERSION_TITLE }
@@ -206,7 +211,7 @@ function Brief.PersonalPage(q)
 		end
 	end
 	-- 1.3.0: the recap under them (WeekLog.lua): dungeons, newly discovered, guild life, Share.
-	if ns.WeekLog and ns.WeekLog.Lines then ns.WeekLog.Lines(lines, q) end
+	if log and log.Lines then log.Lines(lines, q, log.MatesLines ~= nil) end
 	return lines
 end
 

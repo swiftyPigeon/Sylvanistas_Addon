@@ -197,6 +197,33 @@ local function Build()
 	end)
 	cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.craftersButton = cb
+	-- 1.3.5 (the user): "Close after sending", a tick box in the title bar right of the round logo,
+	-- off by default, kept in ns.db.chatDockAutoClose. On: a line sent, an empty Enter or Escape in
+	-- the box closes the small chat, as the game's chat box does (CHAT_BOX_DONE below).
+	local ac = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+	ac:SetSize(22, 22)
+	ac:SetPoint("LEFT", f.switchButton, "RIGHT", 0, -3)
+	ac:SetFrameLevel(f:GetFrameLevel() + 10)
+	ac:SetChecked(Dock.AutoClose())
+	-- Its word beside it (the user): "Auto-close", red while off, light purple while on; a click on
+	-- the word ticks the box too.
+	ac.word = ac.Text or ac.text or ac:CreateFontString(nil, "OVERLAY")
+	ac.word:SetFontObject("GameFontNormalSmall")
+	ac.word:ClearAllPoints()
+	ac.word:SetPoint("LEFT", ac, "RIGHT", -1, 1)
+	ac.word:SetText(L.CHATDOCK_AUTOCLOSE_WORD)
+	ac:SetHitRectInsets(0, -math.ceil(ac.word:GetStringWidth() or 50), 0, 0)
+	Dock.PaintAutoClose(ac)
+	ac:SetScript("OnClick", function(self) Dock.SetAutoClose(self:GetChecked() and true or false) end)
+	ac:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine(L.CHATDOCK_AUTOCLOSE, 1, 0.82, 0)
+		GameTooltip:AddLine(L.CHATDOCK_AUTOCLOSE_TIP, 1, 1, 1, true)
+		GameTooltip:AddLine(Dock.AutoClose() and L.CHATDOCK_AUTOCLOSE_ON or L.CHATDOCK_AUTOCLOSE_OFF, 0.6, 0.6, 0.6, true)
+		GameTooltip:Show()
+	end)
+	ac:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	f.autoCloseBox = ac
 	-- The main window took the chat (its Chat tab): this one closes.
 	f.onChatTaken = function(self) self:Hide() end
 	f:HookScript("OnHide", function(self)
@@ -403,13 +430,113 @@ function Dock.Paint()
 	end
 end
 
+-- 1.3.5 (user): the bubble on the button's corner turns red when a line from someone else comes in
+-- while the chat shows nowhere (neither the small window nor the main one's Chat tab), and white
+-- again once the chat is seen (CHAT_SEEN, ChatWindow.Attach).
+local unseen = false
+function Dock.PaintBubble()
+	if not (button and button.badge) then return end
+	if unseen and ns.ChatWindow.IsShown() then unseen = false end
+	if unseen then button.badge:SetVertexColor(1, 0.15, 0.15) else button.badge:SetVertexColor(1, 1, 1) end
+end
+function Dock.Unseen() return unseen end
+ns.On("CHAT_LINE", function(t)
+	if ns.Channels.CanUse(t) and not ns.ChatWindow.IsShown() then unseen = true end
+	Dock.PaintBubble()
+end)
+ns.On("CHAT_SEEN", function()
+	unseen = false
+	Dock.PaintBubble()
+end)
+
+---------------------------------------------------------------------------
+-- 1.3.5 (the user): the Talk binding (Bindings.xml, Key Bindings > AddOns: "Talk in the Sylvanistas
+-- chat", Ctrl+Enter by default): the small chat opened if no chat shows, then the keyboard to the
+-- box of the chat that shows. Only Sylvanistas's own frames: the game's chat box is never touched.
+-- The game may leave an add-on's default key unbound on characters made before it: Ctrl+Enter is
+-- then borrowed as an override, only while the player has no key of their own for Talk and nothing
+-- else holds Ctrl+Enter; never in combat, never with the gamepad UI (whose code rebinds on every
+-- UPDATE_BINDINGS, ChatWindow.lua's notes); changed only when what is wanted changes.
+---------------------------------------------------------------------------
+Dock.TALK_KEY = "CTRL-ENTER"
+Dock.TALK_ACTION = "SYLVANISTAS_TALK"
+local talkOwner, talkHeld, talkSyncing = nil, false, false
+
+function Dock.Talk(down)
+	if down == "up" or down == false then return end
+	local CW = ns.ChatWindow
+	if not CW.IsShown() then Dock.Open() end
+	CW.FocusBox()
+end
+
+-- "Close after sending" (the title bar's tick box): off unless the player turned it on.
+function Dock.AutoClose() return type(ns.db) == "table" and ns.db.chatDockAutoClose == true end
+Dock.AUTOCLOSE_OFF_COLOUR = { 1, 0.25, 0.25 } -- red
+Dock.AUTOCLOSE_ON_COLOUR = { 0.8, 0.6, 1 }     -- light purple
+function Dock.PaintAutoClose(ac)
+	if not (ac and ac.word) then return end
+	local c = Dock.AutoClose() and Dock.AUTOCLOSE_ON_COLOUR or Dock.AUTOCLOSE_OFF_COLOUR
+	ac.word:SetTextColor(c[1], c[2], c[3])
+end
+function Dock.SetAutoClose(on)
+	if type(ns.db) ~= "table" then return end
+	ns.db.chatDockAutoClose = on and true or nil
+	local ac = win and win.autoCloseBox
+	if ac then
+		ac:SetChecked(on and true or false)
+		Dock.PaintAutoClose(ac)
+	end
+end
+ns.On("CHAT_BOX_DONE", function()
+	if not Dock.AutoClose() then return end
+	if win and win:IsShown() and ns.ChatWindow.Host() == win then win:Hide() end
+end)
+BINDING_NAME_SYLVANISTAS_TALK = L.TALK_BINDING or "Talk in the Sylvanistas chat"
+function SylvanistasTalkBinding(keystate) ns.SafeCall("talk binding", Dock.Talk, keystate) end
+
+local function Str(v) return type(v) == "string" and not (issecretvalue and issecretvalue(v)) and v or nil end
+
+-- Whether Ctrl+Enter should be ours now: the player's own Talk key none, the key free in their
+-- bindings (ours aside).
+function Dock.TalkKeyWanted()
+	if ns.GamepadUI() or type(GetBindingKey) ~= "function" or type(GetBindingAction) ~= "function" then return false end
+	local ok, own = pcall(GetBindingKey, Dock.TALK_ACTION)
+	if not ok or (own ~= nil and Str(own) == nil) then return false end
+	if Str(own) then return false end
+	local ok2, action = pcall(GetBindingAction, Dock.TALK_KEY, false)
+	return ok2 and Str(action) == ""
+end
+
+function Dock.SyncTalkKey()
+	if talkSyncing then return end
+	if InCombatLockdown and InCombatLockdown() then return end
+	if type(SetOverrideBinding) ~= "function" or type(ClearOverrideBindings) ~= "function" then return end
+	local want = Dock.TalkKeyWanted()
+	if want == talkHeld then return end
+	talkSyncing = true
+	local ok, err = pcall(function()
+		talkOwner = talkOwner or CreateFrame("Frame")
+		ClearOverrideBindings(talkOwner)
+		if want then SetOverrideBinding(talkOwner, false, Dock.TALK_KEY, Dock.TALK_ACTION) end
+		talkHeld = want
+	end)
+	talkSyncing = false
+	if not ok then error(err, 0) end
+end
+function Dock.TalkKeyHeld() return talkHeld end
+ns.RegisterEvent("UPDATE_BINDINGS", function() ns.SafeCall("talk key", Dock.SyncTalkKey) end)
+ns.RegisterEvent("PLAYER_REGEN_ENABLED", function() ns.SafeCall("talk key", Dock.SyncTalkKey) end)
+pcall(ns.RegisterEvent, "INPUT_DEVICE_INTERFACE_TRANSITION", function() ns.SafeCall("talk key", Dock.SyncTalkKey) end)
+
 ns.On("LOGIN", function()
+	ns.SafeCall("talk key", Dock.SyncTalkKey)
 	-- (A moment after login: PUG Social makes its button at its own login.)
 	ns.After(2, "chat dock", function()
 		button = button or MakeButton("SylvanistasChatDockButton", ns.LOGO, true, ns.UI.FirstTexture(ns.UI.CHAT_ICONS),
 			function() Dock.Toggle() end, function() Dock.SwitchToMain() end, L.CHATDOCK_TITLE, L.CHATDOCK_BUTTON_TIP)
 		Anchor(button)
 		Dock.Paint()
+		Dock.PaintBubble()
 	end)
 	ns.Every(30, "chat dock", function() Dock.Paint() end)
 end)

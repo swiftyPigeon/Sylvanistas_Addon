@@ -3,7 +3,14 @@
 	     (MainKey.lua names it and the header). The game loads this file from the addon's folder by
 	     itself: it is not in the TOC. No key is bound here; the player picks one, and the game saves
 	     it as any of their bindings. -->
-	<Binding name="SYLVANISTAS_TOGGLE" header="SYLVANISTAS" category="ADDONS">
+	<Binding name="SYLVANISTAS_TOGGLE" header="SYLVANISTAS" category="Sylvanistas">
 		SylvanistasToggleBinding(keystate)
+	</Binding>
+	<!-- 1.3.5 (the user): "Talk in the Sylvanistas chat": the small chat open, the cursor in its box.
+	     Ctrl+Enter by default; also borrowed at run time while the player has no key for it and
+	     nothing else holds Ctrl+Enter (ChatDock.lua, Dock.SyncTalkKey). No header of its own: it
+	     falls under the one above (a header named twice is a Lua warning). -->
+	<Binding name="SYLVANISTAS_TALK" category="Sylvanistas" default="CTRL-ENTER">
+		SylvanistasTalkBinding(keystate)
 	</Binding>
 </Bindings>

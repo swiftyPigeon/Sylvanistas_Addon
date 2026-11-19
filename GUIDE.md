@@ -59,7 +59,7 @@ Read **Part 1** whatever your rank, then your own part.
    - **Layer help** (lets others ask you for an invite to your layer)
    - **Chats**, **Party invites** and your **Crafters** listing are already on; **Auto-join parties** if you'd like to join without the popup
 4. **Open the window:** type `/syl`, click the minimap button, or press **Shift-J** (Shift + your guild
-   key; pick your own in the game's Key Bindings, under AddOns).
+   key; pick your own in the game's Key Bindings, under **Sylvanistas**).
 5. **Check it works:** `/syl status`. You should see your guild, the channel, and your layer
    once you have looked at an NPC.
 6. **Check your version:** the first line of `/syl status` (or the AddOns list on the character
@@ -166,6 +166,8 @@ without:
 
 Your own add-on spots your names; nothing extra is sent. Turn the cards off in the Chat tab's cog
 (**Mentions beside the minimap**) or with `/syl mentions off`; the sound alone in the Screams cog.
+The cards stay 6 seconds and show above other add-ons' notices. **Drag** one to move them anywhere;
+`/syl mentions reset` puts them back by the minimap.
 
 **See-through.** Pick **100% 85% 70% 55% 40%** on the line above the messages, or click the **Chat**
 tab again while it's open to step through. The window's background and the bubbles fade; the text,
@@ -176,6 +178,13 @@ names and borders stay solid. Other tabs stay solid.
 just the lines and the box to write in. Drag it, size it from its corner; it remembers. The
 **Professions** icon in its title bar opens the **Crafters** board beside it (its X closes it; the
 chat's X closes both). The round logo, or a right-click on the button, opens the whole add-on.
+The button's bubble turns **red** when someone writes while the chat is closed.
+
+**Talk without /sy (1.3.5).** Press **Ctrl+Enter**: the small chat opens with the cursor in its box.
+Type, press Enter; it goes to [Sylvanistas]. Tick **Auto-close** in its title bar (right of the
+logo; red off, purple on) to have it close once you send, like the game's chat box. Another key:
+Key Bindings → **Sylvanistas** → *Talk in the Sylvanistas chat*. (The game's own chat tab still
+needs `/sy`: Sylvanistas never touches the game's chat box, so `/cast` and the rest keep working.)
 
 ### Screams (map calls)
 Officers and the Guild Master send **Screams**. You'll see a message, hear a sound and see a map marker:
@@ -202,7 +211,8 @@ All current Screams are on the **Screams** tab (`/syl screams`).
 | Find a group | **Shadows** → **Board** → **Raise a flag**: pick a dungeon, a raid or a layer (PvP on PvP realms), add a note. **Lower my flag** takes it down. Or `/syl lfg dungeon` / `/syl lfg off` |
 | Share a camp | light a campfire and click **Share camp**, or **Board** → **Drop a camp**. A campfire shows where you stand on every guildmate's world map and minimap. **Take down my camp** removes it; `/syl camps ask off` stops the question |
 | See the guild's week | `/syl week` (events, and signups for them); **The week** on the Board has the numbers |
-| Your week at a glance | `/syl brief`: **Your week, in five lines** (next event, what's open, guildmates online, a sister guild on your layer, whether you're up to date) |
+| Your week at a glance | `/syl brief`: **Guild Life** first, then **Your week, in five lines** (next event, what's open, guildmates online, a sister guild on your layer, whether you're up to date). Share it from the top line: **Share to Sylvanistas** or **Guild Chat** |
+| Who's at level 60 | **Shadows**: **Max level** (click it to open the names); the **Level race** under it ranks those still climbing |
 | Find a crafter | **Shadows** → **Crafters** → **Ask who can make an item…**, or `/syl craft <item>`; click a crafter to see their recipes. Names in parchment are Sylvanistas, in blood red Sylvanistas Underground |
 | See what a recipe takes | hover its item: **Materials**, with how many you hold (bags and bank) |
 | Ask a crafter for a recipe | click its item under them: a whisper opens already written (item, recipe, materials) for you to send. With the small chat open, **shift-click** puts "@name [item]" in its box instead. **Whisper <name>** under a profession asks them to open it, so their recipes show |

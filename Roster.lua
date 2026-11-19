@@ -133,7 +133,15 @@ function Roster.Scan()
 		if a.level ~= b.level then return a.level > b.level end
 		return a.name < b.name
 	end)
-	for i = 1, math.min(5, #everyone) do r.top[i] = everyone[i] end
+	-- 1.3.5: the top five still climbing go in `top` (the Level race); everyone at the level cap
+	-- goes in `capped`, by name (the Max level list, report fields 28-29).
+	local max, capped = Roster.MaxLevel(), {}
+	for _, m in ipairs(everyone) do
+		if m.level >= max then capped[#capped + 1] = { name = m.name, level = m.level, class = m.class } -- (saved: kept small)
+		elseif #r.top < 5 then r.top[#r.top + 1] = m end
+	end
+	table.sort(capped, function(a, b) return a.name < b.name end)
+	r.capped, r.cappedCount = capped, #capped
 	r.avgLevel = seen > 0 and levelSum / seen or 0
 	Roster.byName, Roster.guild = byName, guild -- (whose roster it is: Sylvanistas Link's "r", Link.lua)
 	Roster.members = everyone -- (1.1: every member's row, Members.lua)
@@ -193,6 +201,12 @@ function Roster.TryScan()
 	r.cap = ns.Comm.CAPABILITY
 	ns.Data.SetLocal(r)
 	ns.Comm.MaybeBroadcast(r)
+end
+
+-- The game's level cap (60 on WoW: Forever).
+function Roster.MaxLevel()
+	local max = GetMaxPlayerLevel and tonumber(GetMaxPlayerLevel())
+	return (max and max >= 1) and math.floor(max) or 60
 end
 
 function Roster.RequestScan(force)

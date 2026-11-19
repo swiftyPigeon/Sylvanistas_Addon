@@ -544,6 +544,7 @@ end
 
 -- The row's word buttons (line.actions), right to left from its end; hides the ones not used.
 -- Returns what the right text sits left of: the last button, or the row itself (its end).
+local ACTION_GOLD = { 1, 0.82, 0 }
 function Views.RowActions(r, actions, rowH)
 	r.acts = r.acts or {}
 	for _, b in ipairs(r.acts) do b:Hide() end
@@ -565,11 +566,13 @@ function Views.RowActions(r, actions, rowH)
 					GameTooltip:Show()
 				end
 			end)
-			b:SetScript("OnLeave", function(self) self.label:SetTextColor(1, 0.82, 0) GameTooltip:Hide() end)
+			b:SetScript("OnLeave", function(self) local c = self.color; self.label:SetTextColor(c[1], c[2], c[3]) GameTooltip:Hide() end)
 			r.acts[k] = b
 		end
 		b.label:SetText(a.text or "")
-		b.label:SetTextColor(1, 0.82, 0)
+		b.color = type(a.color) == "table" and a.color or ACTION_GOLD -- (1.3.5: a.color = { r, g, b }, else gold)
+		b.label:SetTextColor(b.color[1], b.color[2], b.color[3])
+		b:EnableMouse(not a.plain) -- (1.3.5: a.plain, a word between buttons: no click, no hover)
 		b.tip = a.tooltip
 		b:SetSize(math.ceil(b.label:GetStringWidth() or 30) + 8, rowH)
 		b:SetScript("OnClick", function()
@@ -1159,11 +1162,15 @@ end
 
 -- The guilds with room (1000 members is the game's cap), most free slots first; `min`: at least
 -- that many free. Fresh reports only: an old one's size may be gone.
-function Views.OpenGuilds(s, min)
+-- keepHouse (1.3.5, the user): our own branches stay listed when no member with the add-on is online,
+-- with the size of their last report (up to Data.KEEP), marked stale. Recruit's Join screens leave
+-- it off: nobody there could answer a whisper.
+function Views.OpenGuilds(s, min, keepHouse)
 	local open = {}
 	for _, e in ipairs(s.guilds) do
 		local free = 1000 - (e.g.total or 0)
-		if e.fresh and free > 0 and free >= (min or 1) then open[#open + 1] = { name = e.name, free = free, e = e } end
+		local listed = e.fresh or (keepHouse and ns.IsHouseGuild(e.name))
+		if listed and free > 0 and free >= (min or 1) then open[#open + 1] = { name = e.name, free = free, e = e, stale = not e.fresh or nil } end
 	end
 	table.sort(open, function(a, b)
 		if a.free ~= b.free then return a.free > b.free end
@@ -1236,7 +1243,7 @@ local function RecruitQuery(q)
 end
 
 local function RecruitingLines(lines, s, min)
-	local open = Views.OpenGuilds(s, min)
+	local open = Views.OpenGuilds(s, min, true)
 	lines[#lines + 1] = { header = true, text = L.RECRUITING, right = Grey(L.SEARCH_RECRUITING_COUNT:format(#open)) }
 	local gates = ns.Acts and ns.Acts.Gates and ns.Acts.Gates()
 	local first
@@ -1245,7 +1252,7 @@ local function RecruitingLines(lines, s, min)
 	end
 	if first then table.insert(open, 1, table.remove(open, first)) end
 	for _, o in ipairs(open) do
-		lines[#lines + 1] = GuildLink(o.name, L.FREE_SLOTS:format(ns.FormatNumber(o.free)),
+		lines[#lines + 1] = GuildLink(o.name, L.FREE_SLOTS:format(ns.FormatNumber(o.free)) .. (o.stale and Grey("  " .. ns.Ago(o.e.g.t)) or ""),
 			(gates and o.name == gates.guild and CROWN or "") .. Views.DisputeMark(o.e.g))
 	end
 	if #open == 0 then lines[#lines + 1] = { indent = 1, text = Grey(L.ALL_FULL) } end
@@ -1310,6 +1317,7 @@ local function PlayersFound(e, q, own, swept)
 		Add({ name = o.name, realm = g.realm, label = OfficerTitle(e.name), captain = true, level = o.level, class = o.class, zone = o.zone, online = o.online, days = o.days })
 	end
 	for _, p in ipairs(g.top or {}) do Add({ name = p.name, realm = g.realm, level = p.level, class = p.class }) end
+	for _, p in ipairs(g.capped or {}) do Add({ name = p.name, realm = g.realm, level = p.level, class = p.class }) end
 	if e.name == own then
 		for _, m in ipairs(ns.Roster.online or {}) do Add({ name = m.name, label = m.rank, level = m.level, class = m.class, zone = m.zone, online = true }) end
 	else
@@ -2053,10 +2061,54 @@ local function RealmLines(s, q)
 		return lines
 	end
 
-	local racers = {}
+	-- 1.3.5: Max level (everyone at the cap, folded, by name) apart from the Level race (the
+	-- top five below the cap from each guild). A guild on an older version sends no capped list:
+	-- its capped players come out of its top five.
+	local maxLevel = ns.Roster.MaxLevel()
+	local racers, capped, cappedTotal = {}, {}, 0
 	for _, e in ipairs(s.guilds) do
 		if e.fresh then
-			for _, p in ipairs(e.g.top or {}) do racers[#racers + 1] = { name = p.name, realm = e.g.realm, level = p.level, class = p.class, guild = e.name } end
+			local g = e.g
+			for _, p in ipairs(g.top or {}) do
+				local row = { name = p.name, realm = g.realm, level = p.level, class = p.class, guild = e.name }
+				if (p.level or 0) < maxLevel then racers[#racers + 1] = row
+				elseif not g.capped then capped[#capped + 1] = row; cappedTotal = cappedTotal + 1 end
+			end
+			if g.capped then
+				for _, p in ipairs(g.capped) do capped[#capped + 1] = { name = p.name, realm = g.realm, level = p.level, class = p.class, guild = e.name } end
+				cappedTotal = cappedTotal + math.max(g.cappedCount or 0, #g.capped)
+			end
+		end
+	end
+	table.sort(capped, function(a, b)
+		if a.name ~= b.name then return a.name < b.name end
+		return a.guild < b.guild
+	end)
+	lines[#lines + 1] = {
+		header = true, text = (Views.capOpen and "[-] " or "[+] ") .. L.MAX_LEVEL, right = Grey(tostring(cappedTotal)),
+		onClick = function() Views.capOpen = not Views.capOpen; ns.UI.Refresh() end,
+		tooltip = function(tt)
+			tt:AddLine(L.MAX_LEVEL, 1, 0.82, 0)
+			tt:AddLine(L.MAX_LEVEL_TIP:format(maxLevel), 1, 1, 1, true)
+			tt:AddLine(L.CLICK_EXPAND, 0.6, 0.6, 0.6, true)
+		end,
+	}
+	if Views.capOpen then
+		if #capped == 0 then lines[#lines + 1] = { text = Grey(L.NONE_REPORTED) } end
+		local shownCapped = math.min(#capped, Views.capShown)
+		for i = 1, shownCapped do
+			local p = capped[i]
+			lines[#lines + 1] = {
+				key = "cap:" .. p.name, indent = 1,
+				text = ClassColored(p.name, p.class and ns.CLASS_FILES[p.class]) .. "  " .. Grey("<" .. Plain(p.guild) .. ">"),
+				onClick = function() ns.UI.ShowPerson({ name = p.name, realm = p.realm, class = p.class, level = p.level, guild = p.guild }) end,
+			}
+		end
+		if #capped > shownCapped then
+			lines[#lines + 1] = { indent = 1, text = Grey(L.SHOW_MORE:format(math.min(Views.RACE_PAGE, #capped - shownCapped), shownCapped, #capped)),
+				onClick = function() Views.capShown = Views.capShown + Views.RACE_PAGE; ns.UI.Refresh() end }
+		elseif cappedTotal > #capped then
+			lines[#lines + 1] = { indent = 1, text = Grey(L.MAX_LEVEL_UNLISTED:format(cappedTotal - #capped)) }
 		end
 	end
 	table.sort(racers, function(a, b)
@@ -2083,7 +2135,7 @@ local function RealmLines(s, q)
 			onClick = function() Views.raceShown = Views.raceShown + Views.RACE_PAGE; ns.Fire("DATA_CHANGED") end }
 	end
 
-	local open = Views.OpenGuilds(s)
+	local open = Views.OpenGuilds(s, nil, true)
 	-- (1.1.2's review: free slots are 1000 less the size of each guild's last report.)
 	lines[#lines + 1] = { header = true, text = L.RECRUITING, tooltip = function(tt)
 		tt:AddLine(L.RECRUITING, 1, 0.82, 0)
@@ -2112,11 +2164,14 @@ local function RealmLines(s, q)
 		-- (Its census mark too, 1.1: the gates open on its size, request #30.)
 		local mark, d = Views.DisputeMark(open[i].e.g)
 		lines[#lines + 1] = {
-			text = mark .. Green("<" .. name .. ">"), right = L.FREE_SLOTS:format(ns.FormatNumber(open[i].free)),
+			text = mark .. (open[i].stale and Grey("<" .. name .. ">") or Green("<" .. name .. ">")),
+			right = open[i].stale and Grey(L.FREE_SLOTS:format(ns.FormatNumber(open[i].free)) .. "  " .. ns.Ago(open[i].e.g.t))
+				or L.FREE_SLOTS:format(ns.FormatNumber(open[i].free)),
 			-- The King and his Hands open a guild's gates from here.
 			onClick = commands and function() ns.Acts.GatesClick(name) end or nil,
 			tooltip = function(tt)
 				tt:AddLine("<" .. name .. ">", 0.25, 1, 0.25)
+				if open[i].stale then tt:AddLine(L.RECRUIT_STALE_TIP:format(ns.Ago(open[i].e.g.t)), 0.6, 0.6, 0.6, true) end
 				if commands then
 					local closing = gates and gates.guild == name
 					tt:AddLine(closing and (ns.Acts.CanClose() and L.GATES_CLOSE_TIP or L.GATES_ONLY_OPENER) or L.GATES_CLICK_TIP, 1, 1, 1, true)
@@ -2305,6 +2360,7 @@ end
 Views.RACE_MAX, Views.RACE_PAGE = 100, 25 -- the level race: its top 100, 25 at a time
 Views.RECRUIT_SHOWN = 5 -- guilds with room shown in the Realm's Recruiting, the rest on a click (1.1)
 Views.raceShown = Views.RACE_PAGE
+Views.capOpen, Views.capShown = false, Views.RACE_PAGE -- Max level: folded until clicked, then 25 at a time
 Views.INSPECT_ROWS = 200 -- Fellow Forsaken listed on the Regalia page
 
 -- 1.1 (request #28): the gear an officer's click kept (Inspect.InspectGear), newest first, the

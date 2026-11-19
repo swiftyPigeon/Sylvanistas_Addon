@@ -1975,6 +1975,17 @@ function ChatWindow.Render()
 end
 
 -- The settings in place of the lines (the gear), or the lines again. Never takes the keyboard.
+-- 1.3.5: the keyboard to the shown chat's box (the Talk binding, ChatDock.lua), as the "Open chat"
+-- key does. False when no chat shows.
+function ChatWindow.FocusBox()
+	if not Shown() then return false end
+	if settings then ChatWindow.ShowSettings(false) end
+	CloseMenu()
+	local eb = frame.input
+	if eb and eb:IsShown() then return ns.Focus(eb) end
+	return false
+end
+
 function ChatWindow.ShowSettings(on)
 	settings = on and true or false
 	CloseMenu()
@@ -2064,6 +2075,7 @@ local function Submit()
 	if text == "" then
 		eb:SetText("")
 		keep = false
+		ns.Fire("CHAT_BOX_DONE", false) -- (1.3.5: an empty Enter; ChatDock.lua closes a Talk-key window)
 	elseif text:sub(1, 1) == "/" then
 		-- This box runs no command and never hands one to the game: the text stays, nothing is sent.
 		-- With the cursor kept, the way to the game's box too: Escape, then the player's own key for
@@ -2081,6 +2093,7 @@ local function Submit()
 			if ok then notes[tier] = nil end
 			ScrollToBottom()
 			MarkDirty()
+			if ok then ns.Fire("CHAT_BOX_DONE", true) end -- (1.3.5: a line sent; ChatDock.lua)
 		end
 		if why == "confirm" then keep = false end
 	end
@@ -2558,7 +2571,7 @@ local function Build(h)
 	eb.hint:SetJustifyH("LEFT")
 	eb.hint:SetWordWrap(false)
 	eb:SetScript("OnEnterPressed", function() ns.SafeCall("chat tab send", Submit) end)
-	eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+	eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); ns.Fire("CHAT_BOX_DONE", false) end)
 	eb:SetScript("OnTabPressed", function() ns.SafeCall("chat tab channel", TabPressed) end)
 	eb:SetScript("OnTextChanged", function() ns.SafeCall("chat tab box", Hint); ns.SafeCall("chat tab names", Suggest) end)
 	eb:SetScript("OnEditFocusGained", function() ns.SafeCall("chat tab box", Hint) end)
@@ -2651,6 +2664,7 @@ function ChatWindow.Attach(h, places)
 		Render()
 		ScrollToBottom()
 	end
+	ns.Fire("CHAT_SEEN") -- (1.3.5: the docked button's bubble back to white, ChatDock.lua)
 	return p
 end
 

@@ -20,9 +20,9 @@ ns.Mentions = Mentions
 Mentions.KEEP = 50            -- mentions kept (ns.rdb.mentions, per realm group: every character sees them)
 Mentions.MIN_WORD = 3         -- a first name shorter than this only counts as "@Name"
 Mentions.FEED_MAX = 3         -- cards on screen at once
-Mentions.CARD_SECONDS = 4     -- a card stays this long (longer while the mouse is on the feed)
+Mentions.CARD_SECONDS = 6     -- a card stays this long (longer while the mouse is on the feed; 4 until 1.3.5, the user: too fast)
 Mentions.CARD_GAP = 1.2       -- between two cards coming in
-Mentions.ROLL = 0.45          -- a card's roll up and fade, and the others' move
+Mentions.ROLL = 0.7           -- a card's roll up and fade, and the others' move (0.45 until 1.3.5)
 
 local CARD_W, CARD_H, CARD_GAP_Y, FOOT_H = 250, 46, 4, 16
 
@@ -210,7 +210,13 @@ local function NewCard()
 	c.text:SetJustifyH("LEFT")
 	c.text:SetWordWrap(false)
 	c:RegisterForClicks("LeftButtonUp")
+	-- 1.3.5 (the user: other add-ons' notifications piled over it): a drag moves the whole feed,
+	-- kept in ns.db.mentionFeedPos; /syl mentions reset puts it back by the minimap.
+	c:RegisterForDrag("LeftButton")
+	c:SetScript("OnDragStart", function() feed:StartMoving() end)
+	c:SetScript("OnDragStop", function() Mentions.StopMoving() end)
 	c:SetScript("OnClick", function(self)
+		if Clock() - (Mentions.movedAt or -math.huge) < 0.3 then return end -- (the end of a drag, not a click)
 		local m = self.m
 		Mentions.Dismiss()
 		if m then Open(m) end
@@ -313,8 +319,9 @@ local function Feed()
 	if feed then return feed end
 	local f = CreateFrame("Frame", "SylvanistasMentionFeed", UIParent)
 	f:SetSize(CARD_W, CARD_H)
-	f:SetFrameStrata("HIGH")
+	f:SetFrameStrata("DIALOG") -- (HIGH until 1.3.5: other add-ons' notifications covered it)
 	f:SetClampedToScreen(true)
+	f:SetMovable(true)
 	f.foot = CreateFrame("Frame", nil, f)
 	f.foot:SetSize(CARD_W, FOOT_H)
 	f.more = f.foot:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -333,6 +340,25 @@ local function Feed()
 	feed = f
 	Anchor(f)
 	return f
+end
+
+-- The end of a drag: the feed's place, saved (Anchor reads it back).
+function Mentions.StopMoving()
+	if not feed then return end
+	feed:StopMovingOrSizing()
+	feed:SetUserPlaced(false) -- (our saved place only, not the game's layout file)
+	Mentions.movedAt = Clock()
+	local point, _, relPoint, x, y = feed:GetPoint(1)
+	if ns.db and point then ns.db.mentionFeedPos = { point, relPoint or point, math.floor((x or 0) + 0.5), math.floor((y or 0) + 0.5) } end
+end
+
+-- Back beside the minimap.
+function Mentions.ResetPlace()
+	if ns.db then ns.db.mentionFeedPos = nil end
+	if feed then
+		feed:SetUserPlaced(false)
+		Anchor(feed)
+	end
 end
 
 -- Every card off the screen and the queue emptied (what was not seen stays unread).
@@ -370,6 +396,10 @@ end)
 function Mentions.Slash(rest)
 	local word = tostring(rest or ""):lower():match("^%s*(%S*)")
 	if word == "on" or word == "off" then return Mentions.SetOn(word == "on") end
+	if word == "reset" then
+		Mentions.ResetPlace()
+		return ns.Print(L.MENTIONS_RESET)
+	end
 	if word == "clear" then
 		Mentions.Clear()
 		return ns.Print(L.MENTIONS_CLEARED)

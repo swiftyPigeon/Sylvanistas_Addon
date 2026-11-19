@@ -176,6 +176,7 @@ end
 Codec.MAX_OFFICERS = 30
 Codec.MAX_RANKS = 10
 Codec.MAX_TOP = 5
+Codec.MAX_CAPPED = 40 -- names in field 29 (the Max level list), at most; field 28 counts them all
 Codec.MAX_PRES = 12 -- realms named in field 27, at most
 Codec.CAPS = { a = true, b = true, c = true }
 
@@ -249,6 +250,8 @@ function Codec.EncodeReport(r)
 		Codec.Base36(r.st) or "",
 		Codec.CAPS[r.cap] and r.cap or "",
 		encPres(r.pres),
+		math.floor(r.cappedCount or 0),
+		encTop(r.capped, Codec.MAX_CAPPED),
 	}, "~")
 end
 
@@ -323,6 +326,11 @@ function Codec.DecodeReport(s)
 		st = unBase36(f[25]),
 		cap = Codec.CAPS[f[26] or ""] and f[26] or nil,
 		pres = decPres(f[27]),
+		-- Fields 28-29 (1.3.5): how many members are at the level cap, and up to MAX_CAPPED of
+		-- them by name ("name:level:class"); field 17 then holds the top five below the cap.
+		-- Older versions send neither: nil (their top five may hold capped players).
+		cappedCount = num(f[28]),
+		capped = f[28] and decTop(f[29], Codec.MAX_CAPPED) or nil,
 	}
 end
 
