@@ -50,6 +50,8 @@ local TABS = {
 	{ key = "chat", label = "TAB_CHAT", icon = function() return UI.FirstTexture(UI.CHAT_ICONS) end },
 	{ key = "decrees", label = "TAB_DECREES", icon = "Interface\\Icons\\Spell_Shadow_PsychicScream" },
 	{ key = "heraldry", label = "TAB_HERALDRY", icon = "Interface\\Icons\\INV_Shirt_GuildTabard_01" },
+	-- 1.3.6: Nearby (Finder.lua), anyone /who finds, for every member: a spyglass.
+	{ key = "finder", label = "TAB_FINDER", icon = function() return UI.FirstTexture(UI.SPYGLASSES) end },
 	-- The King's alone (King.lua): hidden for everyone else, see UI.Refresh.
 	{ key = "throne", label = "TAB_THRONE", icon = function() return UI.FirstTexture(UI.CROWNS) end },
 	-- The King's and his Hands' questions to the army (Vox.lua), the same way.
@@ -69,9 +71,12 @@ function UI.FirstTexture(paths)
 end
 UI.CROWNS = { "Interface\\Icons\\INV_Crown_01", "Interface\\Icons\\INV_Crown_02", "Interface\\Icons\\INV_Misc_Head_Dragon_01" }
 UI.HORNS = { "Interface\\Icons\\Ability_Warrior_BattleShout", "Interface\\Icons\\INV_Misc_Horn_01" }
+UI.SPYGLASSES = { "Interface\\Icons\\INV_Misc_Spyglass_03", "Interface\\Icons\\INV_Misc_Spyglass_02", "Interface\\Icons\\INV_Misc_Spyglass_01" }
 UI.CHAT_ICONS = { "Interface\\Icons\\UI_Chat", "Interface\\Icons\\INV_Misc_Note_01" }
 UI.PARCHMENTS = { "Interface\\QuestFrame\\QuestBG", "Interface\\Stationery\\StationeryTest1" }
 UI.TABS = TABS
+-- 1.3.6: the tabs shown outside a Sylvanistas guild: the Join screen (in the census tab's place) and Nearby.
+UI.LOCKED_TABS = { census = true, finder = true }
 
 local function DecreeAction(kind)
 	return function()
@@ -185,6 +190,22 @@ local BUTTONS = {
 			shown = function() return ns.Treasury.IsKeeper() end },
 		{ "COPY_BTN", function() UI.ShowCopy(L.TREASURY_TITLE, ns.Treasury.DiscordText()) end,
 			shown = function() return ns.Treasury.Role() ~= "member" end },
+	},
+	-- 1.3.6: Nearby (Finder.lua): what to search (cycles), one /who, the list emptied.
+	finder = {
+		{ "FINDER_MODE_BTN", function() ns.Finder.NextMode() end, refresh = true,
+			label = function() return ns.Finder.ModeLabel() end,
+			tooltip = function(tt)
+				tt:AddLine(ns.Finder.ModeLabel(), 1, 0.82, 0)
+				tt:AddLine(L.FINDER_MODE_BTN_TIP, 1, 1, 1, true)
+			end },
+		{ "FINDER_SEARCH_BTN", function() ns.Finder.Search() end, refresh = true,
+			label = function() return ns.Finder.SearchLabel() end,
+			tooltip = function(tt)
+				tt:AddLine(ns.Finder.SearchLabel(), 1, 0.82, 0)
+				tt:AddLine(L.FINDER_SEARCH_BTN_TIP, 1, 1, 1, true)
+			end },
+		{ "FINDER_CLEAR_BTN", function() ns.Finder.Clear() end, refresh = true },
 	},
 	workshop = {
 		{ "WORKSHOP_ROLL_BTN", function() ns.Workshop.RollCall() end },
@@ -1675,7 +1696,7 @@ UI.PLACE_HOLD = 1  -- seconds a redraw's place is given again when the client me
 
 -- Which page of its tab the list shows: another one starts at the top.
 local function PageOf(tab, locked)
-	if locked then return "join" end
+	if locked and tab ~= "finder" then return "join" end -- (1.3.6: Nearby is its own page there too)
 	local sub
 	if tab == "realm" then
 		-- (1.1: our guild's members page, Members.lua, a page of its own.)
@@ -1780,15 +1801,21 @@ function UI.Refresh()
 		-- Right after login (1.1): the census is being rebuilt, and the header says so.
 		local heard = ns.Data.Rebuilding and ns.Data.Rebuilding()
 		if heard then main.sub:SetText(L.REBUILDING_SUB:format(heard) .. "  ·  " .. UI.CensusName()) end
-		-- Outside a Sylvanistas guild nothing but the Join Sylvanistas screen is shown.
+		-- Outside a Sylvanistas guild only the Join Sylvanistas screen is shown, its tab named Join,
+		-- and (1.3.6, the user's call) Nearby: grouping is for everyone (UI.LOCKED_TABS).
 		local locked = not ns.IsMember()
+		local nearby = locked and main.tab == "finder"
 		-- Joined or left a guild while the window is open: lay it out again.
 		if locked ~= main.layoutLocked then UI.Layout() end
 		local lines, title, text
 		if locked then
-			-- Not a Sylvanistas member yet: the only thing on offer is joining one.
-			lines = ns.Views.RecruitLines()
-			title, text = L.MEMBERS_ONLY, L.MEMBERS_ONLY_HINT
+			if nearby then
+				lines, title, text = ns.Views.Build("finder")
+			else
+				-- Not a Sylvanistas member yet: the only other thing on offer is joining one.
+				lines = ns.Views.RecruitLines()
+				title, text = L.MEMBERS_ONLY, L.MEMBERS_ONLY_HINT
+			end
 			local header, sub = ns.Recruit.Roast()
 			main.total:SetText(header)
 			main.sub:SetText(sub)
@@ -1810,7 +1837,7 @@ function UI.Refresh()
 		UI.KeepPlace(content, offset, click, PageOf(main.tab, locked), focus)
 		main.detailTitle:SetText(title or "")
 		main.detailText:SetText(text or "")
-		SetButtons(main.buttons, locked and RECRUIT_BUTTONS or Shown(BUTTONS[main.tab]))
+		SetButtons(main.buttons, (locked and not nearby) and RECRUIT_BUTTONS or Shown(BUTTONS[main.tab]))
 		local tabsWere = main.tabs[1] and main.tabs[1]:IsShown()
 		-- The Throne only for the King, the Workshop only for the addon's author (and their
 		-- test builds, King.Preview and Workshop.Preview).
@@ -1822,7 +1849,14 @@ function UI.Refresh()
 			workshop = ns.Workshop and ns.Workshop.Visible and ns.Workshop.Visible() or false,
 		}
 		if only[main.tab] == false then return ShowTab("census") end
-		for _, tab in ipairs(main.tabs) do tab:SetShown(not locked and only[tab.key] ~= false) end
+		for _, tab in ipairs(main.tabs) do
+			if locked then tab:SetShown(UI.LOCKED_TABS[tab.key] == true) else tab:SetShown(only[tab.key] ~= false) end
+			-- The census tab is the Join screen outside a Sylvanistas guild, and says so.
+			if tab.key == "census" then
+				local label = locked and L.TAB_JOIN or L.TAB_CENSUS
+				if main.tabStyle == "side" then tab.tooltip = label elseif tab.GetText and tab:GetText() ~= label then tab:SetText(label) end
+			end
+		end
 		UI.LayoutTabs()
 		-- The Chat tab (ChatWindow.lua) over the list's place while it is the one shown.
 		ChatPane(not locked and main.tab == "chat")
@@ -1833,7 +1867,8 @@ function UI.Refresh()
 		main.detailText:SetHeight(DETAIL_H - (hasDetailButtons and 46 or 26))
 		-- The tabs just appeared (joined a guild with the window open): they hang below it,
 		-- so it steps above the Issue Reporter again.
-		if not locked and not tabsWere then ns.SafeCall("issue reporter", ClearOfIssueReporter, MainClearOfIssueReporter) end
+		local tabsNow = main.tabs[1] and main.tabs[1]:IsShown()
+		if tabsNow and not tabsWere then ns.SafeCall("issue reporter", ClearOfIssueReporter, MainClearOfIssueReporter) end
 	end)
 end
 
@@ -2309,6 +2344,7 @@ end
 ns.On("DATA_CHANGED", function() UI.RefreshSoon() end)
 ns.On("MAP_TOGGLED", function() UI.Refresh() end)
 ns.On("INSPECT_CHANGED", function() if main and main.tab == "heraldry" then UI.RefreshSoon() end end)
+ns.On("FINDER_CHANGED", function() if main and main.tab == "finder" then UI.RefreshSoon() end end)
 -- Layers show in the Realm tab, and the King's layer line tops the Census and the Realm.
 ns.On("LAYERS_CHANGED", function()
 	if main and (main.tab == "decrees" or main.tab == "realm" or main.tab == "census") then UI.RefreshSoon() end
@@ -2429,6 +2465,7 @@ function UI.ShowHelp()
 		"  " .. L.TAB_CHAT .. ": " .. L.HELP_TAB_CHAT,
 		"  " .. L.TAB_DECREES .. ": " .. L.HELP_TAB_DECREES,
 		"  " .. L.TAB_HERALDRY .. ": " .. L.HELP_TAB_HERALDRY,
+		"  " .. L.TAB_FINDER .. ": " .. L.HELP_TAB_FINDER,
 		"  " .. L.HELP_TAB_OTHERS,
 		"",
 		L.HELP_ALL_COMMANDS,

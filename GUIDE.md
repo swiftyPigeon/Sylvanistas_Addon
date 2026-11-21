@@ -18,6 +18,7 @@ Then try these:
 | **Share your camp** | light a campfire and click **Share camp**: a campfire shows on every guildmate's map |
 | **Find a crafter** | **Shadows** → **Crafters** → **Ask who can make an item…** (you're listed yourself when you open a profession) |
 | **Help a lowbie** | **Regalia** → **Fellow Forsaken**: guildmates below your level in your zone |
+| **Find people to group with** | **Nearby** → **Search**: everyone in your zone or near your level, guild or not |
 | **Call a rare** | target a rare enemy, then **Screams** → **Revenant Call** |
 | **See your week** | **Shadows** → **Your week** |
 
@@ -134,6 +135,16 @@ Once a login, one friendly line reminds you, to you alone. `/syl inspect` opens 
 
 When the Guild Master or an officer calls **Assemble the Loyal**, a Scream with a map pin says where:
 come in your tabard.
+
+### Nearby (find people to group with)
+The spyglass tab lists everyone the game's /who finds, guild or not, with class and level: a quick way to pull a group
+together out in the world. Members of Sylvanistas and Sylvanistas Underground get their own section on top.
+- **The first button picks what to search:** *My zone*, *My level* (3 levels either side of yours, anywhere) or *Zone + level*.
+- **Search** runs one /who (the game allows one every 10 seconds). /who lists 50 players at most: when there are more,
+  the button says **Search more**, and each click searches the next level range and adds who it finds.
+- **On each row:** **Whisper**, and **Invite** (click it twice: the first click asks "Sure?"). Officers who can invite to
+  the guild also get **Recruit** on players in no guild, the same two clicks. Click a name for their card, right-click for a menu.
+- Nobody is told you searched, and nothing found is saved. Players not in a Sylvanistas guild get this tab too.
 
 ### Chat
 | Type | To |

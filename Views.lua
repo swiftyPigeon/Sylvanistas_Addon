@@ -200,8 +200,15 @@ local function Row(content, i)
 		cell:Hide()
 		r.cells[c] = cell
 	end
-	r:SetScript("OnClick", function(self)
+	-- 1.3.6: a right-click too, for the lines that take one (line.onRightClick, the Nearby tab's menu);
+	-- on any other line it does nothing, as before.
+	r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	r:SetScript("OnClick", function(self, button)
 		if not self.line then return end
+		if button == "RightButton" then
+			if self.line.onRightClick then ns.SafeCall("view right click", self.line.onRightClick, self) end
+			return
+		end
 		-- HD: the person opened stays lit, like the roster's selected member.
 		if content.style == "hd" and self.line.key then ns.SafeCall("view select", Views.Select, content, self.line.key) end
 		-- Where the row was clicked, for the redraw its click causes (UI.lua keeps it in place):
@@ -696,7 +703,7 @@ function Views.Render(content, lines, layout)
 		if not line.items then for k = 1, #(r.items or {}) do r.items[k]:Hide() end end
 		if line.cols or line.items then Views.RowActions(r, nil, rowH) end
 		r:SetHeight(height)
-		r:EnableMouse(line.onClick ~= nil or line.tooltip ~= nil or r.cut == true)
+		r:EnableMouse(line.onClick ~= nil or line.onRightClick ~= nil or line.tooltip ~= nil or r.cut == true)
 		if hd then
 			r.stripe:SetShown(line.cols ~= nil or line.onClick ~= nil)
 			if line.key and line.key == content.selectedKey then r:LockHighlight() else r:UnlockHighlight() end
@@ -2575,7 +2582,16 @@ function Views.RecruitLines()
 	-- first (two answers agree on them), then the most free slots of the guilds /who found; a
 	-- click asks one of that guild's officers /who found online.
 	local route = R.Route()
-	if route and #R.RouteOrder(route) > 0 then
+	-- 1.3.6 (the user's call: each guild was listed twice): a guild /who found online is listed
+	-- once, below with its members (Recruit.Guilds already carries the route's gates and free
+	-- slots, in the route's order); the route lists only the ones nobody found online.
+	local online = {}
+	for _, g in ipairs(guilds) do online[g.name] = true end
+	local routeNames = {}
+	for _, name in ipairs(route and R.RouteOrder(route) or {}) do
+		if not online[name] then routeNames[#routeNames + 1] = name end
+	end
+	if #routeNames > 0 then
 		lines[#lines + 1] = {
 			header = true, text = L.RECRUIT_ROUTE_TITLE,
 			tooltip = function(tt)
@@ -2583,7 +2599,7 @@ function Views.RecruitLines()
 				tt:AddLine(L.RECRUIT_ROUTE_TIP:format(ns.DisplayName(route.from) or "?"), 1, 1, 1, true)
 			end,
 		}
-		for _, name in ipairs(R.RouteOrder(route)) do
+		for _, name in ipairs(routeNames) do
 			local e = route.byName[name]
 			local gates = name == route.gates
 			lines[#lines + 1] = {
@@ -2875,6 +2891,12 @@ local BUILD = {
 		lines = lines or {}
 		if searched then Searched(lines, "treasury", "TREASURY") end
 		return lines, title, text
+	end,
+	-- 1.3.6: the Nearby tab (Finder.lua), anyone /who finds, for grouping.
+	finder = function()
+		if not (ns.Finder and ns.Finder.Build) then return { { text = Grey(L.RESTART_NEEDED) } }, nil, nil end
+		local lines, title, text = ns.Finder.Build()
+		return lines or {}, title, text
 	end,
 	workshop = function()
 		if not (ns.Workshop and ns.Workshop.Build) then return {}, nil, nil end
