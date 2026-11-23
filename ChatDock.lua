@@ -21,6 +21,7 @@ Dock.CRAFT_ICON = "Interface\\Icons\\Trade_BlackSmithing" -- the Crafters' own (
 
 local win, button          -- the small chat and its button
 local cwin                 -- the small Crafters window (2026-11-13; opened from the small chat's title bar)
+local nwin                 -- 1.3.6: the small Nearby window (Finder.lua), from the same title bar
 
 local function Saved(key)
 	ns.db[key] = type(ns.db[key]) == "table" and ns.db[key] or {}
@@ -197,6 +198,37 @@ local function Build()
 	end)
 	cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.craftersButton = cb
+	-- 1.3.6 (the user): Nearby's spyglass left of the Crafters' icon: the small Nearby window opens and
+	-- closes beside the chat; right-click, the whole add-on on its Nearby tab. Lit while it shows.
+	local nb = CreateFrame("Button", nil, f)
+	-- (16 x 16, its icon's own border cropped, 6 px from the hammer: 20 x 20 overran the title bar's
+	-- rim and sat too close, the user, 2026-11-20.)
+	nb:SetSize(16, 16)
+	nb:SetPoint("RIGHT", cb, "LEFT", -6, 1)
+	nb:SetFrameLevel(f:GetFrameLevel() + 10)
+	local spy = ns.UI and ns.UI.FirstTexture and ns.UI.SPYGLASSES and ns.UI.FirstTexture(ns.UI.SPYGLASSES) or "Interface\\Icons\\INV_Misc_Spyglass_03"
+	nb.icon = nb:CreateTexture(nil, "ARTWORK")
+	nb.icon:SetAllPoints()
+	nb.icon:SetTexture(spy)
+	nb.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	nb.glow = nb:CreateTexture(nil, "HIGHLIGHT")
+	nb.glow:SetAllPoints()
+	nb.glow:SetTexture(spy)
+	nb.glow:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	nb.glow:SetBlendMode("ADD")
+	nb.glow:SetAlpha(0.4)
+	nb:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	nb:SetScript("OnClick", function(_, mouse)
+		if mouse == "RightButton" then ns.SafeCall("nearby switch", Dock.NearbyToMain) else ns.SafeCall("nearby window", Dock.ToggleNearby) end
+	end)
+	nb:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine(L.NEARBYDOCK_TITLE, 1, 0.82, 0)
+		GameTooltip:AddLine(L.NEARBYDOCK_BUTTON_TIP, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	nb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	f.nearbyButton = nb
 	-- 1.3.5 (the user): "Close after sending", a tick box in the title bar right of the round logo,
 	-- off by default, kept in ns.db.chatDockAutoClose. On: a line sent, an empty Enter or Escape in
 	-- the box closes the small chat, as the game's chat box does (CHAT_BOX_DONE below).
@@ -229,6 +261,7 @@ local function Build()
 	f:HookScript("OnHide", function(self)
 		ns.ChatWindow.Detach(self)
 		if cwin then cwin:Hide() end -- (its X closes both: the Crafters hang on it)
+		if nwin then nwin:Hide() end -- (and Nearby, 1.3.6)
 	end)
 	win = f
 	return f
@@ -337,6 +370,7 @@ function Dock.OpenCrafters()
 	end
 	if not Dock.IsShown() then Dock.Open() end -- (they hang on the chat)
 	if not Dock.IsShown() then return end
+	if nwin then nwin:Hide() end -- (1.3.6: one window beside the chat at a time)
 	BuildCrafters():Show()
 	Dock.RedrawCrafters()
 	Dock.Paint()
@@ -356,6 +390,136 @@ end
 ns.On("REALM_PAGE_CHANGED", function(key)
 	if key == "crafters" then ns.SafeCall("crafters window", Dock.RedrawCrafters) end
 end)
+
+---------------------------------------------------------------------------
+-- 1.3.6 (the user): the small Nearby window, Finder.lua's list beside the small chat, hung on it as
+-- the Crafters' is (same place: one of the two shows at a time). Its own width (wider by default:
+-- the rows carry Whisper, Invite and Recruit), kept in ns.db.nearbyDock.w. Its three buttons at the
+-- bottom are the Nearby tab's: what to search, Search (one /who, from the click), Clear.
+---------------------------------------------------------------------------
+Dock.NEARBY_WIDTH = 400
+Dock.NEARBY_BUTTONS_H = 26
+
+local function AnchorNearby(f)
+	f:ClearAllPoints()
+	f:SetPoint("TOPLEFT", win, "TOPRIGHT", Dock.CRAFT_GAP, 0)
+	f:SetPoint("BOTTOMLEFT", win, "BOTTOMRIGHT", Dock.CRAFT_GAP, 0)
+	f:SetWidth(Clamp(tonumber(Saved("nearbyDock").w) or Dock.NEARBY_WIDTH, Dock.WIDTH_MIN, Dock.WIDTH_MAX))
+end
+
+local function NearbyButton(f, label)
+	local ok, b = pcall(CreateFrame, "Button", nil, f, "UIPanelButtonTemplate")
+	if not ok or not b then
+		b = CreateFrame("Button", nil, f)
+		b:SetNormalFontObject("GameFontNormalSmall")
+	end
+	b:SetHeight(22)
+	b:SetText(label)
+	if b.GetFontString and b:GetFontString() then b:GetFontString():SetFontObject("GameFontNormalSmall") end
+	return b
+end
+
+local function BuildNearby()
+	if nwin then return nwin end
+	Build() -- (the chat it hangs on)
+	local f = Window("SylvanistasNearbyDock", "nearbyDock", L.NEARBYDOCK_TITLE, 0,
+		function() Dock.NearbyToMain() end, L.NEARBYDOCK_SWITCH_TIP)
+	f.switchButton:Hide()
+	f:SetClampedToScreen(false) -- (the chat is; this follows it)
+	f:SetScript("OnDragStart", function() win:StartMoving() end)
+	f:SetScript("OnDragStop", function()
+		win:StopMovingOrSizing()
+		Remember(win, "chatDock")
+	end)
+	f.grip:SetScript("OnMouseDown", function() f:StartSizing("RIGHT") end)
+	f.grip:SetScript("OnMouseUp", function()
+		f:StopMovingOrSizing()
+		Saved("nearbyDock").w = math.floor(f:GetWidth() + 0.5)
+		AnchorNearby(f)
+	end)
+	local okScroll, scroll = pcall(CreateFrame, "ScrollFrame", "SylvanistasNearbyDockScroll", f, "UIPanelScrollFrameTemplate")
+	if not okScroll or not scroll then scroll = CreateFrame("ScrollFrame", "SylvanistasNearbyDockScroll", f) end
+	scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -28)
+	scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -28, 22 + Dock.NEARBY_BUTTONS_H)
+	local content = CreateFrame("Frame", nil, scroll)
+	content:SetSize(Dock.NEARBY_WIDTH - 40, 10)
+	scroll:SetScrollChild(content)
+	f.scroll, f.content = scroll, content
+	-- The Nearby tab's buttons (UI.lua's BUTTONS.finder), the first two showing their state.
+	local F = ns.Finder
+	f.modeButton = NearbyButton(f, F.ModeLabel())
+	f.modeButton:SetScript("OnClick", function() ns.SafeCall("nearby mode", F.NextMode) end)
+	f.searchButton = NearbyButton(f, F.SearchLabel())
+	f.searchButton:SetScript("OnClick", function() ns.SafeCall("nearby search", F.Search) Dock.RedrawNearby() end)
+	f.searchButton:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:AddLine(F.SearchLabel(), 1, 0.82, 0)
+		GameTooltip:AddLine(L.FINDER_SEARCH_BTN_TIP, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	f.searchButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	f.modeButton:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:AddLine(F.ModeLabel(), 1, 0.82, 0)
+		GameTooltip:AddLine(L.FINDER_MODE_BTN_TIP, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	f.modeButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	f.clearButton = NearbyButton(f, L.FINDER_CLEAR_BTN)
+	f.clearButton:SetScript("OnClick", function() ns.SafeCall("nearby clear", F.Clear) end)
+	f.LayoutButtons = function(self)
+		local inner = (self:GetWidth() or Dock.NEARBY_WIDTH) - 16 - 4
+		local w = math.floor(inner / 3)
+		self.modeButton:ClearAllPoints()
+		self.modeButton:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 8, 20)
+		self.modeButton:SetWidth(w)
+		self.searchButton:ClearAllPoints()
+		self.searchButton:SetPoint("LEFT", self.modeButton, "RIGHT", 2, 0)
+		self.searchButton:SetWidth(w)
+		self.clearButton:ClearAllPoints()
+		self.clearButton:SetPoint("LEFT", self.searchButton, "RIGHT", 2, 0)
+		self.clearButton:SetWidth(w)
+	end
+	f.onResized = function(self) self:LayoutButtons() Dock.RedrawNearby() end
+	f:HookScript("OnShow", function(self) self:LayoutButtons() Dock.RedrawNearby() end)
+	AnchorNearby(f)
+	nwin = f
+	return f
+end
+
+function Dock.NearbyShown() return nwin ~= nil and nwin:IsShown() end
+
+function Dock.RedrawNearby()
+	if not Dock.NearbyShown() then return end
+	local F = ns.Finder
+	if not F or type(F.Build) ~= "function" then return end
+	nwin.modeButton:SetText(F.ModeLabel())
+	nwin.searchButton:SetText(F.SearchLabel())
+	nwin.content:SetWidth(math.max(100, (nwin.scroll:GetWidth() or (Dock.NEARBY_WIDTH - 40))))
+	ns.Views.Render(nwin.content, (F.Build()))
+end
+
+-- (The small chat is for members: Nearby hangs on it, so it is too; non-members have the Nearby tab.)
+function Dock.OpenNearby()
+	if not Dock.IsShown() then Dock.Open() end
+	if not Dock.IsShown() then return end
+	if cwin then cwin:Hide() end -- (one window beside the chat at a time)
+	BuildNearby():Show()
+	Dock.RedrawNearby()
+	Dock.Paint()
+end
+
+function Dock.ToggleNearby()
+	if Dock.NearbyShown() then nwin:Hide() else Dock.OpenNearby() end
+end
+
+-- The whole add-on on its Nearby tab.
+function Dock.NearbyToMain()
+	if nwin then nwin:Hide() end
+	ns.UI.SelectTab("finder")
+end
+
+ns.On("FINDER_CHANGED", function() ns.SafeCall("nearby window", Dock.RedrawNearby) end)
 
 ---------------------------------------------------------------------------
 -- The docked button: over PUG Social's when it is there, else over the game's social button.
@@ -427,6 +591,10 @@ function Dock.Paint()
 	local cb = win and win.craftersButton
 	if cb then
 		if Dock.CraftersShown() then cb:LockHighlight() else cb:UnlockHighlight() end
+	end
+	local nb = win and win.nearbyButton
+	if nb then
+		if Dock.NearbyShown() then nb:LockHighlight() else nb:UnlockHighlight() end
 	end
 end
 

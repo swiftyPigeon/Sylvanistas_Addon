@@ -395,6 +395,7 @@ function Who.Auto()
 	-- quiet one of ours would make it wait COOLDOWN.
 	local win = ns.UI and ns.UI.Frame and ns.UI.Frame()
 	if win and win.IsShown and win:IsShown() and win.tab == "finder" then return false end
+	if ns.ChatDock and ns.ChatDock.NearbyShown and ns.ChatDock.NearbyShown() then return false end -- (its small window too)
 	local now = GetTime()
 	if pending or Wait(now, math.max(Who.lastSend, Who.lastPlain)) > 0 or Who.WindowOpen() then return false end
 	-- A guild opened in the Realm tab while a search could not go comes first.
