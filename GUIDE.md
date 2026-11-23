@@ -145,6 +145,7 @@ together out in the world. Members of Sylvanistas and Sylvanistas Underground ge
 - **On each row:** **Whisper**, and **Invite** (click it twice: the first click asks "Sure?"). Officers who can invite to
   the guild also get **Recruit** on players in no guild, the same two clicks. Click a name for their card, right-click for a menu.
 - Nobody is told you searched, and nothing found is saved. Players not in a Sylvanistas guild get this tab too.
+- **Beside the small chat (1.3.7):** the spyglass in the small chat's title bar opens Nearby in a small window of its own, next to the chat (Crafters or Nearby, one at a time). Right-click the spyglass for the whole add-on on its Nearby tab.
 
 ### Chat
 | Type | To |
@@ -185,7 +186,7 @@ tab again while it's open to step through. The window's background and the bubbl
 names and borders stay solid. Other tabs stay solid.
 
 **The small chat (1.3.4).** The round Sylvanistas button with a chat bubble, by the game's chat
-(above PUG Social's, if you have it), opens the chat on its own in a small window over your chat:
+(above PUG Social's, if you have it, and above Guild Master Forever's when that one shows), opens the chat on its own in a small window over your chat:
 just the lines and the box to write in. Drag it, size it from its corner; it remembers. The
 **Professions** icon in its title bar opens the **Crafters** board beside it (its X closes it; the
 chat's X closes both). The round logo, or a right-click on the button, opens the whole add-on.
