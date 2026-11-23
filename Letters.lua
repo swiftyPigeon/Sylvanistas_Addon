@@ -23,10 +23,11 @@ ns.Letters = Letters
 local SizedFont -- (below)
 
 -- Every version with a letter, newest first.
-Letters.LIST = { "1.3.5", "1.3.4", "1.3.3", "1.3.2", "1.3.1", "1.3.0", "1.2.21" }
+Letters.LIST = { "1.3.7", "1.3.5", "1.3.4", "1.3.3", "1.3.2", "1.3.1", "1.3.0", "1.2.21" }
 -- A letter's sections, in order, when it has more than its own. 1.2.21 is the first release with
 -- letters: it also tells 1.2.2's changes and 1.2.20's (never released on its own).
-Letters.PARTS = { ["1.2.21"] = { "1.2.2", "1.2.20", "1.2.21" }, ["1.3.0"] = { "1.3.0", "1.3.0b", "1.3.0c", "1.3.0d", "1.3.0e" } }
+-- 1.3.7 also tells 1.3.6 (released without a letter; written for 1.3.7.1, the user, 2026-11-23).
+Letters.PARTS = { ["1.3.7"] = { "1.3.6", "1.3.7" }, ["1.2.21"] = { "1.2.2", "1.2.20", "1.2.21" }, ["1.3.0"] = { "1.3.0", "1.3.0b", "1.3.0c", "1.3.0d", "1.3.0e" } }
 Letters.SPACING = 3       -- extra pixels between a paragraph's lines
 Letters.BULLET_GAP = 6    -- between two points
 Letters.SECTION_GAP = 14  -- before a subsection title
