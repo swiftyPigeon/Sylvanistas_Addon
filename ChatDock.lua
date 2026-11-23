@@ -572,7 +572,7 @@ local function MakeButton(name, icon, round, badge, onClick, onRight, title, tip
 	if badge then
 		b.badge = b:CreateTexture(nil, "OVERLAY")
 		b.badge:SetSize(15, 15)
-		b.badge:SetPoint("BOTTOMRIGHT", 3, -3)
+		b.badge:SetPoint("TOPRIGHT", 3, 3) -- (the upper right, as PUG Social's bubble: the user, 2026-11-23)
 		b.badge:SetTexture(badge)
 	end
 	b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
