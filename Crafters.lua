@@ -75,6 +75,7 @@ local lists = {}        -- [crafter .. "~" .. key] = { parts = {}, n, t, recipes
 local asked = {}        -- [crafter .. "~" .. key] = when we asked
 local busyRetried = {}  -- [crafter .. "~" .. key] = true: asked again by itself after a "busy" (once, 3b)
 local lastListing, lastListingText = -math.huge, nil
+local lastListingKeys  -- the professions of the listing sent last (here: the unlist reset above its use was writing a global)
 -- What shows opened, per view: the Realm tab's page (main) and the small Crafters window (dock,
 -- ChatDock.lua), each its own: [crafter .. "~" .. key] = true, and .mine (our own listing, 1.3.0).
 local openBy = { main = {}, dock = {} }
@@ -316,6 +317,7 @@ local function ReadClassic(craft)
 	local recipes = {}
 	for i = 1, (type(count) == "function" and count() or 0) do
 		local rname, kind
+		local _
 		if craft then rname, _, kind = info(i) else rname, kind = info(i) end
 		if rname and kind ~= "header" and kind ~= "subheader" then
 			local link = type(itemLink) == "function" and itemLink(i) or nil
@@ -541,7 +543,6 @@ end
 -- LIST_EVERY (the repeat). A change too soon waits for the board's ticker.
 Crafters.CHANGED_GAP = 120
 local changedWaiting = false
-local lastListingKeys  -- the professions of the listing sent last
 local loginWait = false -- after login, our first listing waits for its own draw (Crafters.OnLogin)
 function Crafters.SendListing(force)
 	-- (1.1, review: while the moderators have us off, nothing: the next tick sends it once

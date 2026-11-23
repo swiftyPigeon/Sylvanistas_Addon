@@ -525,9 +525,20 @@ ns.On("FINDER_CHANGED", function() ns.SafeCall("nearby window", Dock.RedrawNearb
 -- The docked button: over PUG Social's when it is there, else over the game's social button.
 ---------------------------------------------------------------------------
 
+-- Guild Master Forever (the same small chat, another add-on) puts its button in that same place:
+-- with it shown, ours goes above it, so both show (it never places itself by ours: no loop).
+-- Checked again at each Paint, as either may show or hide later.
+local function Below()
+	local gm = _G.GuildMasterForeverChatDockButton
+	if type(gm) == "table" and gm.IsShown and gm:IsShown() then return gm end
+	return _G.Pugger_ChatButton
+end
+
 local function Anchor(b, over)
+	local below = over or Below()
+	if b.anchoredTo == below and below ~= nil then return end
+	b.anchoredTo = below
 	b:ClearAllPoints()
-	local below = over or _G.Pugger_ChatButton
 	if type(below) ~= "table" or not below.GetObjectType then
 		below = nil
 		for _, name in ipairs({ "QuickJoinToastButton", "FriendsMicroButton", "ChatFrameChannelButton", "ChatFrameMenuButton" }) do
@@ -586,6 +597,7 @@ function Dock.Paint()
 	local member = ns.IsMember() and not ns.Channels.missing and ns.Channels.MyLevel() > 0
 	if button then
 		button:SetShown(member)
+		Anchor(button) -- (Guild Master Forever's button may have shown or hidden since)
 		if Dock.IsShown() then button:LockHighlight() else button:UnlockHighlight() end
 	end
 	local cb = win and win.craftersButton
@@ -692,8 +704,12 @@ function Dock.TalkKeyWanted()
 	local ok, own = pcall(GetBindingKey, Dock.TALK_ACTION)
 	if not ok or (own ~= nil and Str(own) == nil) then return false end
 	if Str(own) then return false end
-	local ok2, action = pcall(GetBindingAction, Dock.TALK_KEY, false)
-	return ok2 and Str(action) == ""
+	-- Overrides counted too: another add-on may borrow Ctrl+Enter the same way; ours (held) is no reason
+	-- to let it go. (Read without overrides, two add-ons each saw it free and both borrowed it.)
+	local ok2, action = pcall(GetBindingAction, Dock.TALK_KEY, true)
+	if not ok2 then return false end
+	action = Str(action)
+	return action == "" or (talkHeld and action == Dock.TALK_ACTION) or false
 end
 
 function Dock.SyncTalkKey()
@@ -727,5 +743,6 @@ ns.On("LOGIN", function()
 		Dock.Paint()
 		Dock.PaintBubble()
 	end)
+	ns.After(5, "chat dock place", function() Dock.Paint() end) -- (after the other add-on's button is made)
 	ns.Every(30, "chat dock", function() Dock.Paint() end)
 end)
