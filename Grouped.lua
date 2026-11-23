@@ -25,7 +25,9 @@ ns.Grouped = Grouped
 Grouped.SAMPLE = 60              -- seconds between looks at the group
 Grouped.MIN_SESSION = 5 * 60     -- shorter groups do not count (a quick invite)
 Grouped.KEEP = 28 * 24 * 3600    -- the last 4 weeks
-Grouped.MERGE_GAP = 120          -- two reports of one group: overlapping, or this close
+Grouped.MERGE_GAP = 30 * 60      -- a member's sessions this close count as one (a regroup)
+Grouped.SLACK = 120              -- clock and sampling slack in the checks below
+Grouped.MAX_RELAY = 300          -- reports one officer hands another in one answer (newest first)
 Grouped.ANSWER_GAP = 10 * 60     -- a member answers an officer's ask at most this often
 Grouped.ASK_GAP = 10 * 60        -- an officer asks at most this often
 Grouped.MAX_NAMES = 20           -- names in one Z1 (a raid's: the first 20 kept)
@@ -34,6 +36,8 @@ Grouped.MAX_HEARD = 4000         -- reports kept by an officer's client (oldest 
 
 local current          -- the session going on: { t, last, w = { [name] = true } }
 local lastAnswer, lastAsk = -math.huge, -math.huge
+local lastRelay = -math.huge  -- when this officer last handed reports to another
+local relayHeardAt = -math.huge -- GetTime() of the last report another officer handed on
 
 local function Plain(s)
 	if type(s) ~= "string" or (issecretvalue and issecretvalue(s)) then return nil end
@@ -228,12 +232,14 @@ end
 
 -- An officer asks what they missed: our sessions since then, at most once a GAP.
 function Grouped.HandleAsk(dist, sender, text)
-	if dist ~= "GUILD" or not Grouped.Sharing() then return end
+	if dist ~= "GUILD" then return end
 	sender = Grouped.Key(sender)
 	local rank = sender and ns.Roster.RankOf and ns.Roster.RankOf(sender)
 	if not rank or rank > ns.CAPTAIN_RANK then return end -- (an officer of our roster)
 	local since = tonumber(tostring(text):match("^ZQ~(%d+)$"))
 	if not since then return end
+	if sender ~= Grouped.Key(ns.me) then Grouped.Relay(since) end
+	if not Grouped.Sharing() then return end
 	local now = ns.Now()
 	if now - lastAnswer < Grouped.ANSWER_GAP then return end
 	lastAnswer = now
@@ -252,6 +258,67 @@ function Grouped.HandleAsk(dist, sender, text)
 	end)
 end
 
+-- Officers hand each other what they heard (1.3.7, the user's call): another officer asked
+-- (ZQ), so one officer online answers with every report held since then, the newest first,
+--   Z2~<reporter>~<start>~<seconds>~<name>,<name>,...   (GUILD; officers only send or keep it)
+-- Each waits a few random seconds and stays quiet if another officer started handing on first.
+function Grouped.Relay(since)
+	if not IsOfficer() then return end
+	local askedAt = GetTime()
+	if askedAt - lastRelay < Grouped.ANSWER_GAP then return end
+	ns.After(3 + math.random() * 9, "grouped relay", function()
+		if relayHeardAt >= askedAt then return end -- (another officer is on it)
+		if ns.DemoBlocked and ns.DemoBlocked() then return end
+		local g = Heard()
+		if not g then return end
+		lastRelay = GetTime()
+		local list = {}
+		for _, e in ipairs(g.list) do if e.t >= since then list[#list + 1] = e end end
+		table.sort(list, function(a, b) return a.t > b.t end)
+		local sent = 0
+		for _, e in ipairs(list) do
+			if sent >= Grouped.MAX_RELAY then break end
+			local head = ("Z2~%s~%d~%d~"):format(tostring(e.r):gsub("[~,|%c]", ""), e.t, e.d)
+			local out = {}
+			for _, n in ipairs(e.w or {}) do
+				local clean = tostring(n):gsub("[~,|%c]", "")
+				if #out >= Grouped.MAX_NAMES or #head + #table.concat(out, ",") + #clean + 1 > 250 then break end
+				out[#out + 1] = clean
+			end
+			if #out > 0 then
+				ns.Comm.Send("GUILD", head .. table.concat(out, ","), "grouped relay")
+				sent = sent + 1
+			end
+		end
+		if sent > 0 then ns.Log("grouped: %d report(s) handed to another officer", sent) end
+	end)
+end
+
+-- A report another officer handed on: kept as its reporter's own (reporter of our roster only).
+function Grouped.HandleRelay(dist, sender, text)
+	if dist ~= "GUILD" then return end
+	sender = Grouped.Key(sender)
+	local rank = sender and ns.Roster.RankOf and ns.Roster.RankOf(sender)
+	if not rank or rank > ns.CAPTAIN_RANK or sender == Grouped.Key(ns.me) then return end
+	relayHeardAt = GetTime()
+	if not IsOfficer() then return end
+	local reporter, t, d, list = tostring(text):match("^Z2~([^~]+)~(%d+)~(%d+)~(.*)$")
+	t, d = tonumber(t), tonumber(d)
+	reporter = reporter and Grouped.Key(ns.Codec.Plain(reporter):sub(1, 64))
+	if not reporter or not t or not d then return end
+	if not (ns.Roster.RankOf and ns.Roster.RankOf(reporter)) then return end
+	local now = ns.Now()
+	if t > now + 300 or now - t > Grouped.KEEP or d < Grouped.MIN_SESSION or d > 24 * 3600 then return end
+	local names = {}
+	for n in tostring(list or ""):gmatch("[^,]+") do
+		if #names >= Grouped.MAX_NAMES then break end
+		local k = Grouped.Key(ns.Codec.Plain(n):sub(1, 64))
+		if k and k ~= reporter then names[#names + 1] = k end
+	end
+	if #names == 0 then return end
+	Grouped.Heard(reporter, t, d, names)
+end
+
 function Grouped.Ask()
 	if not IsOfficer() then return end
 	local now = ns.Now()
@@ -266,10 +333,288 @@ function Grouped.Ask()
 end
 
 ---------------------------------------------------------------------------
+-- Who was online (officers): what the roster scans showed while this officer was on
+---------------------------------------------------------------------------
+-- Kept as flat lists of { from, to, from, to, ... }: the times this client watched the roster
+-- (cover) and, per member, the times the roster showed them online. A report is checked
+-- against them only where this client was watching (Covered); elsewhere it is taken as told.
+
+local function Extend(list, now)
+	local n = #list
+	if n >= 2 and now - list[n] <= 3 * Grouped.SAMPLE then list[n] = now
+	else list[n + 1], list[n + 2] = now, now end
+end
+local function PruneFlat(list, now)
+	local keep = {}
+	for i = 1, #list - 1, 2 do
+		if now - list[i + 1] <= Grouped.KEEP then keep[#keep + 1], keep[#keep + 2] = list[i], list[i + 1] end
+	end
+	return keep
+end
+
+-- Alts named in guild and officer notes: "alt of Steveo", "Steveo's alt", "alt: Steveo",
+-- "Alt - Steveo Rino", "ALT Steveo", "Steveo alt" (any case). A name only counts when it is a
+-- guildmate's (first name alone only when one guildmate has it). A note that only starts with
+-- "alt" (the user: officers may just write ALT, alt or Alt - ...) says "an alt" without whose:
+-- then NoteMain gives true, and Presence looks for the main by the second name (Forever's names
+-- are two words, and a player's characters share the second: Danzig, Gage, Maldric Gloomvein).
+local NOTE_PATTERNS = { "alt%s+of%s+([%a][%a' ]-)%s*$", "alt%s+of%s+([%a][%a']+)", "([%a][%a']+)'s%s+alt", "alt%s*[:%-]%s*([%a][%a' ]-)%s*$",
+	"alt%s*[:%-]%s*([%a][%a']+)", "^%s*alt%s+([%a][%a' ]-)%s*$", "^%s*alt%s+([%a][%a']+)", "^%s*([%a][%a']+)%s+alt%s*$" }
+function Grouped.NoteMain(note, byShort, byFirst)
+	if type(note) ~= "string" or note == "" then return nil end
+	local lower = note:lower()
+	for _, pat in ipairs(NOTE_PATTERNS) do
+		local who = lower:match(pat)
+		if who then
+			who = who:gsub("^%s+", ""):gsub("%s+$", "")
+			local k = byShort[who] or byFirst[who]
+			if k then return k end
+		end
+	end
+	-- "ALT", "alt.", "Alt - healer", "alt (bank)": an alt, the main not named.
+	if lower:match("^%s*alt%f[%A]") then return true end
+	return nil
+end
+
+-- The second word of a name ("Gloomvein" of "Danzig Gloomvein-Realm"), lower case, or nil.
+function Grouped.SecondName(key)
+	local short = type(key) == "string" and ns.ShortName(key) or nil
+	local second = short and short:match("^%S+%s+(%S+)$")
+	return second and second:lower() or nil
+end
+
+function Grouped.Presence()
+	if not IsOfficer() then return end
+	local members = ns.Roster and ns.Roster.members
+	if type(members) ~= "table" or #members == 0 then return end
+	local g = Heard()
+	if not g then return end
+	local now = ns.Now()
+	g.cover = type(g.cover) == "table" and g.cover or {}
+	g.online = type(g.online) == "table" and g.online or {}
+	Extend(g.cover, now)
+	for _, m in ipairs(members) do
+		if m.online then
+			local key = Grouped.Key(m.raw)
+			if key then
+				g.online[key] = type(g.online[key]) == "table" and g.online[key] or {}
+				Extend(g.online[key], now)
+			end
+		end
+	end
+	-- Tidied once an hour or so.
+	if not g.tidyAt or now - g.tidyAt > 3600 then
+		g.tidyAt = now
+		g.cover = PruneFlat(g.cover, now)
+		for key, list in pairs(g.online) do
+			local kept = PruneFlat(list, now)
+			g.online[key] = #kept > 0 and kept or nil
+		end
+	end
+	-- Alts from the notes (the roster's own: public notes, and officer notes an officer may read).
+	if ns.NumGuildMembers and ns.GuildRosterInfo and (not g.notesAt or now - g.notesAt > 600) then
+		g.notesAt = now
+		local byShort, byFirst = {}, {}
+		for _, m in ipairs(members) do
+			local key = Grouped.Key(m.raw)
+			if key then
+				local short = ns.ShortName(key):lower()
+				byShort[short] = key
+				local first = short:match("^(%S+)")
+				if first then byFirst[first] = byFirst[first] == nil and key or false end -- (a first name two share: neither)
+			end
+		end
+		for k, v in pairs(byFirst) do if v == false then byFirst[k] = nil end end
+		local notes, unnamed, notAlt = {}, {}, {}
+		local total = ns.NumGuildMembers() or 0
+		for i = 1, total do
+			local ok, name, _, _, _, _, _, note, officerNote = pcall(ns.GuildRosterInfo, i)
+			local key = ok and Plain(name) and Grouped.Key(name)
+			if key then
+				local a = Grouped.NoteMain(Plain(note), byShort, byFirst)
+				local b = Grouped.NoteMain(Plain(officerNote), byShort, byFirst)
+				local main = (type(a) == "string" and a) or (type(b) == "string" and b) or nil
+				if main and main ~= key then notes[key] = main
+				elseif a == true or b == true then unnamed[#unnamed + 1] = key
+				else notAlt[#notAlt + 1] = key end
+			end
+		end
+		-- "ALT" alone: the main is the one guildmate of the same second name whose notes say no
+		-- alt. None, or several: no guess (the alt counts alone).
+		local bySecond = {}
+		for _, key in ipairs(notAlt) do
+			local sn = Grouped.SecondName(key)
+			if sn then bySecond[sn] = bySecond[sn] == nil and key or false end
+		end
+		for _, key in ipairs(unnamed) do
+			local sn = Grouped.SecondName(key)
+			local main = sn and bySecond[sn]
+			if main and main ~= key then notes[key] = main end
+		end
+		g.noteMains = notes
+	end
+end
+
+local function Covered(g, a, b)
+	local list = g and g.cover
+	if type(list) ~= "table" then return false end
+	for i = 1, #list - 1, 2 do
+		if list[i] <= a + Grouped.SLACK and list[i + 1] >= b - Grouped.SLACK then return true end
+	end
+	return false
+end
+local function WasOnline(g, key, a, b)
+	local list = g and g.online and g.online[key]
+	if type(list) ~= "table" then return false end
+	for i = 1, #list - 1, 2 do
+		if list[i] <= b + Grouped.SLACK and list[i + 1] >= a - Grouped.SLACK then return true end
+	end
+	return false
+end
+
+-- The person a character is: its main by the alt links (Alts.lua), else by a note, else itself.
+function Grouped.PersonOf(key, g)
+	local Alts = ns.Alts
+	if Alts and Alts.Group then
+		local ok, grp = pcall(Alts.Group, key)
+		if ok and type(grp) == "table" and type(grp.main) == "string" then
+			local main = Grouped.Key(grp.main)
+			if main then return main, "link" end
+		end
+	end
+	local notes = g and g.noteMains
+	if type(notes) == "table" and notes[key] then return notes[key], "note" end
+	return key, nil
+end
+
+---------------------------------------------------------------------------
 -- The counts (officers)
 ---------------------------------------------------------------------------
 
--- Reports older than KEEP leave the list; what they counted goes to allTime first.
+-- The reports that pass the checks, each with the names that do (`names`):
+--   one reporter is in one group at a time: a report overlapping an earlier one of the same
+--   reporter is dropped; where this officer watched the roster, a reporter shown offline the whole
+--   time is dropped, and so is a named member shown offline (their credit only).
+function Grouped.Checked(list, g)
+	local byReporter = {}
+	for _, e in ipairs(list) do
+		byReporter[e.r] = byReporter[e.r] or {}
+		local l = byReporter[e.r]
+		l[#l + 1] = e
+	end
+	local out, dropped = {}, 0
+	for r, es in pairs(byReporter) do
+		table.sort(es, function(a, b) return a.t < b.t end)
+		local lastEnd
+		for _, e in ipairs(es) do
+			local a, b = e.t, e.t + e.d
+			local ok = not (lastEnd and a < lastEnd - Grouped.SLACK)
+			local covered = ok and Covered(g, a, b)
+			local inRoster = ns.Roster.RankOf and ns.Roster.RankOf(r) ~= nil
+			if ok and covered and inRoster and not WasOnline(g, r, a, b) then ok = false end
+			if ok then
+				lastEnd = math.max(lastEnd or 0, b)
+				local names = {}
+				for _, n in ipairs(e.w or {}) do
+					local mine = ns.Roster.RankOf and ns.Roster.RankOf(n) ~= nil
+					if not (covered and mine and not WasOnline(g, n, a, b)) then names[#names + 1] = n end
+				end
+				out[#out + 1] = { r = e.r, t = e.t, d = e.d, w = names }
+			else
+				dropped = dropped + 1
+			end
+		end
+	end
+	return out, dropped
+end
+
+local function Day(t) return date and date("%Y-%m-%d", t) or tostring(math.floor(t / 86400)) end
+
+-- One set of characters' sessions (a member, or a person and their alts), merged by time: a
+-- session is a run of reports this close (MERGE_GAP); counted once each.
+local function Tally(es, selves)
+	table.sort(es, function(a, b) return a.t < b.t end)
+	local c = { count = 0, confirmed = 0, byOthers = 0, selfOnly = 0, with = {}, days = {}, vouchers = {}, last = nil }
+	local runEnd, reporters, mates
+	local function Close()
+		if not runEnd then return end
+		c.count = c.count + 1
+		local n, others = 0, false
+		for rep in pairs(reporters) do
+			n = n + 1
+			if not selves[rep] then others = true; c.vouchers[rep] = true end
+		end
+		if n >= 2 then c.confirmed = c.confirmed + 1 end
+		if others then c.byOthers = c.byOthers + 1 else c.selfOnly = c.selfOnly + 1 end
+		for m in pairs(mates) do c.with[m] = (c.with[m] or 0) + 1 end
+	end
+	for _, e in ipairs(es) do
+		local a, b = e.t, e.t + e.d
+		if runEnd and a <= runEnd + Grouped.MERGE_GAP then
+			runEnd = math.max(runEnd, b)
+		else
+			Close()
+			runEnd, reporters, mates = b, {}, {}
+		end
+		reporters[e.r] = true
+		if not selves[e.r] then mates[e.r] = true end
+		for _, n in ipairs(e.w or {}) do if not selves[n] then mates[n] = true end end
+		c.days[Day(a)] = true
+		c.last = math.max(c.last or 0, b)
+	end
+	Close()
+	local function Size(t) local n = 0 for _ in pairs(t) do n = n + 1 end return n end
+	c.mates, c.dayCount, c.vouched = Size(c.with), Size(c.days), Size(c.vouchers)
+	return c
+end
+
+-- { [character key] = counts } from checked reports. A character with alts (links or notes) gets
+-- its person's counts (main and alts together, merged by time), with .own (its own) and .person,
+-- .chars (the person's characters) and .via ("link" or "note").
+function Grouped.Count(list, g)
+	local perChar = {}
+	local function Add(key, e)
+		perChar[key] = perChar[key] or {}
+		local l = perChar[key]
+		if l[#l] ~= e then l[#l + 1] = e end
+	end
+	for _, e in ipairs(list) do
+		Add(e.r, e)
+		for _, n in ipairs(e.w or {}) do Add(n, e) end
+	end
+	local persons, out = {}, {}
+	for key in pairs(perChar) do
+		local p, via = Grouped.PersonOf(key, g)
+		persons[p] = persons[p] or { chars = {}, via = nil }
+		persons[p].chars[key] = true
+		if via then persons[p].via = via end
+	end
+	for p, info in pairs(persons) do
+		local n = 0
+		for _ in pairs(info.chars) do n = n + 1 end
+		local whole
+		if n > 1 or not info.chars[p] then
+			local seen, es = {}, {}
+			for key in pairs(info.chars) do
+				for _, e in ipairs(perChar[key]) do
+					if not seen[e] then seen[e] = true; es[#es + 1] = e end
+				end
+			end
+			whole = Tally(es, info.chars)
+		end
+		for key in pairs(info.chars) do
+			local own = Tally(perChar[key], { [key] = true })
+			local c = whole or own
+			if whole then
+				c = setmetatable({ own = own, person = p, chars = info.chars, via = info.via }, { __index = whole })
+			end
+			out[key] = c
+		end
+	end
+	return out
+end
+
+-- Reports older than KEEP leave the list; what they counted goes to allTime (per character) first.
 local function Age(g, now)
 	local old = {}
 	for i = #g.list, 1, -1 do
@@ -281,62 +626,28 @@ local function Age(g, now)
 		end
 	end
 	if #old == 0 then return end
-	for key, n in pairs(Grouped.Count(old)) do g.allTime[key] = (g.allTime[key] or 0) + n.count end
+	local checked = Grouped.Checked(old, g)
+	for key, c in pairs(Grouped.Count(checked, g)) do
+		local own = c.own or c
+		g.allTime[key] = (g.allTime[key] or 0) + own.count
+	end
 end
 
--- { [member key] = { count, confirmed, last, with = { [key] = sessions } } } from a list of reports:
--- each member's sessions (as reporter or named), merged where they overlap.
-function Grouped.Count(list)
-	local per = {}
-	local function Add(key, e)
-		per[key] = per[key] or {}
-		local p = per[key]
-		p[#p + 1] = e
-	end
-	for _, e in ipairs(list) do
-		Add(e.r, e)
-		for _, n in ipairs(e.w or {}) do Add(n, e) end
-	end
-	local out = {}
-	for key, es in pairs(per) do
-		table.sort(es, function(a, b) return a.t < b.t end)
-		local count, confirmed, last, with = 0, 0, nil, {}
-		local runEnd, reporters, mates = nil, nil, nil
-		local function Close()
-			if not runEnd then return end
-			count = count + 1
-			local n = 0
-			for _ in pairs(reporters) do n = n + 1 end
-			if n >= 2 then confirmed = confirmed + 1 end
-			for m in pairs(mates) do with[m] = (with[m] or 0) + 1 end
-		end
-		for _, e in ipairs(es) do
-			local s, f = e.t, e.t + e.d
-			if runEnd and s <= runEnd + Grouped.MERGE_GAP then
-				runEnd = math.max(runEnd, f)
-			else
-				Close()
-				runEnd, reporters, mates = f, {}, {}
-			end
-			reporters[e.r] = true
-			if e.r ~= key then mates[e.r] = true end
-			for _, n in ipairs(e.w or {}) do if n ~= key then mates[n] = true end end
-			last = math.max(last or 0, f)
-		end
-		Close()
-		out[key] = { count = count, confirmed = confirmed, last = last, with = with }
-	end
-	return out
-end
-
--- The counts for our guild's members, the last KEEP (officers only; nil otherwise).
+-- The counts for our guild's members, the last KEEP (officers only; nil otherwise). A count with
+-- alts adds the alts' all-time totals too.
 function Grouped.MemberCounts()
 	if not IsOfficer() then return nil end
 	local g = Heard()
 	if not g then return nil end
 	Age(g, ns.Now())
-	local counts = Grouped.Count(g.list)
-	for key, c in pairs(counts) do c.allTime = (g.allTime[key] or 0) + c.count end
+	local checked, dropped = Grouped.Checked(g.list, g)
+	local counts = Grouped.Count(checked, g)
+	for key, c in pairs(counts) do
+		local all = 0
+		for k in pairs(c.chars or { [key] = true }) do all = all + (g.allTime[k] or 0) end
+		rawset(c, "allTime", all + c.count)
+	end
+	Grouped.dropped = dropped
 	return counts, g.allTime
 end
 
@@ -437,14 +748,18 @@ function Grouped.RosterLabels()
 end
 
 function Grouped.ResetForTests()
-	current, lastAnswer, lastAsk = nil, -math.huge, -math.huge
+	current, lastAnswer, lastAsk, lastRelay, relayHeardAt = nil, -math.huge, -math.huge, -math.huge, -math.huge
 end
 
 ns.Comm.Handle("Z1", function(...) Grouped.HandleReport(...) end)
 ns.Comm.Handle("ZQ", function(...) Grouped.HandleAsk(...) end)
+ns.Comm.Handle("Z2", function(...) Grouped.HandleRelay(...) end)
 
 ns.On("LOGIN", function()
-	ns.Every(Grouped.SAMPLE, "grouped", function() ns.SafeCall("grouped", Grouped.Sample) end)
+	ns.Every(Grouped.SAMPLE, "grouped", function()
+		ns.SafeCall("grouped", Grouped.Sample)
+		ns.SafeCall("grouped presence", Grouped.Presence)
+	end)
 	pcall(ns.RegisterEvent, "GROUP_ROSTER_UPDATE", function() ns.SafeCall("grouped", Grouped.Sample) end)
 	ns.RegisterEvent("PLAYER_LOGOUT", function()
 		if current then current.last = ns.Now() Finish(ns.Now()) end

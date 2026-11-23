@@ -286,6 +286,7 @@ end
 
 -- 1.3.7 (the user's call): officers' view of how often each member grouped with Sylvanistas
 -- players (Grouped.lua), the most first. Everyone of the roster, online or not.
+local function Plural(n, one, many) return n == 1 and L[one] or L[many]:format(n) end
 local function GroupedLines(lines, q)
 	local V = ns.Views
 	V.GreyRows(lines, L.GROUPED_HINT, { gapAfter = true })
@@ -308,12 +309,30 @@ local function GroupedLines(lines, q)
 		lines[#lines + 1] = {
 			key = m.name,
 			text = V.ClassColored(m.name, file) .. "  " .. V.Grey(Plain(m.rank or "")),
-			right = (n > 0 and V.Gold(L.GROUPED_TIMES:format(n)) or V.Grey(L.GROUPED_TIMES:format(0)))
+			right = (n > 0 and (V.Gold(Plural(n, "GROUPED_TIMES_ONE", "GROUPED_TIMES")) .. "  "
+					.. V.Grey(Plural(c.mates or 0, "GROUPED_MATES_ONE", "GROUPED_MATES") .. ", " .. Plural(c.dayCount or 0, "GROUPED_DAYS_ONE", "GROUPED_DAYS")))
+					or V.Grey(L.GROUPED_TIMES:format(0)))
 				.. "  " .. (m.online and V.Green(L.ONLINE_NOW) or V.Grey(Members.LastOnline(m.days))),
 			tooltip = function(tt)
 				tt:AddLine(Plain(m.name), 1, 0.82, 0)
+				if c and c.person and c.person ~= ns.Grouped.Key(m.raw) then
+					tt:AddLine(L.GROUPED_ALT_OF:format(Plain(ns.DisplayName(c.person) or c.person), c.via == "note" and L.GROUPED_VIA_NOTE or L.GROUPED_VIA_LINK), 0.6, 0.8, 1, true)
+				end
 				tt:AddLine(L.GROUPED_TIP:format(n, c and c.confirmed or 0, c and c.allTime or 0,
 					c and c.last and ns.Ago(c.last) or L.GROUPED_NEVER), 1, 1, 1, true)
+				if c and n > 0 then
+					tt:AddLine(L.GROUPED_SOURCES2:format(c.byOthers or 0, Plural(c.vouched or 0, "GROUPED_MEMBERS_ONE", "GROUPED_MEMBERS"), c.selfOnly or 0), 0.8, 0.8, 0.8, true)
+					tt:AddLine(L.GROUPED_BREADTH2:format(Plural(c.mates or 0, "GROUPED_PLAYERS_ONE", "GROUPED_PLAYERS"), Plural(c.dayCount or 0, "GROUPED_DAYS_ONE", "GROUPED_DAYS")), 0.8, 0.8, 0.8, true)
+				end
+				if c and c.chars then
+					local parts = {}
+					for k in pairs(c.chars) do
+						local own = counts[k] and (counts[k].own or counts[k])
+						parts[#parts + 1] = Plain(ns.DisplayName(k) or k) .. " " .. (own and own.count or 0)
+					end
+					table.sort(parts)
+					tt:AddLine(L.GROUPED_CHARS:format(table.concat(parts, ", ")), 0.8, 0.8, 0.8, true)
+				end
 				if c and c.with then
 					local mates = {}
 					for k, times in pairs(c.with) do mates[#mates + 1] = { k = k, n = times } end

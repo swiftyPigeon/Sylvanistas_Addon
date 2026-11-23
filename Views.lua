@@ -2046,6 +2046,20 @@ local function RealmLines(s, q)
 				tt:AddLine(L.MEMBERS_OPEN_TIP, 1, 1, 1, true)
 			end or nil,
 		}
+		-- 1.3.7 (the user: the Members page's Grouped view was too hidden): officers open it from here.
+		if own and grouped then
+			local prev = lines[#lines]
+			prev.gapAfter = nil
+			lines[#lines + 1] = {
+				indent = 1, gapAfter = true,
+				text = Gold(L.GROUPED_LINK),
+				onClick = function() ns.Members.Show("grouped") end,
+				tooltip = function(tt)
+					tt:AddLine(L.GROUPED_FILTER, 1, 0.82, 0)
+					tt:AddLine(L.GROUPED_LINK_TIP, 1, 1, 1, true)
+				end,
+			}
+		end
 	end
 	-- (The guilds opened for a Lord, Captain or member found: `searchRows` of their rows, the
 	-- guilds past them counted in `more`, shown on a click.)

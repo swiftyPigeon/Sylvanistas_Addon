@@ -242,6 +242,13 @@ All current Screams are on the **Screams** tab (`/syl screams`).
 | Hide lines with a word | `/syl filter add <word>` |
 | Change what you share | `/syl privacy` |
 
+**Groups for your officers (1.3.7).** When you've been in a group for 5 minutes or more with players
+of a Sylvanistas guild, your add-on tells your guild's officers: when it started, how long it lasted,
+and which Sylvanistas players were in it. No zone, position or chat goes with it, and only officers'
+add-ons keep it. Officers use it to see who groups with the guild, for promotions. It's on unless you
+switch off **Groups with Sylvanistas players** in `/syl privacy`. You can still be counted when a
+guildmate's add-on names you.
+
 ### Something's wrong?
 1. `/syl status` shows what the addon sees.
 2. `/syl bug` opens a report you can copy. Post it as a new issue at https://github.com/swiftyPigeon/Sylvanistas_Addon/issues (or hand it to the addon keeper).
@@ -294,6 +301,17 @@ Until it's sealed, anyone who joins the hidden channel by name can read the cens
 | Write Raid Loot decisions and points | **Shadows** tab, **Raid Loot** (`/syl loot`): click a raid drop, pick who gets it and why |
 | Answer recruits | a recruit's request shows **Invite** and **Decline** buttons. A recruit the moderators took off the network shows who, when and why first; you still choose. |
 | Remove a member or change a rank | the game's own guild window, as usual (the addon no longer gets in the way) |
+| See who groups with the guild (for promotions) | a small number left of each name on the **Guilds** page (and in the game's guild roster): how many times that member was in a group of 5+ minutes with a Sylvanistas player, the last 4 weeks. **Members** page → **Grouped with Sylvanistas (4 weeks)**: everyone ranked, with how many different guildmates and days. Hover for who told it. |
+
+**Reading the grouping counts.** They're a **minimum**: a group counts only when someone in it runs
+Sylvanistas 1.3.7 or later and shares (members without the add-on are counted when grouped with
+someone who has it). Regroups within 30 minutes count once. Alts count with their main, by linked
+alts or a guild or officer note such as "alt of Name" or "Alt - Name". A note that only says **ALT**
+(or "alt - bank") goes under the one guildmate with the same second name whose note isn't alt; with none
+or several, it isn't guessed. Sessions **told by others** weigh more than ones
+only the member told: the tooltip shows both, and from how many different members. Where your add-on
+watched the roster, reports from someone shown offline at the time are dropped. Officers' add-ons
+share what they've heard with each other, so counts fill in for officers who were away.
 
 ---
 
