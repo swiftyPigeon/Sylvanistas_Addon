@@ -851,6 +851,22 @@ local function NoMatch() return { text = Grey(L.SEARCH_NO_MATCH) } end
 -- (<Sylvanistas>, <Sylvanistas Underground>) rank 1 is the Dreadguard, the moderators.
 local function OfficerTitle(guild) return ns.IsHouseGuild(guild) and L.DREADGUARD or L.CAPTAIN end
 local function OfficersTitle(guild) return ns.IsHouseGuild(guild) and L.DREADGUARDS or L.CAPTAINS end
+
+-- 1.3.7: the grouped counts (Grouped.lua) by short name, for our own guild and an officer only;
+-- nil otherwise. (Short names: Forever's are unique, and our guildmates sit on two realms.)
+function Views.GroupedCounts(guild)
+	if not (ns.Grouped and ns.Roster.IsOfficer() and guild == ns.GuildInfo("player")) then return nil end
+	local counts = ns.Grouped.MemberCounts()
+	if not counts then return nil end
+	local out = {}
+	for key, c in pairs(counts) do out[ns.ShortName(key)] = c end
+	return out
+end
+function Views.GroupedMark(grouped, name)
+	local c = name and grouped[ns.ShortName(name)]
+	local n = c and c.count or 0
+	return (n > 0 and ("|cffffd200" .. n .. "|r") or "|cff6e6e6e0|r") .. "  "
+end
 Views.OfficerTitle = OfficerTitle
 
 -- 1.3.0: an alt's main beside its name ("Ana's alt"), wherever members are listed (Alts.MainOf).
@@ -1908,6 +1924,10 @@ local function RealmLines(s, q)
 	-- closes and opens what the search opened, instead of the guild itself.
 	local function Guild(e, open, only, folds)
 		local g = e.g
+		-- 1.3.7 (the user): our own guild, for officers: how many times each grouped with Sylvanistas
+		-- players in the last 4 weeks (Grouped.lua), a small number left of the name.
+		local grouped = open and Views.GroupedCounts(e.name)
+		local function Times(name) return grouped and Views.GroupedMark(grouped, name) or "" end
 		local lordOn, lordDays, lordDim = Views.PresenceNow(e, g.leader, g.leaderOnline, g.leaderDays)
 		lines[#lines + 1] = {
 			id = Views.GuildId(e.name),
@@ -1933,7 +1953,7 @@ local function RealmLines(s, q)
 				guild = e.name, rank = LeaderTitle(e.name, g.leader), online = lordOn, days = lordDays }
 			lines[#lines + 1] = {
 				key = g.leader,
-				indent = 1, text = Mark(g.leader, g.realm, lordOn) .. CROWN .. Gold(lord.rank) .. "  " .. ClassColored(g.leader, lord.class and ns.CLASS_FILES[lord.class])
+				indent = 1, text = Mark(g.leader, g.realm, lordOn) .. CROWN .. Gold(lord.rank) .. "  " .. Times(g.leader) .. ClassColored(g.leader, lord.class and ns.CLASS_FILES[lord.class])
 					.. Tag(g.leader, g.realm),
 				right = Presence(lordOn, lordDays, lordDim),
 				onClick = function() ns.UI.ShowPerson(lord) end,
@@ -1957,7 +1977,7 @@ local function RealmLines(s, q)
 				rank = OfficerTitle(e.name), online = on, days = days }
 			lines[#lines + 1] = {
 				key = o.name,
-				indent = 2, text = Mark(o.name, g.realm, on) .. ASSIST .. ClassColored(o.name, o.class and ns.CLASS_FILES[o.class])
+				indent = 2, text = Mark(o.name, g.realm, on) .. ASSIST .. Times(o.name) .. ClassColored(o.name, o.class and ns.CLASS_FILES[o.class])
 					.. Tag(o.name, g.realm) .. AltTag(o.name, g.realm) .. (ns.IsTreasurer(o.name, e.name) and ("  " .. ns.COIN .. Grey(L.TREASURER)) or ""),
 				right = (o.level and Grey(L.LEVEL_N:format(o.level)) .. "  " or "") .. Presence(on, days, dim),
 				onClick = function() ns.UI.ShowPerson(person) end,
@@ -1986,7 +2006,7 @@ local function RealmLines(s, q)
 			local person = { name = m.name, class = m.class, level = m.level, zone = m.zone, guild = e.name, rank = m.rank, online = true }
 			lines[#lines + 1] = {
 				key = m.name,
-				indent = 2, text = ClassColored(m.name, m.class and ns.CLASS_FILES[m.class]) .. Tag(m.name) .. AltTag(m.name) .. (m.rank and ("  " .. Grey(m.rank)) or "")
+				indent = 2, text = Times(m.name) .. ClassColored(m.name, m.class and ns.CLASS_FILES[m.class]) .. Tag(m.name) .. AltTag(m.name) .. (m.rank and ("  " .. Grey(m.rank)) or "")
 					.. (ns.IsTreasurer(m.name, e.name) and ("  " .. ns.COIN .. Grey(L.TREASURER)) or ""),
 				right = m.level and Grey(L.LEVEL_N:format(m.level)) or nil,
 				onClick = function() ns.UI.ShowPerson(person) end,

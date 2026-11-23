@@ -256,7 +256,10 @@ local function Remember(name, guild)
 	local seen = HouseSeen()
 	if not seen then return end
 	local short = ns.ShortName(name)
-	if ns.IsHouseGuild(guild) then seen[short] = { g = guild, t = Now() } else seen[short] = nil end
+	-- (1.3.7: any Sylvanistas guild is remembered, for Grouped.lua; the house checks below still ask
+	-- for the house: another guild's player never passes for one of the house.)
+	local ours = ns.IsHouseGuild(guild) or (ns.IsFederation ~= nil and ns.IsFederation(guild))
+	if ours then seen[short] = { g = guild, t = Now() } else seen[short] = nil end
 end
 local function KnownInHouse(name)
 	local seen = HouseSeen()
@@ -273,6 +276,13 @@ local function KnownInHouse(name)
 	end
 	return false
 end
+-- 1.3.7 (Grouped.lua): a player of any Sylvanistas guild, seen near us in the last HOUSE_SEEN_KEEP.
+local function KnownInFederation(name)
+	local seen = HouseSeen()
+	local e = seen and seen[ns.ShortName(name)]
+	return type(e) == "table" and ns.IsFederation ~= nil and ns.IsFederation(e.g) and Now() - (tonumber(e.t) or 0) <= Log.HOUSE_SEEN_KEEP
+end
+
 function Log.ForgetOldSeen()
 	local seen, now = HouseSeen(), Now()
 	if not seen then return end
@@ -287,7 +297,8 @@ end
 -- branch of the house (<Sylvanistas>, <Sylvanistas Underground>: ns.IsHouseGuild) by the guild the
 -- game shows, or, when it shows none (far away), anyone in our roster or known to be of the house
 -- (KnownInHouse). Secret values are skipped, never read.
-function Log.GroupMate(unit)
+-- `anyGuild` (1.3.7, Grouped.lua): anyone of any Sylvanistas guild by the guild the game shows.
+function Log.GroupMate(unit, anyGuild)
 	local ok, name, guild = pcall(function()
 		if not UnitExists(unit) or not UnitIsPlayer(unit) then return nil end
 		local full = GetUnitName and GetUnitName(unit, true)
@@ -301,9 +312,11 @@ function Log.GroupMate(unit)
 	name = ns.Normal(name)
 	if Plain(guild) then
 		Remember(name, guild)
+		if anyGuild then return ns.IsFederation(guild) and name or nil end
 		return ns.IsHouseGuild(guild) and name or nil
 	end
 	if InRoster(name) or KnownInHouse(name) then return name end
+	if anyGuild and KnownInFederation(name) then return name end
 	return nil
 end
 

@@ -368,6 +368,12 @@ Consent.Register({
 	get = function() return ns.db.rollCall end,
 	set = function(on) ns.Workshop.SetAnswers(on) end,
 })
+-- 1.3.7: groups with Sylvanistas players told to our guild's officers (Grouped.lua). On unless a No.
+Consent.Register({
+	key = "grouped", label = "CONSENT_GROUPED", text = "CONSENT_GROUPED_TEXT",
+	get = function() return ns.db.shareGroups ~= false end,
+	set = function(on) ns.Grouped.SetSharing(on) end,
+})
 Consent.Register({
 	key = "chat", label = "CONSENT_CHAT", text = "CONSENT_CHAT_TEXT",
 	get = function() return ns.db.addonChat ~= false end, -- (1.3.0: on unless a No: never waits for an answer)

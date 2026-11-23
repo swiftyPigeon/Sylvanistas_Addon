@@ -72,6 +72,7 @@ MainKey.lua
 OfficerMuster.lua
 WeeklyBrief.lua
 WeekLog.lua
+Grouped.lua
 GuildFrame.lua
 Borders.lua
 Nameplates.lua

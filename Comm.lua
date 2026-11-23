@@ -236,6 +236,7 @@ end
 --   Bank TL TN TO TS | Week Y2. Reserved: J2 (#20's route answer), E0 E1 E2 (1.2's army events),
 --   FK (a 1.1 build's copy of the dues' amount from the Treasurer's client, read by nobody now).
 --   1.1.2, the right-click menus: Versions V7 V8 V9 | Workshop VR (the author asks for a bug report).
+--   1.3.7: Grouped Z1 ZQ (sessions grouped with Sylvanistas players, to officers).
 local handlers = {}
 -- 1.1 (Moderation.lua): a client the moderators took off (net-off) sends none of what they hide.
 local function Held(msg)
