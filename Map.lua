@@ -39,24 +39,72 @@ local function PinEnter(self)
 	GameTooltip:Show()
 end
 
+-- The world map layer for our zone circles (1.3.7, the user: MapUtils' guildmate markers sat on
+-- them at a zone's middle). The pin library puts its pins on the area-marker layer; other
+-- add-ons draw group and guild members on the group-member layer, above it. Ours go on the highest
+-- of these layers this client has, checked once the map exists; nil keeps the library's own.
+Map.LEVEL_CANDIDATES = { "PIN_FRAME_LEVEL_TOPMOST", "PIN_FRAME_LEVEL_GROUP_MEMBER", "PIN_FRAME_LEVEL_WAYPOINT_LOCATION" }
+local pinLevelType, pinLevelChecked = nil, false
+function Map.PinLevel()
+	if pinLevelChecked then return pinLevelType end
+	local manager = WorldMapFrame and WorldMapFrame.GetPinFrameLevelsManager and WorldMapFrame:GetPinFrameLevelsManager()
+	if not (manager and manager.GetValidFrameLevel) then return nil end -- (no map yet: asked again later)
+	pinLevelChecked = true
+	local best, bestLevel = nil, -math.huge
+	for _, t in ipairs(Map.LEVEL_CANDIDATES) do
+		local ok, level = pcall(manager.GetValidFrameLevel, manager, t)
+		if ok and type(level) == "number" and level > bestLevel then best, bestLevel = t, level end
+	end
+	pinLevelType = best
+	ns.Log("map: zone circles on %s (%s)", tostring(best), tostring(best and bestLevel))
+	return pinLevelType
+end
+
+-- A circle's two layers kept just above the circle's own frame level (after it changes).
+function Map.Relevel(p)
+	if not (p and p.disc) then return end
+	local lv = p:GetFrameLevel()
+	if p.disc:GetFrameLevel() ~= lv + 1 then p.disc:SetFrameLevel(lv + 1) end
+	if p.label:GetFrameLevel() ~= lv + 2 then p.label:SetFrameLevel(lv + 2) end
+end
+Map.PIN_ALPHA = 0.55 -- the zone circles' rim and disc (the number stays solid)
 local function CreatePin()
 	local p = CreateFrame("Frame", nil, UIParent)
 	p.sylvanistas = true -- (ours: photo mode leaves it shown, UI.TogglePhoto)
 	p:SetSize(20, 20)
 	p:EnableMouse(true)
-	p.edge = p:CreateTexture(nil, "BACKGROUND", nil, -1)
+	-- (1.3.7, the user: see-through, so a player standing at the zone's middle shows under it.) The
+	-- gold rim and dark disc in a frame of their own, faded as one (Map.PIN_ALPHA); the number on a
+	-- frame above, solid. Hovered, the circle goes solid while its tooltip shows.
+	p.disc = CreateFrame("Frame", nil, p)
+	p.disc:SetAllPoints()
+	p.disc:SetFrameLevel(p:GetFrameLevel() + 1)
+	p.disc:SetAlpha(Map.PIN_ALPHA)
+	p.edge = p.disc:CreateTexture(nil, "BACKGROUND", nil, -1)
 	p.edge:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
 	p.edge:SetVertexColor(0.9, 0.76, 0.36, 0.95)
 	p.edge:SetPoint("TOPLEFT", -2, 2)
 	p.edge:SetPoint("BOTTOMRIGHT", 2, -2)
-	p.bg = p:CreateTexture(nil, "BACKGROUND", nil, 1)
+	p.bg = p.disc:CreateTexture(nil, "BACKGROUND", nil, 1)
 	p.bg:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
 	p.bg:SetVertexColor(0.12, 0.07, 0.02, 0.9)
 	p.bg:SetAllPoints()
-	p.text = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	p.label = CreateFrame("Frame", nil, p)
+	p.label:SetAllPoints()
+	p.label:SetFrameLevel(p:GetFrameLevel() + 2)
+	p.text = p.label:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	p.text:SetPoint("CENTER", 0, 0)
-	p:SetScript("OnEnter", PinEnter)
-	p:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	p.text:SetShadowOffset(1, -1)
+	p:SetScript("OnEnter", function(self)
+		self.disc:SetAlpha(1)
+		PinEnter(self)
+	end)
+	p:SetScript("OnLeave", function(self)
+		self.disc:SetAlpha(Map.PIN_ALPHA)
+		GameTooltip:Hide()
+	end)
+	-- (A pin library may set its frame level after this: the two layers follow it.)
+	p:HookScript("OnShow", function(self) Map.Relevel(self) end)
 	return p
 end
 
@@ -121,7 +169,7 @@ local function RefreshNow()
 			p:SetSize(size, size)
 			p.text:SetText(ShortCount(z.count))
 			p.key, p.count, p.guilds = z.key, z.count, s.zoneGuilds[z.key]
-			Pins:AddWorldMapIconMap(Map, p, mapID, 0.5, 0.5, SHOW_FLAG)
+			Pins:AddWorldMapIconMap(Map, p, mapID, 0.5, 0.5, SHOW_FLAG, Map.PinLevel())
 			active[#active + 1] = p
 			-- The same count where the city sits on the map of the zone around it.
 			local around = ContainerOf(mapID)
@@ -130,7 +178,7 @@ local function RefreshNow()
 				q:SetSize(size, size)
 				q.text:SetText(ShortCount(z.count))
 				q.key, q.count, q.guilds = z.key, z.count, s.zoneGuilds[z.key]
-				Pins:AddWorldMapIconMap(Map, q, around.zone, around.x, around.y, SHOW_HERE)
+				Pins:AddWorldMapIconMap(Map, q, around.zone, around.x, around.y, SHOW_HERE, Map.PinLevel())
 				active[#active + 1] = q
 			end
 		end
@@ -214,6 +262,7 @@ function Map.LayoutOverlay()
 			overlay[i] = f
 		end
 		f:SetFrameLevel(canvas:GetFrameLevel() + 100)
+		Map.Relevel(f)
 		-- Undo the canvas zoom so the circle keeps the same size on screen; SetPoint offsets
 		-- are in the frame's own (scaled) units, hence the * scale.
 		f:SetScale(1 / scale)
