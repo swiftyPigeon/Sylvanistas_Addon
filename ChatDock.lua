@@ -593,10 +593,20 @@ end
 
 -- The docked button shown for members, lit while the small chat is open; the Crafters' icon in its
 -- title bar lit while the small Crafters window is open.
+-- Whether the button is for this character: true, false, or nil while the game can't say yet.
+-- (1.3.7, the user: after a zeppelin's loading screen the button went and stayed gone until Ctrl+Enter.
+-- Right after a loading screen the game says we are in a guild before it says which one: "no guild
+-- name" then read as "not a member", and the button hid until the next check.)
+function Dock.ForMe()
+	if ns.IsMember() then return not ns.Channels.missing and ns.Channels.MyLevel() > 0 end
+	if ns.InGuild() and not ns.GuildInfo("player") then return nil end
+	return false
+end
+
 function Dock.Paint()
-	local member = ns.IsMember() and not ns.Channels.missing and ns.Channels.MyLevel() > 0
+	local member = Dock.ForMe()
 	if button then
-		button:SetShown(member)
+		if member ~= nil then button:SetShown(member) end -- (not known yet: left as it was)
 		Anchor(button) -- (Guild Master Forever's button may have shown or hidden since)
 		if Dock.IsShown() then button:LockHighlight() else button:UnlockHighlight() end
 	end
@@ -744,5 +754,14 @@ ns.On("LOGIN", function()
 		Dock.PaintBubble()
 	end)
 	ns.After(5, "chat dock place", function() Dock.Paint() end) -- (after the other add-on's button is made)
+	-- As soon as the game says something about our guild (after a loading screen above all), not only
+	-- on the next tick; and once more a moment after each loading screen.
+	for _, e in ipairs({ "PLAYER_GUILD_UPDATE", "GUILD_ROSTER_UPDATE" }) do
+		ns.RegisterEvent(e, function() Dock.Paint() end)
+	end
+	ns.RegisterEvent("PLAYER_ENTERING_WORLD", function()
+		Dock.Paint()
+		ns.After(3, "chat dock after loading", function() Dock.Paint() end)
+	end)
 	ns.Every(30, "chat dock", function() Dock.Paint() end)
 end)
