@@ -760,11 +760,7 @@ function Loot.OnLootMessage(text)
 	local link = text:match("|c%x+|Hitem:[^|]+|h%[[^%]]*%]|h|r") or text:match("|Hitem:[^|]+|h%[[^%]]*%]|h")
 	local id = link and tonumber(link:match("|Hitem:(%d+)"))
 	if not id then return end
-	local quality
-	if GetItemInfo then
-		local ok, _, _, q = pcall(GetItemInfo, link)
-		if ok then quality = q end
-	end
+	local _, _, quality = ns.ItemInfo(link)
 	if not Rare(link, quality) then return end
 	local to
 	for _, fmt in ipairs({ LOOT_ITEM, LOOT_ITEM_MULTIPLE }) do
@@ -798,19 +794,15 @@ local function Green(s) return "|cff40ff40" .. s .. "|r" end
 -- An item as a line shows it: the game's link once the client knows it, else "item #id".
 local function ItemText(id)
 	if not id then return nil end
-	if GetItemInfo then
-		local ok, name, link = pcall(GetItemInfo, id)
-		if ok and type(link) == "string" then return link end
-		if ok and type(name) == "string" then return "[" .. name .. "]" end
-	end
+	local name, link = ns.ItemInfo(id)
+	if type(link) == "string" then return link end
+	if type(name) == "string" then return "[" .. name .. "]" end
 	return "[" .. L.LOOT_ITEM_N:format(id) .. "]"
 end
 local function ItemName(id)
 	if not id then return nil end
-	if GetItemInfo then
-		local ok, name = pcall(GetItemInfo, id)
-		if ok and type(name) == "string" then return name end
-	end
+	local name = ns.ItemInfo(id)
+	if type(name) == "string" then return name end
 	return L.LOOT_ITEM_N:format(id)
 end
 

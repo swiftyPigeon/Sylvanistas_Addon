@@ -859,9 +859,9 @@ function Bank.RequestText(text)
 	local count, what = text:match("^%s*(%d+)%s*[xX]?%s+(.-)%s*$")
 	if not count then count, what = 1, text:match("^%s*(.-)%s*$") end
 	local id = tonumber(what:match("item:(%d+)")) or tonumber(what:match("^#?(%d+)$"))
-	if not id and what ~= "" and GetItemInfo then
-		local ok, _, link = pcall(GetItemInfo, what)
-		id = ok and type(link) == "string" and tonumber(link:match("item:(%d+)")) or nil
+	if not id and what ~= "" then
+		local _, link = ns.ItemInfo(what)
+		id = type(link) == "string" and tonumber(link:match("item:(%d+)")) or nil
 	end
 	if not id then return ns.Print(L.BANK_REQUEST_WHAT) end
 	return Bank.Request(id, count)

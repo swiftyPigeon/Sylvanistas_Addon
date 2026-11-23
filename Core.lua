@@ -96,6 +96,23 @@ function ns.Cut(s, n)
 	return s:sub(1, n)
 end
 
+-- An item's info (name, link, quality, ...: GetItemInfo's returns) from an id, a link or a name,
+-- or nothing while the client has not loaded it. WoW: Forever has no global GetItemInfo (seen in
+-- game: every name came out "item N"), so C_Item first, the global for clients that still have it.
+-- Never errors.
+function ns.ItemInfo(item)
+	if item == nil then return nil end
+	local fns = { C_Item and C_Item.GetItemInfo or false, GetItemInfo or false }
+	for k = 1, 2 do
+		local fn = fns[k]
+		if type(fn) == "function" then
+			local res = { pcall(fn, item) }
+			if res[1] and res[2] ~= nil then return unpack(res, 2, 18) end
+		end
+	end
+	return nil
+end
+
 function ns.ShortName(name)
 	if not name then return nil end
 	return (name:gsub("%-.*$", ""))

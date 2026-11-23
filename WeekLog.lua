@@ -188,11 +188,7 @@ function Log.OnLoot(text)
 	local link = text:match("|c%x+|Hitem:[^|]+|h%[[^%]]*%]|h|r")
 	local id = link and tonumber(link:match("|Hitem:(%d+)"))
 	if not id then return end
-	local quality
-	if GetItemInfo then
-		local ok, _, _, q = pcall(GetItemInfo, link)
-		if ok then quality = q end
-	end
+	local _, _, quality = ns.ItemInfo(link)
 	local color = link:match("^|c(%x%x%x%x%x%x%x%x)")
 	if not ((quality and quality >= 3) or (not quality and color and RARE_COLORS[color:lower()])) then return end
 	run.loot[#run.loot + 1] = id
@@ -347,7 +343,7 @@ local function Hours(s)
 	return L.WEEKLOG_HOURS:format(math.floor(m / 60), m % 60)
 end
 local function ItemText(id)
-	local name, link = GetItemInfo and GetItemInfo(id)
+	local name, link = ns.ItemInfo(id)
 	return link or name or ("item " .. id)
 end
 
