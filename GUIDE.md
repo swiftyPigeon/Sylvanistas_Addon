@@ -301,7 +301,7 @@ Until it's sealed, anyone who joins the hidden channel by name can read the cens
 | Write Raid Loot decisions and points | **Shadows** tab, **Raid Loot** (`/syl loot`): click a raid drop, pick who gets it and why |
 | Answer recruits | a recruit's request shows **Invite** and **Decline** buttons. A recruit the moderators took off the network shows who, when and why first; you still choose. |
 | Remove a member or change a rank | the game's own guild window, as usual (the addon no longer gets in the way) |
-| See who groups with the guild (for promotions) | a small number left of each name on the **Guilds** page (and in the game's guild roster): how many times that member was in a group of 5+ minutes with a Sylvanistas player, the last 4 weeks. **Members** page → **Grouped with Sylvanistas (4 weeks)**: everyone ranked, with how many different guildmates and days. Hover for who told it. |
+| See who groups with the guild (for promotions) | a small number left of each name on the **Guilds** page (and in the game's guild roster): how many groups of 5+ minutes that member was in with a Sylvanistas player, the last 4 weeks. **Members** page → **Grouped with Sylvanistas (4 weeks)**: everyone ranked, with how many different guildmates and days. Hover for who told it. |
 
 **Reading the grouping counts.** They're a **minimum**: a group counts only when someone in it runs
 Sylvanistas 1.3.7 or later and shares (members without the add-on are counted when grouped with
