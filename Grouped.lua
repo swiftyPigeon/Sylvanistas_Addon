@@ -25,7 +25,7 @@ ns.Grouped = Grouped
 Grouped.SAMPLE = 60              -- seconds between looks at the group
 Grouped.MIN_SESSION = 5 * 60     -- shorter groups do not count (a quick invite)
 Grouped.KEEP = 28 * 24 * 3600    -- the last 4 weeks
-Grouped.MERGE_GAP = 30 * 60      -- a member's sessions this close count as one (a regroup)
+Grouped.MERGE_GAP = 30 * 60      -- a member's sessions this close, with someone in common, count as one (a regroup)
 Grouped.SLACK = 120              -- clock and sampling slack in the checks below
 Grouped.MAX_RELAY = 300          -- reports one officer hands another in one answer (newest first)
 Grouped.ANSWER_GAP = 10 * 60     -- a member answers an officer's ask at most this often
@@ -530,8 +530,10 @@ end
 
 local function Day(t) return date and date("%Y-%m-%d", t) or tostring(math.floor(t / 86400)) end
 
--- One set of characters' sessions (a member, or a person and their alts), merged by time: a
--- session is a run of reports this close (MERGE_GAP); counted once each.
+-- One set of characters' sessions (a member, or a person and their alts), merged by time: reports
+-- that overlap are one group (told twice, or by two clients); a later one within MERGE_GAP is the
+-- same group re-formed only when it has someone in common with it (the user: a group with William,
+-- then one with Steveo a few minutes later, are two groups). Counted once each.
 local function Tally(es, selves)
 	table.sort(es, function(a, b) return a.t < b.t end)
 	local c = { count = 0, confirmed = 0, byOthers = 0, selfOnly = 0, with = {}, days = {}, vouchers = {}, last = nil }
@@ -550,15 +552,24 @@ local function Tally(es, selves)
 	end
 	for _, e in ipairs(es) do
 		local a, b = e.t, e.t + e.d
-		if runEnd and a <= runEnd + Grouped.MERGE_GAP then
+		local here = {}
+		if not selves[e.r] then here[e.r] = true end
+		for _, n in ipairs(e.w or {}) do if not selves[n] then here[n] = true end end
+		local same = false
+		if runEnd then
+			if a <= runEnd + Grouped.SLACK then same = true
+			elseif a <= runEnd + Grouped.MERGE_GAP then
+				for n in pairs(here) do if mates[n] then same = true break end end
+			end
+		end
+		if same then
 			runEnd = math.max(runEnd, b)
 		else
 			Close()
 			runEnd, reporters, mates = b, {}, {}
 		end
 		reporters[e.r] = true
-		if not selves[e.r] then mates[e.r] = true end
-		for _, n in ipairs(e.w or {}) do if not selves[n] then mates[n] = true end end
+		for n in pairs(here) do mates[n] = true end
 		c.days[Day(a)] = true
 		c.last = math.max(c.last or 0, b)
 	end

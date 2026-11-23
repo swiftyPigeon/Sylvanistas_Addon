@@ -305,7 +305,8 @@ Until it's sealed, anyone who joins the hidden channel by name can read the cens
 
 **Reading the grouping counts.** They're a **minimum**: a group counts only when someone in it runs
 Sylvanistas 1.3.7 or later and shares (members without the add-on are counted when grouped with
-someone who has it). Regroups within 30 minutes count once. Alts count with their main, by linked
+someone who has it). The same guildmates grouping again within 30 minutes count once; a group
+with someone else, however soon after, is a new group. Alts count with their main, by linked
 alts or a guild or officer note such as "alt of Name" or "Alt - Name". A note that only says **ALT**
 (or "alt - bank") goes under the one guildmate with the same second name whose note isn't alt; with none
 or several, it isn't guessed. Sessions **told by others** weigh more than ones
