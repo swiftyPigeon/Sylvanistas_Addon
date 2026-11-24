@@ -1,7 +1,7 @@
 local ADDON, ns = ...
 local L = ns.L
 
--- Grouped with the guild (1.3.7, the user's call): for promotions, officers see on the Members
+-- Grouped with the guild (1.3.7, the user's call; 1.3.8: both house guilds, catch-up): for promotions, officers see on the Members
 -- page how many times each member grouped with at least one Sylvanistas player over the last
 -- 4 weeks (Members.lua, its "Grouped" view).
 --
@@ -493,7 +493,8 @@ function Grouped.CatchUp()
 		if n >= Grouped.CATCH_UP_MAX then break end
 		local times = s.e.again or 0
 		if times < Grouped.CATCH_UP_TIMES then
-			s.e.again = times + 1
+			-- (No key or no channel this login: told over GUILD, not counted as a channel try.)
+			if not (ns.Comm.ChannelReady and House(MyGuild()) and not ns.Comm.ChannelReady()) then s.e.again = times + 1 end
 			TellAgain(s)
 			n = n + 1
 		end

@@ -242,10 +242,11 @@ All current Screams are on the **Screams** tab (`/syl screams`).
 | Hide lines with a word | `/syl filter add <word>` |
 | Change what you share | `/syl privacy` |
 
-**Groups for your officers (1.3.7).** When you've been in a group for 5 minutes or more with players
+**Groups for your officers (1.3.7; both house guilds since 1.3.8).** When you've been in a group for 5 minutes or more with players
 of a Sylvanistas guild, your add-on tells your guild's officers: when it started, how long it lasted,
-and which Sylvanistas players were in it. No zone, position or chat goes with it, and only officers'
-add-ons keep it. Officers use it to see who groups with the guild, for promotions. It's on unless you
+and which Sylvanistas players were in it. In Sylvanistas and Sylvanistas
+Underground it also goes on the hidden channel, so the officers of both hear it. No zone, position or
+chat goes with it, and only officers' add-ons keep it. Officers use it to see who groups with the guild, for promotions. It's on unless you
 switch off **Groups with Sylvanistas players** in `/syl privacy`. You can still be counted when a
 guildmate's add-on names you.
 
@@ -304,7 +305,7 @@ Until it's sealed, anyone who joins the hidden channel by name can read the cens
 | See who groups with the guild (for promotions) | a small number left of each name on the **Guilds** page (and in the game's guild roster): how many groups of 5+ minutes that member was in with a Sylvanistas player, the last 4 weeks. **Members** page → **Grouped with Sylvanistas (4 weeks)**: everyone ranked, with how many different guildmates and days. Hover for who told it. |
 
 **Reading the grouping counts.** They're a **minimum**: a group counts only when someone in it runs
-Sylvanistas 1.3.7 or later and shares (members without the add-on are counted when grouped with
+Sylvanistas 1.3.7 or later (1.3.8 for the other house guild's officers to hear it) and shares (members without the add-on are counted when grouped with
 someone who has it). The same guildmates grouping again within 30 minutes count once; a group
 with someone else, however soon after, is a new group. Alts count with their main, by linked
 alts or a guild or officer note such as "alt of Name" or "Alt - Name". A note that only says **ALT**
