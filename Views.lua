@@ -855,7 +855,10 @@ local function OfficersTitle(guild) return ns.IsHouseGuild(guild) and L.DREADGUA
 -- 1.3.7: the grouped counts (Grouped.lua) by short name, for our own guild and an officer only;
 -- nil otherwise. (Short names: Forever's are unique, and our guildmates sit on two realms.)
 function Views.GroupedCounts(guild)
-	if not (ns.Grouped and ns.Roster.IsOfficer() and guild == ns.GuildInfo("player")) then return nil end
+	if not (ns.Grouped and ns.Roster.IsOfficer()) then return nil end
+	-- (The house guilds' officers see both: Grouped.lua keeps one list for them.)
+	local mine = ns.GuildInfo("player")
+	if guild ~= mine and not (ns.IsHouseGuild(guild) and ns.IsHouseGuild(mine)) then return nil end
 	local counts = ns.Grouped.MemberCounts()
 	if not counts then return nil end
 	local out = {}

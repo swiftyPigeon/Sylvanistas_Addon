@@ -313,6 +313,9 @@ or several, it isn't guessed. Sessions **told by others** weigh more than ones
 only the member told: the tooltip shows both, and from how many different members. Where your add-on
 watched the roster, reports from someone shown offline at the time are dropped. Officers' add-ons
 share what they've heard with each other, so counts fill in for officers who were away.
+**Sylvanistas and Sylvanistas Underground count together:** officers of either guild see both, and an
+alt's groups in one count for its linked main in the other. Each add-on re-tells its recent groups
+after login (the last week's 10 newest), so an officer who was off can still hear them.
 
 ---
 

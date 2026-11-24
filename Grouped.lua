@@ -18,6 +18,15 @@ local L = ns.L
 -- what several clients told of one group merges by time. A count is what members' clients say:
 -- the tooltip says how many sessions two or more clients told ("confirmed").
 -- Nothing else is sent: no zone, no position, no chat.
+--
+-- The two house guilds (the user: an alt's groups count with its main, whichever guild each is in):
+-- over GUILD a report reaches one guild alone, so a house guild's client says it on the channel too:
+--   Z3~<reporter>~<reporter's guild>~<start>~<seconds>~<name>,<name>,...   (CHANNEL; GUILD in a relay)
+-- for itself, for a character linked with it (Alts.lua, both sides confirmed), or, from an officer,
+-- what it heard. Officers of either house guild keep them in one list (Reports). ZQ goes out on the
+-- channel too; whoever of the other guild has something answers there. Clients re-tell their own
+-- last sessions after login (CatchUp), so an officer away then, or the reporter away at the ask, misses
+-- nothing for good while both are on at some time.
 
 local Grouped = {}
 ns.Grouped = Grouped
@@ -33,10 +42,17 @@ Grouped.ASK_GAP = 10 * 60        -- an officer asks at most this often
 Grouped.MAX_NAMES = 20           -- names in one Z1 (a raid's: the first 20 kept)
 Grouped.MAX_ANSWER = 60          -- sessions sent in one answer
 Grouped.MAX_HEARD = 4000         -- reports kept by an officer's client (oldest dropped)
+Grouped.DRIP = 3                 -- seconds between two messages of an answer, a relay or a catch-up
+Grouped.DRIP_ROOM = 30           -- they wait while the send queue has less room than this
+Grouped.CATCH_UP_DAYS = 7        -- sessions re-told after login, this recent...
+Grouped.CATCH_UP_MAX = 10        -- ...the newest of them only...
+Grouped.CATCH_UP_TIMES = 5       -- ...each this many logins at most
+Grouped.MAX_FROM = 300           -- new reports taken from one channel sender in a day
 
 local current          -- the session going on: { t, last, w = { [name] = true } }
-local lastAnswer, lastAsk = -math.huge, -math.huge
-local lastRelay = -math.huge  -- when this officer last handed reports to another
+local lastAnswer, lastAsk = {}, -math.huge -- (answers: by GUILD or CHANNEL)
+local lastRelay = {}          -- when this officer last handed reports to another
+local told = {}               -- [channel sender] = { n, day }: new reports taken from each (MAX_FROM)
 local relayHeardAt = -math.huge -- GetTime() of the last report another officer handed on
 
 local function Plain(s)
@@ -88,10 +104,55 @@ local function Encode(e)
 	return msg .. table.concat(out, ",")
 end
 
+local function House(guild) return ns.IsHouseGuild ~= nil and type(guild) == "string" and ns.IsHouseGuild(guild) == true end
+local function MyGuild() return ns.GuildInfo("player") end
+
+local function EncodeHouse(reporter, guild, e)
+	local realm = ns.RealmOf(ns.me)
+	local function Short(n)
+		n = tostring(n):gsub("[~,|%c]", "")
+		return ns.RealmOf(n) == realm and ns.ShortName(n) or n
+	end
+	local msg = ("Z3~%s~%s~%d~%d~"):format(Short(reporter), tostring(guild):gsub("[~|%c]", ""), e.t, e.d)
+	local out = {}
+	for _, n in ipairs(e.w or {}) do
+		local clean = Short(n)
+		if #out >= Grouped.MAX_NAMES or #msg + #table.concat(out, ",") + #clean + 1 > 250 then break end
+		if clean ~= "" then out[#out + 1] = clean end
+	end
+	return #out > 0 and (msg .. table.concat(out, ",")) or nil
+end
+
+-- A batch leaves one message at a time, and only while the queue has room: it never pushes the
+-- census or anyone's message out. Each has its own key: two sessions never overwrite each other.
+local drip, dripping = {}, false
+local function Drip()
+	if #drip == 0 then dripping = false return end
+	dripping = true
+	if not (ns.Comm.QueueRoom and ns.Comm.QueueRoom() < Grouped.DRIP_ROOM) then
+		local m = table.remove(drip, 1)
+		if not (m.mine and not Grouped.Sharing()) then ns.Comm.Send(m[1], m[2], "grouped:" .. m[1] .. m[3]) end
+	end
+	ns.After(Grouped.DRIP, "grouped drip", Drip)
+end
+-- (`id`: whose session and when; waiting already: the newer text takes its place.)
+local function Queue(dist, msg, id, mine)
+	if not msg then return end
+	for _, m in ipairs(drip) do
+		if m[1] == dist and m[3] == id then m[2] = msg return end
+	end
+	drip[#drip + 1] = { dist, msg, id, mine = mine }
+end
+local function StartDrip() if not dripping then Drip() end end
+
 local function Tell(e)
 	if not Grouped.Sharing() or not ns.InGuild() then return end
 	if ns.DemoBlocked and ns.DemoBlocked() then return end
-	ns.Comm.Send("GUILD", Encode(e), "grouped")
+	ns.Comm.Send("GUILD", Encode(e), "grouped:" .. e.t)
+	if House(MyGuild()) then
+		local msg = EncodeHouse(ns.me, MyGuild(), e)
+		if msg then ns.Comm.Send("CHANNEL", msg, "groupedh:" .. e.t) end
+	end
 end
 
 -- The session told: once it reaches MIN_SESSION (the user: it counts then, not at its end), and
@@ -105,7 +166,7 @@ local function Record(s, now)
 	table.sort(names)
 	local e = s.entry
 	if not e then
-		e = { c = ns.me, t = s.t }
+		e = { c = ns.me, g = MyGuild(), t = s.t }
 		s.entry = e
 		local list = Mine()
 		list[#list + 1] = e
@@ -116,7 +177,7 @@ local function Record(s, now)
 	ns.Log("grouped: a session of %d min with %d of us", math.floor(d / 60), #names)
 	Tell(e)
 	-- (An officer hears their own sessions too, as any member's.)
-	Grouped.Heard(ns.me, e.t, e.d, names)
+	Grouped.Heard(ns.me, e.t, e.d, names, e.g)
 end
 
 local function Finish(now)
@@ -180,10 +241,40 @@ local function Heard()
 	return g
 end
 
--- A session told by `reporter`: kept by officers' clients only, once each.
-function Grouped.Heard(reporter, t, d, names)
+-- Where the reports are kept: one list per guild; the house guilds share one (what each had before
+-- is joined into it once). Who was online and the notes stay per guild (Heard): a roster's own.
+local HOUSE = "*house"
+local function Reports()
+	local guild = MyGuild()
+	if not House(guild) then return Heard() end
+	if not Heard() then return nil end
+	local all = ns.db.groupHeard
+	local h = all[HOUSE]
+	if type(h) ~= "table" then h = { list = {}, seen = {}, allTime = {} }; all[HOUSE] = h end
+	h.list, h.seen, h.allTime = h.list or {}, h.seen or {}, h.allTime or {}
+	for name, g in pairs(all) do
+		if name ~= HOUSE and House(name) and type(g) == "table" and type(g.list) == "table" and (#g.list > 0 or next(g.allTime or {})) then
+			for _, e in ipairs(g.list) do
+				if type(e) == "table" and e.r and e.t then
+					local id = e.r .. "@" .. e.t
+					if not h.seen[id] then
+						h.seen[id] = true
+						h.list[#h.list + 1] = { r = e.r, t = e.t, d = e.d, w = e.w, g = name }
+					end
+				end
+			end
+			for k, n in pairs(g.allTime or {}) do h.allTime[k] = (h.allTime[k] or 0) + n end
+			g.list, g.seen, g.allTime = {}, {}, {}
+		end
+	end
+	return h
+end
+
+-- A session told by `reporter`, of `guild`: kept by officers' clients only, once each. True when
+-- new or longer.
+function Grouped.Heard(reporter, t, d, names, guild)
 	if not IsOfficer() then return false end
-	local g = Heard()
+	local g = Reports()
 	if not g then return false end
 	local r = Grouped.Key(reporter)
 	if not r then return false end
@@ -202,13 +293,104 @@ function Grouped.Heard(reporter, t, d, names)
 		return false
 	end
 	g.seen[id] = true
-	g.list[#g.list + 1] = { r = r, t = t, d = d, w = names }
+	g.list[#g.list + 1] = { r = r, t = t, d = d, w = names, g = guild or MyGuild() }
 	if #g.list > Grouped.MAX_HEARD then
 		local old = table.remove(g.list, 1)
 		if old then g.seen[old.r .. "@" .. old.t] = nil end
 	end
 	ns.Fire("GROUPED_CHANGED")
 	return true
+end
+
+-- Two characters of one player, by the links both confirmed.
+local function Linked(a, b)
+	local A = ns.Alts
+	if not (A and A.Group and A.Key) then return false end
+	local ok, grp = pcall(A.Group, a)
+	if not ok or type(grp) ~= "table" then return false end
+	local ka, kb, hasA, hasB = A.Key(a), A.Key(b), false, false
+	for _, m in ipairs(grp.members or {}) do
+		local k = A.Key(m.name)
+		hasA, hasB = hasA or k == ka, hasB or k == kb
+	end
+	return hasA and hasB
+end
+
+-- An officer of the house: of our roster, or the census's word on the other house guild's, or a
+-- character linked with one.
+local function HouseOfficer(name)
+	local function One(n)
+		local rank = ns.Roster.RankOf and ns.Roster.RankOf(n)
+		if rank then return rank <= ns.CAPTAIN_RANK end
+		if ns.IsKingCharacter and ns.IsKingCharacter(n) then return true end
+		for _, g in ipairs({ ns.GUILD_NAME, ns.ALT_GUILD_NAME }) do
+			if g ~= MyGuild() and ns.Data and ns.Data.KnownRank then
+				local ok, r = pcall(ns.Data.KnownRank, n, g)
+				if ok and type(r) == "number" and r <= ns.CAPTAIN_RANK then return true end
+			end
+		end
+		return false
+	end
+	if One(name) then return true end
+	local A = ns.Alts
+	if A and A.Group then
+		local ok, grp = pcall(A.Group, name)
+		if ok and type(grp) == "table" then
+			for _, m in ipairs(grp.members or {}) do
+				local k = Grouped.Key(m.name)
+				if k and k ~= name and One(k) then return true end
+			end
+		end
+	end
+	return false
+end
+
+-- Z3: a house guild's session, on the channel (or an officer's relay over GUILD).
+function Grouped.HandleHouse(dist, sender, text)
+	if dist ~= "CHANNEL" and dist ~= "GUILD" then return end
+	if not House(MyGuild()) or not IsOfficer() then return end
+	sender = Grouped.Key(sender)
+	local who, guild, t, d, list = tostring(text):match("^Z3~([^~]+)~([^~]+)~(%d+)~(%d+)~(.*)$")
+	t, d = tonumber(t), tonumber(d)
+	if not sender or not t or not d or not House(guild) then return end
+	-- (Short names are the sender's realm's.)
+	local realm = ns.RealmOf(sender)
+	local function Full(n)
+		n = ns.Normal(ns.Codec.Plain(n):sub(1, 64))
+		return n and n ~= "" and ns.FullName(n, realm) or nil
+	end
+	local reporter = Full(who)
+	if not reporter then return end
+	local officer
+	if reporter ~= sender and not Linked(sender, reporter) then
+		officer = HouseOfficer(sender)
+		if not officer then return end
+	end
+	-- (Over GUILD the sender is of our roster; a reporter said to be of our guild must be.)
+	if dist == "GUILD" and not (ns.Roster.RankOf and ns.Roster.RankOf(sender)) then return end
+	if guild == MyGuild() and not (ns.Roster.RankOf and ns.Roster.RankOf(reporter)) then return end
+	local M = ns.Moderation
+	if M and M.Hidden then
+		local ok, hidden = pcall(M.Hidden, reporter)
+		if ok and hidden then return end
+	end
+	local now = ns.Now()
+	if t > now + 300 or now - t > Grouped.KEEP or d < Grouped.MIN_SESSION or d > 24 * 3600 then return end
+	if t + d > now + 300 then return end
+	local names = {}
+	for n in tostring(list or ""):gmatch("[^,]+") do
+		if #names >= Grouped.MAX_NAMES then break end
+		local k = Full(n)
+		if k and k ~= reporter then names[#names + 1] = k end
+	end
+	if #names == 0 then return end
+	local day = math.floor(now / 86400)
+	local f = told[sender]
+	if not f or f.day ~= day then f = { n = 0, day = day }; told[sender] = f end
+	if f.n >= Grouped.MAX_FROM then return end
+	if Grouped.Heard(reporter, t, d, names, guild) then f.n = f.n + 1 end
+	-- (Another officer is handing on: ours stays quiet. Told late for an own session: no.)
+	if officer then relayHeardAt = GetTime() end
 end
 
 function Grouped.HandleReport(dist, sender, text)
@@ -230,66 +412,140 @@ function Grouped.HandleReport(dist, sender, text)
 	Grouped.Heard(sender, t, d, names)
 end
 
+-- This account's own sessions to tell: ours, and those of characters linked with us (this computer
+-- keeps them: an alt need not log in again). { e, reporter, guild }, newest first.
+local function OwnSessions(since)
+	local out, me = {}, Grouped.Key(ns.me)
+	local list = Mine()
+	Prune(list, ns.Now())
+	for _, e in ipairs(list) do
+		local c = Grouped.Key(e.c)
+		if c and e.d and e.w and e.t >= since then
+			local guild = e.g
+			if not guild and ns.Alts and ns.Alts.Key and type(ns.db.alts) == "table" and type(ns.db.alts.guilds) == "table" then
+				guild = ns.db.alts.guilds[ns.Alts.Key(c)] -- (kept before sessions said their guild)
+			end
+			if c == me then guild = guild or MyGuild() end
+			if c == me or Linked(me, c) then out[#out + 1] = { e = e, r = c, g = guild, mine = c == me } end
+		end
+	end
+	table.sort(out, function(a, b) return a.e.t > b.e.t end)
+	return out
+end
+
+-- `channelOnly`: an ask from the other house guild (over GUILD nobody of it would hear).
+local function TellAgain(s, channelOnly)
+	local id = s.r .. "@" .. s.e.t
+	if s.mine and s.g == MyGuild() and not channelOnly then Queue("GUILD", Encode(s.e), id, true) end
+	if House(MyGuild()) and House(s.g) then Queue("CHANNEL", EncodeHouse(s.r, s.g, s.e), id, true) end
+end
+
 -- An officer asks what they missed: our sessions since then, at most once a GAP.
 function Grouped.HandleAsk(dist, sender, text)
-	if dist ~= "GUILD" then return end
+	if dist ~= "GUILD" and dist ~= "CHANNEL" then return end
 	sender = Grouped.Key(sender)
-	local rank = sender and ns.Roster.RankOf and ns.Roster.RankOf(sender)
-	if not rank or rank > ns.CAPTAIN_RANK then return end -- (an officer of our roster)
+	local ours = sender and ns.Roster.RankOf and ns.Roster.RankOf(sender)
+	if dist == "GUILD" then
+		if not ours or ours > ns.CAPTAIN_RANK then return end -- (an officer of our roster)
+	else
+		-- The channel is for the other house guild: our own officers' ask comes over GUILD too.
+		if not sender or ours or not House(MyGuild()) or not HouseOfficer(sender) then return end
+	end
 	local since = tonumber(tostring(text):match("^ZQ~(%d+)$"))
 	if not since then return end
-	if sender ~= Grouped.Key(ns.me) then Grouped.Relay(since) end
+	if sender ~= Grouped.Key(ns.me) then Grouped.Relay(since, dist) end
 	if not Grouped.Sharing() then return end
 	local now = ns.Now()
-	if now - lastAnswer < Grouped.ANSWER_GAP then return end
-	lastAnswer = now
-	local list, sent = Mine(), 0
-	Prune(list, now)
-	local me = Grouped.Key(ns.me)
+	local gap = lastAnswer[dist] or -math.huge
+	if now - gap < Grouped.ANSWER_GAP then return end
+	lastAnswer[dist] = now
 	ns.After(2 + math.random() * 18, "grouped answer", function()
-		for _, e in ipairs(list) do
+		if ns.DemoBlocked and ns.DemoBlocked() then return end
+		local sent = 0
+		for _, s in ipairs(OwnSessions(since)) do
 			if sent >= Grouped.MAX_ANSWER then break end
-			if Grouped.Key(e.c) == me and e.t >= since then
-				Tell(e)
-				sent = sent + 1
-			end
+			TellAgain(s, dist == "CHANNEL")
+			sent = sent + 1
 		end
+		StartDrip()
 		if sent > 0 then ns.Log("grouped: %d session(s) told after an officer's ask", sent) end
 	end)
+end
+
+-- After login: our last sessions once more (nobody may have been on to hear them), and, an officer,
+-- those this account's other house characters keep here go straight to our own list.
+function Grouped.CatchUp()
+	if not ns.IsMember() then return end
+	if IsOfficer() and House(MyGuild()) then
+		for _, e in ipairs(Mine()) do
+			local c = Grouped.Key(e.c)
+			local guild = e.g
+			if not guild and ns.Alts and ns.Alts.Key and type(ns.db.alts) == "table" and type(ns.db.alts.guilds) == "table" then
+				guild = c and ns.db.alts.guilds[ns.Alts.Key(c)]
+			end
+			if c and House(guild) and e.d and e.w and ns.Now() - e.t <= Grouped.KEEP then Grouped.Heard(c, e.t, e.d, e.w, guild) end
+		end
+	end
+	if not Grouped.Sharing() then return end
+	if ns.DemoBlocked and ns.DemoBlocked() then return end
+	local n = 0
+	for _, s in ipairs(OwnSessions(ns.Now() - Grouped.CATCH_UP_DAYS * 86400)) do
+		if n >= Grouped.CATCH_UP_MAX then break end
+		local times = s.e.again or 0
+		if times < Grouped.CATCH_UP_TIMES then
+			s.e.again = times + 1
+			TellAgain(s)
+			n = n + 1
+		end
+	end
+	StartDrip()
 end
 
 -- Officers hand each other what they heard (1.3.7, the user's call): another officer asked
 -- (ZQ), so one officer online answers with every report held since then, the newest first,
 --   Z2~<reporter>~<start>~<seconds>~<name>,<name>,...   (GUILD; officers only send or keep it)
 -- Each waits a few random seconds and stays quiet if another officer started handing on first.
-function Grouped.Relay(since)
+-- The other house guild's reports go as Z3 (Z2 is for reporters of the roster); on the channel
+-- only our own guild's do (the asker's own guild answers for itself).
+function Grouped.Relay(since, dist)
 	if not IsOfficer() then return end
+	dist = dist or "GUILD"
 	local askedAt = GetTime()
-	if askedAt - lastRelay < Grouped.ANSWER_GAP then return end
+	if askedAt - (lastRelay[dist] or -math.huge) < Grouped.ANSWER_GAP then return end
 	ns.After(3 + math.random() * 9, "grouped relay", function()
 		if relayHeardAt >= askedAt then return end -- (another officer is on it)
 		if ns.DemoBlocked and ns.DemoBlocked() then return end
-		local g = Heard()
+		local g = Reports()
 		if not g then return end
-		lastRelay = GetTime()
+		lastRelay[dist] = GetTime()
 		local list = {}
 		for _, e in ipairs(g.list) do if e.t >= since then list[#list + 1] = e end end
 		table.sort(list, function(a, b) return a.t > b.t end)
 		local sent = 0
 		for _, e in ipairs(list) do
 			if sent >= Grouped.MAX_RELAY then break end
-			local head = ("Z2~%s~%d~%d~"):format(tostring(e.r):gsub("[~,|%c]", ""), e.t, e.d)
-			local out = {}
-			for _, n in ipairs(e.w or {}) do
-				local clean = tostring(n):gsub("[~,|%c]", "")
-				if #out >= Grouped.MAX_NAMES or #head + #table.concat(out, ",") + #clean + 1 > 250 then break end
-				out[#out + 1] = clean
+			local ours = ns.Roster.RankOf and ns.Roster.RankOf(e.r) ~= nil
+			local id, msg = e.r .. "@" .. e.t, nil
+			if dist == "CHANNEL" then
+				if ours then msg = EncodeHouse(e.r, MyGuild(), e) end
+			elseif ours then
+				local head = ("Z2~%s~%d~%d~"):format(tostring(e.r):gsub("[~,|%c]", ""), e.t, e.d)
+				local out = {}
+				for _, n in ipairs(e.w or {}) do
+					local clean = tostring(n):gsub("[~,|%c]", "")
+					if #out >= Grouped.MAX_NAMES or #head + #table.concat(out, ",") + #clean + 1 > 250 then break end
+					out[#out + 1] = clean
+				end
+				if #out > 0 then msg = head .. table.concat(out, ",") end
+			elseif House(MyGuild()) and House(e.g) and e.g ~= MyGuild() then
+				msg = EncodeHouse(e.r, e.g, e)
 			end
-			if #out > 0 then
-				ns.Comm.Send("GUILD", head .. table.concat(out, ","), "grouped relay")
+			if msg then
+				Queue(dist, msg, "relay " .. id)
 				sent = sent + 1
 			end
 		end
+		StartDrip()
 		if sent > 0 then ns.Log("grouped: %d report(s) handed to another officer", sent) end
 	end)
 end
@@ -324,12 +580,15 @@ function Grouped.Ask()
 	local now = ns.Now()
 	if now - lastAsk < Grouped.ASK_GAP then return end
 	lastAsk = now
-	local g = Heard()
+	local g = Reports()
 	if not g then return end
-	local newest = 0
-	for _, e in ipairs(g.list) do if e.t > newest then newest = e.t end end
-	local since = math.max(now - Grouped.KEEP, newest - 3600)
+	-- Everything kept once a day; the last 3 days otherwise. (Not "since the newest heard": an older
+	-- session of someone who was away then would never be asked for.)
+	local full = not g.fullAt or now - g.fullAt > 86400
+	if full then g.fullAt = now end
+	local since = full and (now - Grouped.KEEP) or (now - 3 * 86400)
 	ns.Comm.Send("GUILD", ("ZQ~%d"):format(since), "grouped ask")
+	if House(MyGuild()) then ns.Comm.Send("CHANNEL", ("ZQ~%d"):format(since), "grouped ask house") end
 end
 
 ---------------------------------------------------------------------------
@@ -484,6 +743,12 @@ function Grouped.PersonOf(key, g)
 	end
 	local notes = g and g.noteMains
 	if type(notes) == "table" and notes[key] then return notes[key], "note" end
+	-- (The other house guild's notes, read by this account's officer there.)
+	if House(MyGuild()) then
+		for name, o in pairs(ns.db.groupHeard or {}) do
+			if House(name) and type(o) == "table" and type(o.noteMains) == "table" and o.noteMains[key] then return o.noteMains[key], "note" end
+		end
+	end
 	return key, nil
 end
 
@@ -613,8 +878,11 @@ function Grouped.Count(list, g)
 			end
 			whole = Tally(es, info.chars)
 		end
-		for key in pairs(info.chars) do
-			local own = Tally(perChar[key], { [key] = true })
+		-- (A main with no group of its own still shows its alts'.)
+		local shown = { [p] = true }
+		for key in pairs(info.chars) do shown[key] = true end
+		for key in pairs(shown) do
+			local own = Tally(perChar[key] or {}, { [key] = true })
 			local c = whole or own
 			if whole then
 				c = setmetatable({ own = own, person = p, chars = info.chars, via = info.via }, { __index = whole })
@@ -626,7 +894,7 @@ function Grouped.Count(list, g)
 end
 
 -- Reports older than KEEP leave the list; what they counted goes to allTime (per character) first.
-local function Age(g, now)
+local function Age(g, now, presence)
 	local old = {}
 	for i = #g.list, 1, -1 do
 		local e = g.list[i]
@@ -637,8 +905,8 @@ local function Age(g, now)
 		end
 	end
 	if #old == 0 then return end
-	local checked = Grouped.Checked(old, g)
-	for key, c in pairs(Grouped.Count(checked, g)) do
+	local checked = Grouped.Checked(old, presence)
+	for key, c in pairs(Grouped.Count(checked, presence)) do
 		local own = c.own or c
 		g.allTime[key] = (g.allTime[key] or 0) + own.count
 	end
@@ -648,11 +916,11 @@ end
 -- alts adds the alts' all-time totals too.
 function Grouped.MemberCounts()
 	if not IsOfficer() then return nil end
-	local g = Heard()
-	if not g then return nil end
-	Age(g, ns.Now())
-	local checked, dropped = Grouped.Checked(g.list, g)
-	local counts = Grouped.Count(checked, g)
+	local presence, g = Heard(), Reports()
+	if not g or not presence then return nil end
+	Age(g, ns.Now(), presence)
+	local checked, dropped = Grouped.Checked(g.list, presence)
+	local counts = Grouped.Count(checked, presence)
 	for key, c in pairs(counts) do
 		local all = 0
 		for k in pairs(c.chars or { [key] = true }) do all = all + (g.allTime[k] or 0) end
@@ -759,12 +1027,14 @@ function Grouped.RosterLabels()
 end
 
 function Grouped.ResetForTests()
-	current, lastAnswer, lastAsk, lastRelay, relayHeardAt = nil, -math.huge, -math.huge, -math.huge, -math.huge
+	current, lastAnswer, lastAsk, lastRelay, relayHeardAt = nil, {}, -math.huge, {}, -math.huge
+	drip, dripping, told = {}, false, {}
 end
 
 ns.Comm.Handle("Z1", function(...) Grouped.HandleReport(...) end)
 ns.Comm.Handle("ZQ", function(...) Grouped.HandleAsk(...) end)
 ns.Comm.Handle("Z2", function(...) Grouped.HandleRelay(...) end)
+ns.Comm.Handle("Z3", function(...) Grouped.HandleHouse(...) end)
 
 ns.On("LOGIN", function()
 	ns.Every(Grouped.SAMPLE, "grouped", function()
@@ -778,4 +1048,5 @@ ns.On("LOGIN", function()
 	Grouped.RosterLabels()
 	-- An officer's client asks what it missed, once the roster is read.
 	ns.After(45, "grouped ask", function() ns.SafeCall("grouped ask", Grouped.Ask) end)
+	ns.After(75 + math.random() * 60, "grouped catch up", function() ns.SafeCall("grouped catch up", Grouped.CatchUp) end)
 end)
