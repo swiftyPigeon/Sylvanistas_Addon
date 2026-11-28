@@ -23,6 +23,7 @@ local CHAT_TTL = 30   -- a chat part that waited this long is dropped, not sent 
 local GUARD_AFTER = 400  -- an elected reporter never heard reporting our guild for this long...
 local GUARD_FOR = 30 * 60 -- ...is left out of the election for this long (see MaybeBroadcast)
 local KEY_ASK_EVERY = 600 -- at most one key request this often while a sealed reporter is elected
+local KEY_ASK_GAP = 60    -- 1.3.9: at most one key request this often when a sealed officer says hello
 local WITNESS_EVERY = 600 -- the runner-up of the election reports this often (see MaybeBroadcast)
 local JOIN_BY = 15        -- seconds after login we join the channel at the latest (see JoinSoon)
 local ASK_AFTER = 4       -- seconds after joining we ask the channel for the census (Q1)...
@@ -1463,6 +1464,18 @@ local function OnAddonMessage(prefix, text, dist, sender, target, zoneChannelID,
 		peerVersion[sender] = text:match("^H1~(%d+%.%d+%.%d+)") or "?"
 		local sealed = text:match("^H1~[^~]*~[^~]*~([^~]*)")
 		peerSealed[sender] = (sealed == "s" or sealed == "p") and sealed or nil
+		-- 1.3.9: no key (the channel is locked without one, ns.REQUIRE_KEY): an officer on the sealed
+		-- channel says hello (at their login, or on their hello ticker), so our guild is asked again,
+		-- and a locked client gets back on once an officer is online, without a /reload. At most
+		-- once a KEY_ASK_GAP; their addon answers over GUILD (K0, above).
+		if sealed == "s" and not (ns.rdb and ns.rdb.realmKey) and now - (lastKeyAsk or -math.huge) >= KEY_ASK_GAP then
+			local rank = ns.Roster.RankOf(sender)
+			if rank and rank <= ns.CAPTAIN_RANK then
+				lastKeyAsk = now
+				ns.Log("key request: officer %s is on the sealed channel", sender)
+				ns.After(math.random(2, 6), "key request", Comm.RequestKey)
+			end
+		end
 		peerZone[sender] = text:match("^H1~[^~]*~[^~]*~[^~]*~([^~]*)") == "z" or nil
 		-- 1.2.2: two or more guildmates ahead of us: one line, once a session (Workshop.CheckPeers).
 		if ns.Workshop and ns.Workshop.CheckPeers then ns.SafeCall("peer versions", ns.Workshop.CheckPeers) end

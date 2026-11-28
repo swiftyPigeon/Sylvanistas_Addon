@@ -259,7 +259,7 @@ guildmate's add-on names you.
 | You see | It means |
 |---|---|
 | *"Sylvanistas is on version X (you are on Y). Please update on CurseForge."* | two or more guildmates run a newer version: update, then restart the game |
-| *"Sylvanistas is locked: ask your guild master…"* | your guild doesn't have the Guild Master's key yet (only if they switched that on) |
+| *"Sylvanistas is locked: your guild has no key yet."* (a grey key in the header) | this computer has no channel key, so the add-on sends nothing on the network. It asks your guild at login and again whenever an officer comes online; the key turns gold within seconds. Still grey a few minutes after an officer came online? `/syl bug` **before** you `/reload`, and send it to your officers |
 | *"Rebuilding the census…"* | normal for a few minutes after login |
 | A line ending in an **i** | hover it for the rest |
 
@@ -280,7 +280,9 @@ Until it's sealed, anyone who joins the hidden channel by name can read the cens
 5. If the key is lost (everyone logged off) or `/syl status` says **public**, the first Dark Ranger
    online types `/syl key <the same secret>`. **The same secret, or the guild splits in two.**
 
-**If the key leaks:** `/syl key rotate` makes a new key nobody sees and moves the guild to it.
+**If the key leaks:** the Guild Master presses **Rotate the Forsaken's key** on the **Sanctum**: a new key nobody sees, for every Sylvanistas guild they pick. A Dreadguard's `/syl key rotate` moves **their own guild alone** to a new channel, away from the other Sylvanistas guilds: keep it for when the Guild Master can't be reached, and have them rotate for everyone soon after.
+
+**A guildmate whose key is grey** doesn't need a rotation: any officer online with the key answers their add-on by itself.
 
 ### Send Screams
 | Scream | How |
@@ -370,10 +372,10 @@ The **Regalia** tab only celebrates the tabard: who wears it, never who doesn't.
 inspection and no list of players caught without it.
 
 ### Safeguards against a toxic branch guild
-Both are off until you need them; the addon keeper switches them on in a release:
+The addon keeper switches these in a release. The channel lock is on since 1.3.9 (the network is sealed); the blocked list is empty until you need it:
 | Setting | What it does |
 |---|---|
-| `ns.REQUIRE_KEY = true` | a guild without your channel key gets no network (census, chats, Screams, map, layer hop between guilds), only its own roster, and sees *"Sylvanistas is locked"*. **Seal the channel first** (Part 3). |
+| `ns.REQUIRE_KEY = true` (**on since 1.3.9**) | a guild or a computer without your channel key gets no network (census, chats, Screams, map, layer hop between guilds), only its own roster, and sees *"Sylvanistas is locked"*. **Seal the channel first** (Part 3). |
 | `ns.BLOCKED_GUILDS` | guilds cut off for good by exact name; never your own guild |
 
 To admit a branch guild, whisper the key to its guild master; they type `/syl key <key>` once and

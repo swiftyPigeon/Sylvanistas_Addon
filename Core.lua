@@ -18,13 +18,13 @@ ns.REALM_GROUP = "CAMWOWUS2Realm7PvE"          -- the author's and Treasurer's r
 ns.TREASURER_CHARACTER = "CHANGEME_Treasurer"  -- the Treasurer (in the main guild)
 ns.TREASURER_MAIL_CHARACTER = "CHANGEME_TreasurerMail" -- where dues and treasury mail go (any guild)
 ns.TREASURY_OFF = true                        -- true turns the Treasury and Bank off (1.3.0: off in beta; on at launch, the Treasurer a guild rank)
-ns.REQUIRE_KEY = false                        -- true: a guild without the channel key (/syl key, from the Guild Master) gets no network, only its own roster. Seal the channel first.
+ns.REQUIRE_KEY = true                         -- (1.3.9: on, the network is sealed) true: a guild without the channel key (/syl key, from the Guild Master) gets no network, only its own roster. Seal the channel first.
 ns.PVP_REALM = nil                            -- true: a PvP realm (the Board offers PvP flags); false: not; nil: guessed from the realm's name ("...PvP...")
 ns.BLOCKED_GUILDS = {                          -- guilds cut off for good, whatever their name: exact names, e.g. ["Sylvanistas Whatever"] = true (never the Guild Master's)
 }
 
 ns.NAME = "Sylvanistas"
-ns.VERSION = "1.3.8"
+ns.VERSION = "1.3.9"
 ns.PREFIX = "SYLVANISTAS"        -- addon message prefix (max 16 chars)
 ns.CHANNEL = "SylvanistasNet"    -- hidden chat channel (Alliance: unused, the addon is Horde-only)
 ns.CHANNEL_HORDE = "SylvanistasNetH" -- the Horde's hidden chat channel, shared by every Sylvanistas guild
